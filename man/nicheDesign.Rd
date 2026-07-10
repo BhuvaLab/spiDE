@@ -13,6 +13,8 @@ nicheDesign(
   covariates = character(),
   cell_type = "cell_type",
   name = "Niche",
+  sample_id = "sample_id",
+  random = c("none", "intercept", "slope"),
   ...
 )
 }

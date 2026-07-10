@@ -11,13 +11,23 @@
 #' @slot ncells a numeric, the number of cells/spots.
 #' @slot W a matrix, the design matrix (cells x covariates).
 #' @slot covtype a factor, the covariate type of each column of `W`, one of
-#'   "CellType", "Niche", "Response", "ResponseNiche", or "Other".
+#'   "CellType", "Niche", "Response", "ResponseNiche", "Other", or "Random"
+#'   (patient random-effect columns for the mixed-effects fit).
 #' @slot coefmap a DataFrame mapping each covariate to its index cell type,
 #'   niche cell type, and type.
 #' @slot alpha a matrix, the per-gene coefficients (genes x covariates).
 #' @slot gmean a numeric, the per-gene intercept (zero for the generic fit).
 #' @slot psi a numeric, the per-gene negative binomial dispersion.
 #' @slot loglik a numeric, the per-gene log-likelihood (used for Cauchy weights).
+#' @slot re_group a character (or NULL), the random-effect group of each column
+#'   of `W` (`NA` for fixed columns); NULL for a fixed-effects fit.
+#' @slot tau2 a numeric (or NULL), the fitted random-effect variance components
+#'   (one per random-effect group); NULL for a fixed-effects fit.
+#' @slot penalty a numeric (or NULL), the per-column ridge penalty (`lambda.a`)
+#'   used at fit time (0 on fixed columns, `1/tau2` on random columns).
+#' @slot df a numeric (or NULL), the residual degrees of freedom used for the
+#'   Wald reference distribution (finite for a mixed-effects fit, else NULL =
+#'   normal reference).
 #' @slot t_stat a matrix, per-gene Wald t-statistics (genes x covariates).
 #' @slot se a matrix, per-gene coefficient standard errors (genes x covariates).
 #' @slot p.brown.pos a matrix, Brown-combined p-values for up-regulation
@@ -47,11 +57,18 @@ setClass(
     gmean = "numeric",
     psi = "numeric",
     loglik = "numeric",
+    re_group = "ANY",
+    tau2 = "ANY",
+    penalty = "ANY",
+    df = "ANY",
     t_stat = "ANY",
     se = "ANY",
     p.brown.pos = "ANY",
     p.brown.neg = "ANY",
     sampling = "ANY"
+  ),
+  prototype = list(
+    re_group = NULL, tau2 = NULL, penalty = NULL, df = NULL
   )
 )
 
@@ -107,7 +124,8 @@ validSpiDEFit <- function(object) {
     stop("'alpha' cannot have missing values")
   }
   # covtype levels
-  valid_levels <- c("CellType", "Niche", "Response", "ResponseNiche", "Other")
+  valid_levels <- c("CellType", "Niche", "Response", "ResponseNiche", "Other",
+                    "Random")
   if (!all(levels(object@covtype) %in% valid_levels)) {
     stop(sprintf("'covtype' levels should be a subset of: %s", paste(valid_levels, collapse = ", ")))
   }

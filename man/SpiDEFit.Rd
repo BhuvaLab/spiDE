@@ -34,7 +34,8 @@ bandwidth) are combined in a \link{SpiDEResults} container.
 \item{\code{W}}{a matrix, the design matrix (cells x covariates).}
 
 \item{\code{covtype}}{a factor, the covariate type of each column of \code{W}, one of
-"CellType", "Niche", "Response", "ResponseNiche", or "Other".}
+"CellType", "Niche", "Response", "ResponseNiche", "Other", or "Random"
+(patient random-effect columns for the mixed-effects fit).}
 
 \item{\code{coefmap}}{a DataFrame mapping each covariate to its index cell type,
 niche cell type, and type.}
@@ -46,6 +47,19 @@ niche cell type, and type.}
 \item{\code{psi}}{a numeric, the per-gene negative binomial dispersion.}
 
 \item{\code{loglik}}{a numeric, the per-gene log-likelihood (used for Cauchy weights).}
+
+\item{\code{re_group}}{a character (or NULL), the random-effect group of each column
+of \code{W} (\code{NA} for fixed columns); NULL for a fixed-effects fit.}
+
+\item{\code{tau2}}{a numeric (or NULL), the fitted random-effect variance components
+(one per random-effect group); NULL for a fixed-effects fit.}
+
+\item{\code{penalty}}{a numeric (or NULL), the per-column ridge penalty (\code{lambda.a})
+used at fit time (0 on fixed columns, \code{1/tau2} on random columns).}
+
+\item{\code{df}}{a numeric (or NULL), the residual degrees of freedom used for the
+Wald reference distribution (finite for a mixed-effects fit, else NULL =
+normal reference).}
 
 \item{\code{t_stat}}{a matrix, per-gene Wald t-statistics (genes x covariates).}
 

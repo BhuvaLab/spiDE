@@ -149,6 +149,26 @@ res <- spiDE(
 The `backend` argument (`"auto"`, `"cpu"`, `"gpu"`) is forwarded to
 `SpaNorm::fitNB()` and selects the compute backend for the model fit.
 
+# Mixed-effects inference for pseudo-replication
+
+By default each cell is treated as an independent observation. When many cells
+come from few patients, the response-related tests become anti-conservative
+(cell-level pseudo-replication), because the clinical response is a patient-level
+label. Passing `random = "slope"` (or `"intercept"`) to `spiDE()` / `fitSpiDE()`
+adds patient-level random effects — implemented as ridge-penalised design
+columns — that test the response effects against between-patient variability:
+
+```{r random, eval = FALSE}
+res <- spiDE(toySpiDE, condition = "condition", sigma = c(10, 30, 50),
+             random = "slope")
+```
+
+The model, the ridge = random-effects equivalence, and a worked calibration
+example are described in the companion vignette *The spiDE model and
+mixed-effects inference*. Note that a per-sample random intercept absorbs all
+between-sample effects, so sample-level covariates (e.g. `Age`) must be dropped
+when random effects are used.
+
 # Session info
 
 ```{r sessioninfo}

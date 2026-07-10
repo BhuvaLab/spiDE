@@ -17,6 +17,7 @@ spiDE(spe, condition, ...)
   assay = "counts",
   cell_type = "cell_type",
   sample_id = "sample_id",
+  random = c("none", "intercept", "slope"),
   winsor = 4,
   lambda.a = 0,
   backend = c("auto", "cpu", "gpu"),
@@ -50,10 +51,19 @@ for (e.g. library size, age, sex).}
 \item{cell_type}{a character, the colData column of cell type labels.}
 
 \item{sample_id}{a character, the colData column identifying samples (used
-when niches must be built).}
+when niches must be built and for the random-effects fit).}
+
+\item{random}{one of "none" (fixed-effects fit, the default), "intercept" or
+"slope". Adds patient-level random effects (implemented as ridge-penalised
+design columns) to correct anti-conservative inference caused by
+cell-level pseudo-replication. "intercept" adds a per-sample random
+intercept; "slope" additionally adds per-sample random slopes on the niche
+covariates (recommended, since it protects the response x niche tests). See
+the mixed-effects vignette.}
 
 \item{winsor, lambda.a}{fitting parameters forwarded to
-\code{\link[SpaNorm]{fitNB}} (coefficient winsorisation and ridge penalty).}
+\code{\link[SpaNorm]{fitNB}} (coefficient winsorisation and the base ridge
+penalty on the fixed columns).}
 
 \item{backend}{a character, the fitNB compute backend
 ("auto", "cpu", or "gpu").}

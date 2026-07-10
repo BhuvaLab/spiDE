@@ -8,6 +8,49 @@
 # sanitise cell-type / niche names the same way as the analysis scripts
 .sanitise <- function(x) gsub(" |-", ".", x)
 
+#' Build the patient-level random-effect design block
+#'
+#' Constructs the columns \code{Z} that carry the sample (patient) random
+#' effects used to correct cell-level pseudo-replication (see the mixed-effects
+#' vignette). Random effects are represented as ordinary design columns that are
+#' L2-penalised at fit time (the ridge = random-effects equivalence).
+#'
+#' The random effects target the *response-related* fixed effects, which are the
+#' only ones of inferential interest: for every response coefficient we add its
+#' patient-level random counterpart, so the response contrast is tested against
+#' between-patient variability. Concretely the random intercept (one indicator
+#' per sample) is the patient-level counterpart of the response main effect, and
+#' each random slope (a sample indicator times a fixed \code{CellType:niche} base
+#' column) is the patient-level counterpart of the corresponding
+#' response x \code{CellType:niche} coefficient.
+#'
+#' @param sample_vec a factor/character of sample ids, length = ncells.
+#' @param slope_base a cells x k matrix of the fixed \code{CellType:niche} base
+#'   columns (the non-response bases of the ResponseNiche terms); the random
+#'   slopes are built from these when \code{random == "slope"}.
+#' @param random one of "intercept" or "slope".
+#' @return a list with \code{Z} (the random-effect design block) and
+#'   \code{re_group} (a character label per column: "SampleInt" / "SampleSlope").
+#' @noRd
+.buildRandomEffects <- function(sample_vec, slope_base, random) {
+  smp <- factor(sample_vec)
+  Zint <- stats::model.matrix(~ 0 + smp)
+  colnames(Zint) <- paste0("Sample", levels(smp))
+  Z <- Zint
+  re_group <- rep("SampleInt", ncol(Zint))
+
+  if (random == "slope" && ncol(slope_base) > 0) {
+    Zslope <- do.call(cbind, lapply(colnames(slope_base), function(bc) {
+      M <- Zint * slope_base[, bc]
+      colnames(M) <- paste0(colnames(Zint), ":", bc)
+      M
+    }))
+    Z <- cbind(Zint, Zslope)
+    re_group <- c(re_group, rep("SampleSlope", ncol(Zslope)))
+  }
+  list(Z = Z, re_group = re_group)
+}
+
 #' Tag each design-matrix column by covariate type and parse index/niche cells
 #'
 #' @param cols character vector of column names.
@@ -63,14 +106,23 @@
 #' @param covariates a character vector of nuisance colData columns.
 #' @param cell_type a character, the colData column of cell type labels.
 #' @param name a character, the niche reducedDim prefix.
+#' @param sample_id a character, the colData column identifying samples
+#'   (patients); used only when \code{random != "none"}.
+#' @param random one of "none" (fixed-effects design, the default), "intercept"
+#'   (add a per-sample random intercept) or "slope" (also add per-sample random
+#'   slopes on the niche covariates). The random-effect columns are penalised at
+#'   fit time to implement a mixed model via ridge (see the vignette).
 #' @return a list with `W` (design matrix), `covtype` (factor), `coefmap`
-#'   (data.frame), and `response_coef` (character).
+#'   (data.frame), `response_coef` (character), and `re_group` (per-column
+#'   random-effect group label, `NA` for fixed columns).
 #' @importFrom stats model.matrix as.formula
 #' @importFrom SingleCellExperiment reducedDim
 #' @noRd
 .buildNicheDesign <- function(spe, condition, sigma, index = NULL, niche = NULL,
                               covariates = character(), cell_type = "cell_type",
-                              name = "Niche") {
+                              name = "Niche", sample_id = "sample_id",
+                              random = c("none", "intercept", "slope")) {
+  random <- match.arg(random)
   cd <- SummarizedExperiment::colData(spe)
 
   # niche matrix -> log1p, sanitised column names
@@ -125,12 +177,32 @@
 
   W <- W[, keep, drop = FALSE]
   coefmap <- coefmap[keep, , drop = FALSE]
-  covtype <- factor(
-    coefmap$type,
-    levels = c("CellType", "Niche", "Response", "ResponseNiche", "Other")
-  )
+  re_group <- rep(NA_character_, ncol(W))
 
-  list(W = W, covtype = covtype, coefmap = coefmap, response_coef = response_coef)
+  # append the patient random-effect block (penalised at fit time); these carry
+  # the mixed-effects correction for cell-level pseudo-replication. The slopes
+  # sit on the fixed CellType:niche columns (the non-response bases of the
+  # ResponseNiche terms) so they target the response-related effects.
+  if (random != "none") {
+    if (!sample_id %in% colnames(cd)) {
+      stop(sprintf("sample id column '%s' not found in colData(spe)", sample_id))
+    }
+    slope_base <- W[, coefmap$type == "Niche", drop = FALSE]
+    re <- .buildRandomEffects(cd[[sample_id]], slope_base, random)
+    W <- cbind(W, re$Z)
+    coefmap <- rbind(coefmap, data.frame(
+      covariate = colnames(re$Z), type = "Random",
+      index = NA_character_, niche = NA_character_, stringsAsFactors = FALSE
+    ))
+    re_group <- c(re_group, re$re_group)
+  }
+
+  lvls <- c("CellType", "Niche", "Response", "ResponseNiche", "Other")
+  if (random != "none") lvls <- c(lvls, "Random")
+  covtype <- factor(coefmap$type, levels = lvls)
+
+  list(W = W, covtype = covtype, coefmap = coefmap,
+       response_coef = response_coef, re_group = re_group)
 }
 
 #' Build a spiDE design matrix
@@ -161,12 +233,15 @@
 #' @export
 nicheDesign <- function(spe, condition, sigma, index = NULL, niche = NULL,
                         covariates = character(), cell_type = "cell_type",
-                        name = "Niche", ...) {
+                        name = "Niche", sample_id = "sample_id",
+                        random = c("none", "intercept", "slope"), ...) {
+  random <- match.arg(random)
   checkSPE(spe, cell_type = cell_type)
   checkCondition(spe, condition)
   checkCovariates(spe, covariates)
   checkNiche(spe, sigma, name = name)
   res <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
-                           cell_type, name)
-  res[c("W", "covtype", "coefmap")]
+                           cell_type, name, sample_id, random)
+  keep <- c("W", "covtype", "coefmap", if (random != "none") "re_group")
+  res[keep]
 }

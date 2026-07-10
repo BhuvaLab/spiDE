@@ -16,10 +16,15 @@ fitSpiDE(spe, condition, ...)
   sigma = NULL,
   assay = "counts",
   cell_type = "cell_type",
+  sample_id = "sample_id",
+  random = c("none", "intercept", "slope"),
   winsor = 4,
   lambda.a = 0,
   backend = c("auto", "cpu", "gpu"),
   name = "Niche",
+  re.maxit = 10L,
+  re.tol = 0.001,
+  tau2.init = 1,
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
   ...
@@ -46,13 +51,31 @@ for (e.g. library size, age, sex).}
 
 \item{cell_type}{a character, the colData column of cell type labels.}
 
+\item{sample_id}{a character, the colData column identifying samples
+(patients); used only when \code{random != "none"}.}
+
+\item{random}{one of "none" (fixed-effects fit, the default), "intercept" or
+"slope". Adds patient-level random effects (implemented as ridge-penalised
+design columns) to correct anti-conservative inference caused by
+cell-level pseudo-replication. "intercept" adds a per-sample random
+intercept; "slope" additionally adds per-sample random slopes on the niche
+covariates (recommended, since it protects the response x niche tests). See
+the mixed-effects vignette.}
+
 \item{winsor, lambda.a}{fitting parameters forwarded to
-\code{\link[SpaNorm]{fitNB}} (coefficient winsorisation and ridge penalty).}
+\code{\link[SpaNorm]{fitNB}} (coefficient winsorisation and the base ridge
+penalty on the fixed columns).}
 
 \item{backend}{a character, the fitNB compute backend
 ("auto", "cpu", or "gpu").}
 
 \item{name}{a character, the niche reducedDim prefix.}
+
+\item{re.maxit, re.tol}{iteration cap and relative tolerance for the
+random-effect variance-component (Schall/PQL) loop (used when
+\code{random != "none"}).}
+
+\item{tau2.init}{initial random-effect variance component.}
 
 \item{BPPARAM}{a BiocParallelParam (reserved for the inference stage).}
 

@@ -1,0 +1,283 @@
+---
+title: "The spiDE model: neighbourhood-dependent DE and mixed-effects inference"
+author: "Dharmesh D. Bhuva"
+package: spiDE
+output:
+  BiocStyle::html_document:
+    toc_float: true
+vignette: >
+  %\VignetteIndexEntry{The spiDE model and mixed-effects inference}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+set.seed(1)
+```
+
+# Overview
+
+This vignette documents the statistical model behind `spiDE` (Spatial Influence DE) and a **mixed-effects extension** that corrects the anti-conservative inference caused by cell-level pseudo-replication. It has three parts:
+
+1.  the full `spiDE` model — how the effective niche is built and how gene expression is modelled as a function of cell type, neighbourhood, and clinical response;
+2.  why the default (fixed-effects) Wald test is anti-conservative when many cells come from few patients; and
+3.  the mixed-effects correction, implemented through the **ridge = random effects** equivalence so it reuses the same `SpaNorm::fitNB` engine.
+
+For a task-oriented quickstart, see the companion vignette *Neighbourhood-dependent differential expression with spiDE*.
+
+```{r load, message = FALSE}
+library(spiDE)
+library(SpatialExperiment)
+```
+
+# The full spiDE model
+
+## Notation
+
+Let $Y_{c,g}$ be the (SpaNorm-normalised) expression of gene $g \in \{1,\dots,G\}$ in cell $c \in \{1,\dots,C\}$. Each cell has a type $t_c \in \{1,\dots,T\}$ and belongs to a patient tissue sample $s_c \in \{1,\dots,S\}$. The clinical response of a sample is $r_{s} \in \{0 = \text{non-responder},\, 1 = \text{responder}\}$; because it is a property of the *patient*, $r_{s}$ is **constant across all cells of a sample** — a fact that drives everything below.
+
+## Effective niche
+
+For each cell we summarise its local neighbourhood by a kernel-smoothed intensity of every surrounding cell type. With a Gaussian kernel $K_\sigma$ of bandwidth $\sigma$, the intensity of type $t'$ around cell $c$ (within its own sample $s$) is
+
+$$
+\Lambda_{c,t',s}(\sigma) \;=\; e(c) \sum_{c'=1}^{C}
+  K_\sigma\!\left(d_{c,c'}\right)\,
+  \mathbb{1}(t_{c'} = t')\,\mathbb{1}(s_{c'} = s),
+$$
+
+where $d_{c,c'}$ is the distance between cells and $e(c)$ is Diggle's edge correction. The expected log-count of type $t'$ in a disc of radius $\sigma$ is
+
+$$
+N_{c,t',s}(\sigma) \;=\; \log\!\left(\pi\sigma^2\,\Lambda_{c,t',s}(\sigma) + 1\right).
+$$
+
+Stacking over cell types gives the **effective niche composition** $N_{c,s}(\sigma) = \big(N_{c,1,s}(\sigma),\dots,N_{c,T,s}(\sigma)\big)$. Niches are computed per sample but then concatenated across all cells into a $C \times T$ matrix $N(\sigma)$. In the package this is `buildNiches()`, which stores $N(\sigma)$ as `reducedDim(spe, "Niche<sigma>")`.
+
+## The negative binomial GLM
+
+For a fixed bandwidth $\sigma$, gene $g$ is modelled with a negative binomial GLM with dispersion $\phi_g$ and log-mean
+
+$$
+\log \mathbb{E}\!\left(Y_{c,g}\mid s_c=s, t_c=t, r_s, N_{c,s}(\sigma)\right)
+= \gamma_g L_s + \zeta_{g,t} + \eta_g\, r_s
+ + \sum_{t'=1}^{T} N_{c,t',s}(\sigma)\,\alpha_{g,t,t'}
+ + r_s \sum_{t'=1}^{T} N_{c,t',s}(\sigma)\,\beta_{g,t,t'} .
+$$
+
+The coefficients are:
+
+| term | meaning |
+|-----------------------------|-------------------------------------------|
+| $\gamma_g L_s$ | sample-specific library-size effect (`computeSizeFactors()` offset) |
+| $\zeta_{g,t}$ | cell-type-specific expression |
+| $\eta_g$ | global response effect |
+| $\alpha_{g,t,t'}$ | average effect of niche type $t'$ on gene $g$ in cell type $t$ |
+| $\beta_{g,t,t'}$ | **response-specific** effect of niche type $t'$ in cell type $t$ |
+
+The scientific quantity of interest is $\beta_{g,t,t'}$. We test
+
+$$
+H_0:\ \beta_{g,t,t'} = 0 \qquad\text{vs}\qquad H_1:\ \beta_{g,t,t'} \neq 0 .
+$$
+
+When $\beta_{g,t,t'} \neq 0$, niche cell type $t'$ has a response-specific association with the expression of gene $g$ in index cell type $t$.
+
+In the package the design is assembled by `nicheDesign()` / `.buildNicheDesign()` as `~ 0 + <covariates> + CellType + condition*CellType:(niches) + niches`, and each column is tagged: the $\eta_g$ column is `"Response"` and the $\beta_{g,t,t'}$ (three-way `condition:CellType:niche`) columns are `"ResponseNiche"` — the ones carried through testing. The whole gene set is fit in one `SpaNorm::fitNB(Y, W, ...)` call (the dispersion $\phi_g$ is moderated across genes), and per-gene Wald statistics for $\eta_g$ / $\beta_{g,t,t'}$ are combined across correlated niches (Brown's method), across bandwidths (Cauchy combination), and corrected with a hierarchical FDR.
+
+# The pseudo-replication problem
+
+The GLM above treats each of the $C$ cells as an independent observation. That is fine for the within-sample coefficients ($\zeta$, $\alpha$), but the response-related coefficients $\eta_g$ and $\beta_{g,t,t'}$ are **contrasts on the patient-level label** $r_s$. There are only $S$ independent patients, yet the Wald information matrix
+
+$$
+\widehat{\mathrm{Var}}(\hat\theta) \;=\; \phi_g\left(W_\text{sub}^\top D_g\, W_\text{sub}\right)^{-1},
+\qquad D_g = \mathrm{diag}\big(w_{c,g}\big),\ \ w_{c,g} = \frac{\mu_{c,g}}{1+\phi_g\mu_{c,g}},
+$$
+
+sums over all $C$ cells. The standard error of a response contrast therefore shrinks like $1/\sqrt{C}$ instead of $1/\sqrt{S}$, and with $C \gg S$ the Wald $z$-statistics are badly inflated. This reproduces the known behaviour of the original flat-script implementation and is documented as a property of the default fit.
+
+We can see it directly. Below we simulate a **null** data set: every cell of a patient shares a per-patient random shift, but there is *no* response effect at all — so every response test should be null.
+
+```{r sim}
+sim_clustered <- function(n_samples = 10, n_per = 90, n_genes = 30,
+                          field = 500, sd_patient = 0.7, seed = 1) {
+  set.seed(seed)
+  cts <- c("A", "B", "C"); gn <- sprintf("G%d", seq_len(n_genes))
+  sids <- sprintf("S%d", seq_len(n_samples))
+  cond <- rep(c("Responder", "Non-responder"), length.out = n_samples)
+  names(cond) <- sids
+  cells <- lapply(sids, function(sid) {
+    x <- runif(n_per, 0, field); y <- runif(n_per, 0, field)
+    ct <- ifelse(x > 0.6 * field & runif(n_per) < 0.7, "B",
+                 sample(c("A", "C"), n_per, replace = TRUE))
+    data.frame(sample_id = sid, condition = cond[[sid]],
+               x = x, y = y, cell_type = ct)
+  })
+  cd <- do.call(rbind, cells); n <- nrow(cd)
+  cd$cell_id <- sprintf("c%d", seq_len(n))
+  base <- matrix(rnorm(n_genes * 3, 1.5, 0.6), n_genes, dimnames = list(gn, cts))
+  lmu <- base[, cd$cell_type, drop = FALSE]
+  # per-(gene, patient) random intercept: real clustering, NO response effect
+  u <- matrix(rnorm(n_genes * n_samples, 0, sd_patient), n_genes,
+              dimnames = list(gn, sids))
+  lmu <- lmu + u[, cd$sample_id, drop = FALSE]
+  counts <- matrix(rnbinom(length(lmu), mu = as.vector(exp(lmu)), size = 5),
+                   n_genes, dimnames = list(gn, cd$cell_id))
+  SpatialExperiment(assays = list(counts = counts),
+                    colData = S4Vectors::DataFrame(cd),
+                    spatialCoords = as.matrix(cd[, c("x", "y")]))
+}
+
+spe <- buildNiches(sim_clustered(), sigma = 30)
+```
+
+A helper to pull the two-sided p-values of the (null) response effect:
+
+```{r respp}
+response_p <- function(random) {
+  f <- fitSpiDE(spe, "condition", sigma = 30, random = random, verbose = FALSE)
+  res <- testSpiDE(f, spe = spe)          # populates the Wald inference slots
+  ff <- fits(res)[[1]]
+  rc <- ff$coefmap$covariate[as.character(ff$covtype) == "Response"]
+  df <- if (is.null(ff$df)) Inf else ff$df
+  2 * pt(-abs(ff$t_stat[, rc]), df)
+}
+p_fixed <- response_p("none")
+mean(p_fixed < 0.05)  # should be ~0.05 under the null
+```
+
+The fixed-effects fit rejects a large fraction of these null tests at $\alpha = 0.05$ — grossly anti-conservative.
+
+# Mixed-effects correction via ridge
+
+## The model
+
+We add **patient-level random effects** that soak up the between-patient variability the fixed-effects model wrongly attributes to residual (cell-level) noise. Crucially, we add them only for the *response-related* effects — the only ones we do inference on — by giving each response coefficient its patient-level random counterpart:
+
+$$
+\log \mathbb{E}(Y_{c,g}\mid\cdots)
+= \underbrace{\gamma_g L_s + \zeta_{g,t}
+ + \sum_{t'} N_{c,t',s}\,\alpha_{g,t,t'}}_{\text{fixed, within-sample}}
+ + \underbrace{\eta_g\, r_s + r_s\!\sum_{t'} N_{c,t',s}\,\beta_{g,t,t'}}_{\text{fixed response effects (tested)}}
+ + \underbrace{u_{g,s} + \sum_{t'} N_{c,t',s}\, v_{g,s,t,t'}}_{\text{patient random effects}},
+$$
+
+with
+
+$$
+u_{g,s} \sim \mathcal N(0,\tau^2_{\text{int}}),\qquad
+v_{g,s,t,t'} \sim \mathcal N(0,\tau^2_{\text{slope}}).
+$$
+
+-   The random **intercept** $u_{g,s}$ is the patient-level counterpart of the response main effect $\eta_g$: it lets each patient's baseline float, so $\eta_g$ is identified from between-patient contrasts.
+-   The random **slopes** $v_{g,s,t,t'}$ are the patient-level counterparts of the $\beta_{g,t,t'}$ terms: they let each patient's niche→expression slope float, so $\beta_{g,t,t'}$ is tested against between-patient *slope* variability. A random intercept alone would not protect $\beta$, because $\beta$ multiplies a covariate that varies *within* a patient.
+
+`random = "intercept"` adds $u_{g,s}$ only; `random = "slope"` adds both. The
+slope model gives the fullest protection of $\beta$, but note the trade-off: the
+random slope $v_{g,s,t,t'}$ and the fixed effect $\beta_{g,t,t'}$ both describe
+how the niche→expression slope differs across patients, so with **few patients
+per response group** the random slope can absorb a genuine $\beta$ (a real effect
+seen in only a handful of responders is, statistically, hard to distinguish from
+patient-to-patient slope noise). With an adequate number of samples prefer
+`"slope"`; with only a few, `"intercept"` is a more powerful default and still
+corrects the dominant (baseline) source of pseudo-replication.
+
+## Ridge $\equiv$ random effects
+
+Write the expanded design as $\tilde W = [\,W \mid Z\,]$, where $Z$ holds the random-effect columns (one indicator per sample for $u$, and sample-indicator $\times$ `CellType:niche` columns for $v$). On the IRLS working scale a Gaussian random effect is *exactly* an $L_2$ (ridge) penalty applied only to its columns: maximising the penalised working likelihood
+
+$$
+\big\lVert z - \tilde W\theta \big\rVert^2_{D_g} \;+\; \theta^\top \Lambda\, \theta,
+\qquad
+\Lambda = \mathrm{blockdiag}\!\left(0_{\text{fixed}},\; \lambda_{\text{int}} I,\; \lambda_{\text{slope}} I\right),
+$$
+
+gives the BLUP/penalised estimate $\hat\theta = (\tilde W^\top D_g \tilde W +
+\Lambda)^{-1}\tilde W^\top D_g z$, with the variance-component correspondence
+
+$$
+\boxed{\ \lambda_k \;=\; 1/\tau^2_k\ }.
+$$
+
+This is the standard penalised quasi-likelihood (PQL) construction used by `lme4` / `mgcv`. It fits `spiDE` perfectly: `SpaNorm::fitNB` already accepts a **per-column** ridge penalty `lambda.a`, so we set it to $0$ on the fixed columns and $1/\tau^2_k$ on the random ones — no change to the fitting engine.
+
+## Estimating the variance components
+
+`fitNB` treats `lambda.a` as fixed, so the variance components are estimated by an outer **Schall / PQL** loop (shared across genes, matching the dispersion moderation): alternate a penalised fit with a moment update
+
+$$
+\hat\tau^2_k \;=\; \frac{\sum_g \lVert \hat b_{g,k}\rVert^2}{G\,\big(q_k - \lambda_k\,\mathrm{tr}\, C_{kk}\big)},
+\qquad C = (\tilde W^\top \bar D\, \tilde W + \Lambda)^{-1},
+$$
+
+where $\hat b_{g,k}$ are the BLUPs of block $k$, $q_k$ its size and $C_{kk}$ its sub-block, until $\tau^2$ converges. This is `.fitNBmixed()` in `R/fitSpiDE.R`.
+
+## Corrected inference
+
+With the random effects in place, three things change relative to the fixed-effects Wald test:
+
+1.  **Covariance** uses the full penalised information and extracts the fixed response block, $\widehat{\mathrm{Var}}(\hat\theta_\text{resp}) = \varphi_g \big[(\tilde
+    W^\top D_g \tilde W + \Lambda)^{-1}\big]_\text{resp}$. Because $Z$ absorbs the within-patient correlation, this block is inflated to a between-patient scale.
+2.  **Dispersion** $\varphi_g$ is the working (Pearson) dispersion of the *random-effects* model, $\varphi_g = \frac{1}{C - p}\sum_c (Y_{c,g} -
+    \mu_{c,g})^2 / (\mu_{c,g} + \phi_g\mu_{c,g}^2)$, rather than the raw NB dispersion.
+3.  **Reference distribution** is a $t$ with a **between-patient** degrees of freedom $S - 2$ (the response has two levels), not a normal.
+
+Together these test each response contrast against patient-level variability. Let us re-run the null simulation with the mixed-effects fit:
+
+```{r mixed}
+p_mixed <- response_p("intercept")
+c(fixed = mean(p_fixed < 0.05), mixed = mean(p_mixed < 0.05))
+```
+
+```{r qq, fig.small = TRUE, fig.cap = "Null response-effect p-values. The fixed-effects fit is grossly anti-conservative; the mixed-effects fit is close to the uniform (dashed) reference."}
+qqp <- function(p, ...) {
+  points(sort(-log10(ppoints(length(p)))), sort(-log10(p)), ...)
+}
+plot(NA, xlim = c(0, 3), ylim = c(0, 6), xlab = "expected -log10 p",
+     ylab = "observed -log10 p")
+abline(0, 1, lty = 2)
+qqp(p_fixed, pch = 16, col = "firebrick")
+qqp(p_mixed, pch = 16, col = "steelblue")
+legend("topleft", c("fixed", "mixed"), pch = 16,
+       col = c("firebrick", "steelblue"), bty = "n")
+```
+
+The mixed-effects fit also **recovers the planted between-patient variance** ($0.7^2 = 0.49$):
+
+```{r tau2}
+fit <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+                verbose = FALSE)
+fits(fit)[[1]]@tau2
+```
+
+## Usage and caveats
+
+```{r usage, eval = FALSE}
+# random intercept + random niche slopes (fullest correction; use with an
+# adequate number of samples). For few samples, random = "intercept" is safer.
+res <- spiDE(spe, condition = "condition", sigma = c(10, 30, 50),
+             random = "slope")
+```
+
+-   **Sample-level covariates.** A per-sample random intercept already adjusts for *all* between-sample nuisance variation, so it is confounded with measured sample-level covariates (Age, Sex, Stage). `spiDE` therefore errors if such a covariate is passed together with `random != "none"` — drop it; the random intercept subsumes it.
+-   **Number of samples.** The correction is only as good as the between-sample information: with very few samples the variance components (and the $S-2$ reference df) are unstable, and a warning is issued.
+-   **Correct, not merely "fixed with extras".** The mixed fit does more than add
+    a between-patient variance component: it also replaces the default's NB
+    dispersion scaling and sub-design covariance with the correct **working
+    (quasi-NB) dispersion** and **full penalised covariance**. So even when
+    $\tau^2 \to 0$ (no genuine clustering) the mixed fit does *not* reproduce the
+    default fit — it gives the correctly-scaled, and hence more conservative,
+    standard errors. This is deliberate: the default fit is known to be
+    anti-conservative, so its larger apparent "power" is partly spurious.
+-   **Power needs samples and effect size.** Because the test is now honest, a
+    real response-niche effect must be visible *between patients* to be declared.
+    With few patients, or an effect seen in only a handful of responders, the
+    between-patient df ($S-2$) and the inflated SEs will (correctly) leave it
+    non-significant. Larger sample sizes restore power.
+
+# Session info
+
+```{r sessioninfo}
+sessionInfo()
+```

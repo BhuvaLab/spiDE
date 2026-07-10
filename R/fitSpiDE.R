@@ -14,6 +14,83 @@
   sort(as.numeric(sub(sprintf("^%s", name), "", hits)))
 }
 
+#' Estimate random-effect variance components (Schall / PQL, shared across genes)
+#'
+#' Implements the mixed model via ridge: random-effect columns are penalised by
+#' \code{1/tau2}, and the variance components \code{tau2} are estimated by
+#' alternating (i) a penalised NB-GLM fit (\code{SpaNorm::fitNB} with a per-column
+#' \code{lambda.a}) and (ii) a Schall variance-component update using the pooled
+#' BLUPs and the block effective degrees of freedom. A single \code{tau2} per
+#' random-effect group is shared across genes (matching the dispersion
+#' moderation), estimated with a representative (gene-averaged) working weight.
+#'
+#' @param Y counts (genes x cells).
+#' @param W the full design (fixed + random columns).
+#' @param re_group per-column random-effect group (NA for fixed columns).
+#' @param lambda.a base ridge penalty for the fixed columns (usually 0).
+#' @param re.maxit,re.tol outer-loop iteration cap and relative tolerance.
+#' @param tau2.init initial variance component.
+#' @return a list with the fitNB result plus \code{penalty} (per-column
+#'   \code{lambda.a}), \code{tau2} (named variance components) and \code{df}
+#'   (effective residual degrees of freedom).
+#' @importFrom stats setNames
+#' @noRd
+.fitNBmixed <- function(Y, W, re_group, lambda.a, winsor, backend, verbose,
+                        re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
+                        tau2.range = c(1e-8, 1e4), ...) {
+  p <- ncol(W)
+  groups <- unique(re_group[!is.na(re_group)])
+  base <- if (length(lambda.a) == 1) rep(lambda.a, p) else lambda.a
+  base[!is.na(re_group)] <- 0
+  tau2 <- stats::setNames(rep(tau2.init, length(groups)), groups)
+
+  pen <- base
+  fit <- NULL
+  for (it in seq_len(re.maxit)) {
+    pen <- base
+    for (g in groups) pen[which(re_group == g)] <- 1 / tau2[[g]]
+    tau2_fit <- tau2
+
+    if (verbose) message(sprintf("  RE iteration %d: %s", it,
+      paste(sprintf("%s=%.3g", groups, tau2), collapse = ", ")))
+    fit <- SpaNorm::fitNB(Y, W, lambda.a = pen, winsor = winsor,
+                          backend = backend, verbose = FALSE, ...)
+    alpha <- fit$alpha
+
+    # representative (gene-averaged) NB working weight per cell, shared info
+    mu <- SpaNorm::calculateMu(rep(0, nrow(alpha)), alpha, W)
+    wbar <- colMeans(mu / (1 + fit$psi * mu))
+    info <- crossprod(W * sqrt(wbar))
+    minv <- SpaNorm::invert_mat(info + diag(pen))
+
+    tau2_new <- tau2
+    ng <- nrow(alpha)
+    for (g in groups) {
+      gi <- which(re_group == g)
+      trc <- sum(diag(minv[gi, gi, drop = FALSE]))
+      edf <- max(length(gi) - (1 / tau2[[g]]) * trc, 1e-6)
+      b2 <- sum(alpha[, gi, drop = FALSE]^2)
+      # keep the random-effect columns at least weakly penalised: sample-level
+      # covariates and per-sample columns are collinear in the tau2 -> Inf limit
+      tau2_new[[g]] <- min(max(b2 / (ng * edf), tau2.range[1]), tau2.range[2])
+    }
+    converged <- max(abs(tau2_new - tau2) / (tau2 + 1e-8)) < re.tol
+    tau2 <- tau2_fit
+    if (converged) break
+    tau2 <- tau2_new
+  }
+
+  # between-patient reference df for the Wald t-test: the response contrasts live
+  # in the between-sample error stratum, so they are tested against the number of
+  # samples, not cells (the condition has two levels -> S - 2). This, together
+  # with the working (Pearson) dispersion used at inference time, is what
+  # corrects the cell-level pseudo-replication.
+  n_samples <- sum(re_group == "SampleInt", na.rm = TRUE)
+  df <- max(n_samples - 2, 1)
+
+  c(fit, list(penalty = pen, tau2 = tau2, df = df))
+}
+
 #' Fit the spiDE negative binomial GLM for one bandwidth
 #'
 #' @return a SpiDEFit with the fit populated and inference slots empty.
@@ -22,14 +99,28 @@
 #' @noRd
 .fitOneBandwidth <- function(Y, spe, condition, sigma, index, niche, covariates,
                              cell_type, winsor, lambda.a, backend, name,
-                             verbose, ...) {
+                             verbose, sample_id = "sample_id", random = "none",
+                             re.maxit = 10L, re.tol = 1e-3, tau2.init = 1, ...) {
   des <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
-                           cell_type, name)
+                           cell_type, name, sample_id, random)
   W <- des$W
 
-  # fit all genes at once (dispersion moderated across genes)
-  fit <- SpaNorm::fitNB(Y, W, lambda.a = lambda.a, winsor = winsor,
-                        backend = backend, verbose = verbose, ...)
+  # fit all genes at once (dispersion moderated across genes). With random
+  # effects, an outer Schall/PQL loop estimates the variance components.
+  if (random == "none") {
+    fit <- SpaNorm::fitNB(Y, W, lambda.a = lambda.a, winsor = winsor,
+                          backend = backend, verbose = verbose, ...)
+    penalty <- NULL
+    tau2 <- NULL
+    df <- NULL
+  } else {
+    fit <- .fitNBmixed(Y, W, des$re_group, lambda.a, winsor, backend, verbose,
+                       re.maxit = re.maxit, re.tol = re.tol,
+                       tau2.init = tau2.init, ...)
+    penalty <- fit$penalty
+    tau2 <- fit$tau2
+    df <- fit$df
+  }
   alpha <- fit$alpha
   rownames(alpha) <- rownames(Y)
   colnames(alpha) <- colnames(W)
@@ -52,6 +143,10 @@
     gmean = as.numeric(fit$gmean),
     psi = as.numeric(fit$psi),
     loglik = as.numeric(loglik),
+    re_group = if (random == "none") NULL else des$re_group,
+    tau2 = tau2,
+    penalty = penalty,
+    df = df,
     t_stat = NULL,
     se = NULL,
     p.brown.pos = NULL,
@@ -81,11 +176,25 @@
 #'   \code{Niche<sigma>} reducedDim present.
 #' @param assay a character, the counts assay to model.
 #' @param cell_type a character, the colData column of cell type labels.
+#' @param sample_id a character, the colData column identifying samples
+#'   (patients); used only when \code{random != "none"}.
+#' @param random one of "none" (fixed-effects fit, the default), "intercept" or
+#'   "slope". Adds patient-level random effects (implemented as ridge-penalised
+#'   design columns) to correct anti-conservative inference caused by
+#'   cell-level pseudo-replication. "intercept" adds a per-sample random
+#'   intercept; "slope" additionally adds per-sample random slopes on the niche
+#'   covariates (recommended, since it protects the response x niche tests). See
+#'   the mixed-effects vignette.
 #' @param winsor,lambda.a fitting parameters forwarded to
-#'   \code{\link[SpaNorm]{fitNB}} (coefficient winsorisation and ridge penalty).
+#'   \code{\link[SpaNorm]{fitNB}} (coefficient winsorisation and the base ridge
+#'   penalty on the fixed columns).
 #' @param backend a character, the fitNB compute backend
 #'   ("auto", "cpu", or "gpu").
 #' @param name a character, the niche reducedDim prefix.
+#' @param re.maxit,re.tol iteration cap and relative tolerance for the
+#'   random-effect variance-component (Schall/PQL) loop (used when
+#'   \code{random != "none"}).
+#' @param tau2.init initial random-effect variance component.
 #' @param BPPARAM a BiocParallelParam (reserved for the inference stage).
 #' @param verbose a logical, whether to print fitting progress.
 #' @param ... further arguments forwarded to \code{\link[SpaNorm]{fitNB}}.
@@ -107,13 +216,18 @@ setMethod(
   signature = "ANY",
   definition = function(spe, condition, index = NULL, niche = NULL,
                         covariates = character(), sigma = NULL, assay = "counts",
-                        cell_type = "cell_type", winsor = 4, lambda.a = 0,
+                        cell_type = "cell_type", sample_id = "sample_id",
+                        random = c("none", "intercept", "slope"),
+                        winsor = 4, lambda.a = 0,
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
+                        re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
-    checkSPE(spe, assay = assay, cell_type = cell_type)
+    random <- match.arg(random)
+    checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
     checkCondition(spe, condition)
     checkCovariates(spe, covariates)
+    if (random != "none") checkSample(spe, condition, sample_id, covariates)
 
     if (is.null(sigma)) {
       sigma <- .detectSigma(spe, name)
@@ -126,7 +240,10 @@ setMethod(
     fits <- lapply(sigma, function(sg) {
       if (verbose) message(sprintf("Fitting bandwidth sigma = %s", sg))
       .fitOneBandwidth(Y, spe, condition, sg, index, niche, covariates,
-                       cell_type, winsor, lambda.a, backend, name, verbose, ...)
+                       cell_type, winsor, lambda.a, backend, name, verbose,
+                       sample_id = sample_id, random = random,
+                       re.maxit = re.maxit, re.tol = re.tol,
+                       tau2.init = tau2.init, ...)
     })
     names(fits) <- paste0(name, sigma)
 

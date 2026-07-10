@@ -22,11 +22,11 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Dharmesh D. Bhuva \email{dharmesh.bhuva@adelaide.edu.au} (\href{https://orcid.org/0000-0002-6398-9157}{ORCID})
+\strong{Maintainer}: Dharmesh D. Bhuva \email{d.bhuva@uq.edu.au} (\href{https://orcid.org/0000-0002-6398-9157}{ORCID})
 
 Authors:
 \itemize{
-  \item Dharmesh D. Bhuva \email{dharmesh.bhuva@adelaide.edu.au} (\href{https://orcid.org/0000-0002-6398-9157}{ORCID})
+  \item Dharmesh D. Bhuva \email{d.bhuva@uq.edu.au} (\href{https://orcid.org/0000-0002-6398-9157}{ORCID})
   \item Chin Wee Tan \email{cwtan@wehi.edu.au} (\href{https://orcid.org/0000-0001-9695-7218}{ORCID})
 }
 

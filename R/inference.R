@@ -22,16 +22,38 @@
 #' @param alpha_g numeric coefficients for the Response/ResponseNiche columns.
 #' @param Wsub the Response/ResponseNiche sub-design (cells x k).
 #' @param wt_g numeric working weights for this gene (length ncells).
-#' @param psi_g the gene's dispersion.
+#' @param psi_g the variance scale for the SEs: the NB dispersion for a
+#'   fixed-effects fit, or the working (Pearson) dispersion for a mixed fit.
 #' @param cov_niche logical marking the ResponseNiche columns within the subset.
 #' @param index_ct index cell type of each ResponseNiche column.
 #' @param uniq_index the unique index cell types (column order of the output).
+#' @param W_full the full design (fixed + random columns); NULL for the
+#'   fixed-effects fit, in which case the covariance is formed from \code{Wsub}
+#'   alone and a normal reference is used.
+#' @param penalty per-column ridge penalty aligned to \code{W_full} (the fitted
+#'   \code{lambda.a}); only used when \code{W_full} is supplied.
+#' @param sel integer positions of the tested (Response/ResponseNiche) columns
+#'   within \code{W_full}; only used when \code{W_full} is supplied.
+#' @param df residual degrees of freedom for the t reference; only used when
+#'   \code{W_full} is supplied (else a normal reference).
 #' @return a list with t_stat, se (length k) and p.pos, p.neg (length
 #'   1 + n_index: gene-level then per-index-cell-type).
-#' @importFrom stats pnorm cov2cor setNames
+#' @importFrom stats pnorm pt cov2cor setNames
 #' @noRd
-.waldBrownGene <- function(alpha_g, Wsub, wt_g, psi_g, cov_niche, index_ct, uniq_index) {
-  varcov <- SpaNorm::invert_mat(crossprod(Wsub * wt_g, Wsub))
+.waldBrownGene <- function(alpha_g, Wsub, wt_g, psi_g, cov_niche, index_ct,
+                           uniq_index, W_full = NULL, penalty = NULL,
+                           sel = NULL, df = NULL) {
+  if (is.null(W_full)) {
+    # fixed-effects fit: covariance from the tested sub-design, normal reference
+    varcov <- SpaNorm::invert_mat(crossprod(Wsub * wt_g, Wsub))
+    ptail <- function(t, lower.tail) stats::pnorm(t, lower.tail = lower.tail)
+  } else {
+    # mixed-effects fit: full penalised information (X'WX + Lambda), then the
+    # fixed-effect (Response/ResponseNiche) block -> larger, between-sample SEs
+    info <- crossprod(W_full * wt_g, W_full) + diag(penalty)
+    varcov <- SpaNorm::invert_mat(info)[sel, sel, drop = FALSE]
+    ptail <- function(t, lower.tail) stats::pt(t, df = df, lower.tail = lower.tail)
+  }
   se <- sqrt(psi_g * diag(varcov))
   t_stat <- alpha_g / se
   names(se) <- names(t_stat) <- colnames(Wsub)
@@ -44,7 +66,7 @@
   vc <- poolr::mvnconv(vc, target = "m2lp", side = 1, cov2cor = FALSE)
 
   dirs <- lapply(c(p.pos = FALSE, p.neg = TRUE), function(lower.tail) {
-    x <- stats::pnorm(t_stat, lower.tail = lower.tail)
+    x <- ptail(t_stat, lower.tail)
     xn <- x[cov_niche]
     p_gene <- poolr::fisher(xn, side = 1, R = vc, adjust = "generalized")$p
     p_ct <- vapply(uniq_index, function(ct) {
@@ -84,6 +106,16 @@
   index_ct <- coefmap_sub$index[cov_niche]
   uniq_index <- unique(index_ct)
 
+  # mixed-effects fit: use the full penalised information, the working (Pearson)
+  # dispersion, and a between-patient t reference
+  has_re <- !is.null(fit@penalty)
+  sel <- if (has_re) which(cols_gene) else NULL
+  penalty <- if (has_re) fit@penalty else NULL
+  re_df <- if (has_re) fit@df else NULL
+  # residual df for the working-dispersion estimate (fixed columns only; the
+  # penalised random columns contribute little effective df)
+  disp_df <- if (has_re) max(nrow(W_full) - sum(!grepl("Random", covtype)), 1)
+
   alpha_full <- fit@alpha
   alpha_sub <- alpha_full[, cols_gene, drop = FALSE]
   psi <- fit@psi
@@ -98,10 +130,18 @@
     psib <- psi[gi]
     wtb <- 1 / (1 / mub + psib) # nblock x ncells
     loglikb <- rowSums(dnbinom(Yb, mu = mub, size = 1 / psib, log = TRUE))
+    # per-gene working (Pearson) dispersion, used to scale the SEs when the
+    # random effects are present (else the NB dispersion psi is used)
+    if (has_re) {
+      dispb <- rowSums((Yb - mub)^2 / (mub + psib * mub^2)) / disp_df
+    }
 
     per_gene <- lapply(seq_along(gi), function(i) {
-      .waldBrownGene(alpha_sub[gi[i], ], Wsub, wtb[i, ], psib[i],
-                     cov_niche, index_ct, uniq_index)
+      scale_i <- if (has_re) dispb[i] else psib[i]
+      .waldBrownGene(alpha_sub[gi[i], ], Wsub, wtb[i, ], scale_i,
+                     cov_niche, index_ct, uniq_index,
+                     W_full = if (has_re) W_full else NULL,
+                     penalty = penalty, sel = sel, df = re_df)
     })
     list(
       t_stat = do.call(rbind, lapply(per_gene, `[[`, "t_stat")),

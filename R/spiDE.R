@@ -10,7 +10,7 @@
 #'
 #' @inheritParams fitSpiDE
 #' @param sample_id a character, the colData column identifying samples (used
-#'   when niches must be built).
+#'   when niches must be built and for the random-effects fit).
 #' @param fdr a numeric, the target false discovery rate.
 #' @param block.size a numeric, genes per inference block (NULL = single block).
 #' @param BPPARAM a BiocParallelParam for niche construction and inference.
@@ -34,11 +34,14 @@ setMethod(
   definition = function(spe, condition, index = NULL, niche = NULL,
                         covariates = character(), sigma = c(10, 30, 50, 70),
                         assay = "counts", cell_type = "cell_type",
-                        sample_id = "sample_id", winsor = 4, lambda.a = 0,
+                        sample_id = "sample_id",
+                        random = c("none", "intercept", "slope"),
+                        winsor = 4, lambda.a = 0,
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         fdr = 0.05, block.size = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
+    random <- match.arg(random)
 
     # build niches if the requested bandwidths are not already present
     need <- paste0(name, sigma)
@@ -51,7 +54,8 @@ setMethod(
 
     res <- fitSpiDE(spe, condition = condition, index = index, niche = niche,
                     covariates = covariates, sigma = sigma, assay = assay,
-                    cell_type = cell_type, winsor = winsor, lambda.a = lambda.a,
+                    cell_type = cell_type, sample_id = sample_id,
+                    random = random, winsor = winsor, lambda.a = lambda.a,
                     backend = backend, name = name, BPPARAM = BPPARAM,
                     verbose = verbose, ...)
 

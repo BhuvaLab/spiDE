@@ -73,11 +73,14 @@
     tmat <- f@t_stat[genes, rn, drop = FALSE]
     cm <- f@coefmap[respcols, , drop = FALSE][rn, , drop = FALSE]
     cols <- cm$covariate
-    # two-sided min-tail p per covariate
-    pmat <- pmin(
-      stats::pnorm(tmat, lower.tail = TRUE),
-      stats::pnorm(tmat, lower.tail = FALSE)
-    )
+    # two-sided min-tail p per covariate (t reference for a mixed-effects fit,
+    # normal reference otherwise)
+    lower <- if (is.null(f@df)) {
+      stats::pnorm(tmat, lower.tail = TRUE)
+    } else {
+      stats::pt(tmat, df = f@df, lower.tail = TRUE)
+    }
+    pmat <- pmin(lower, 1 - lower)
     do.call(rbind, lapply(seq_along(cols), function(j) {
       data.frame(
         gene = genes,

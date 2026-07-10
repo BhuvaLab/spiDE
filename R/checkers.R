@@ -58,6 +58,47 @@ checkCovariates <- function(spe, covariates) {
   invisible(TRUE)
 }
 
+# Patient-level checks for the mixed-effects (random-effects) fit. The condition
+# must be a patient-level variable (constant within each sample), otherwise the
+# per-sample random intercept is mis-specified, and there must be enough samples
+# for the between-sample variance components to be identifiable.
+checkSample <- function(spe, condition, sample_id = "sample_id",
+                        covariates = character()) {
+  cd <- SummarizedExperiment::colData(spe)
+  if (!sample_id %in% colnames(cd)) {
+    stop(sprintf("sample id column '%s' not found in colData(spe)", sample_id))
+  }
+  smp <- as.character(cd[[sample_id]])
+  cond <- as.character(cd[[condition]])
+  n_lvl <- tapply(cond, smp, function(x) length(unique(x[!is.na(x)])))
+  if (any(n_lvl > 1)) {
+    stop(sprintf(
+      "condition '%s' varies within sample(s): %s. The random-effects fit needs a patient-level condition (constant within '%s').",
+      condition, paste(names(n_lvl)[n_lvl > 1], collapse = ", "), sample_id
+    ))
+  }
+  # sample-constant covariates are confounded with the per-sample random
+  # intercept (which already adjusts for all between-sample nuisance variation)
+  const <- covariates[vapply(covariates, function(cv) {
+    all(tapply(as.character(cd[[cv]]), smp,
+               function(x) length(unique(x[!is.na(x)]))) <= 1)
+  }, logical(1))]
+  if (length(const) > 0) {
+    stop(sprintf(
+      "covariate(s) constant within sample: %s. With random='intercept'/'slope' the per-sample random intercept already absorbs all between-sample effects, so drop these sample-level covariates.",
+      paste(const, collapse = ", ")
+    ))
+  }
+  n_samples <- length(unique(smp))
+  if (n_samples < 3) {
+    warning(sprintf(
+      "only %d sample(s); random-effect variance components may be unreliable",
+      n_samples
+    ))
+  }
+  invisible(TRUE)
+}
+
 # The requested niche reducedDim must have been built.
 checkNiche <- function(spe, sigma, name = "Niche") {
   nms <- SingleCellExperiment::reducedDimNames(spe)

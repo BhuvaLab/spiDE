@@ -79,3 +79,60 @@
     spatialCoords = as.matrix(cd[, c("x", "y")])
   )
 }
+
+#' Synthetic data with patient-level clustering (for the mixed-effects tests)
+#'
+#' Like \code{.toySPE()} but plants a per-(gene, sample) random intercept shared
+#' by every cell of a sample, and NO response effect. Because the response is a
+#' sample-level label, treating cells as independent makes the response tests
+#' anti-conservative (cell-level pseudo-replication); the random-intercept fit
+#' should test the response effect against between-sample variability and recover
+#' calibration. \code{sd_patient} is the planted between-sample SD (variance
+#' \code{sd_patient^2} is what \code{random = "intercept"} should recover).
+#'
+#' @inheritParams .toySPE
+#' @param sd_patient the planted between-sample (patient) intercept SD.
+#' @return a SpatialExperiment with a patient-clustered null signal.
+#' @importFrom stats rnbinom rnorm runif
+#' @noRd
+.toyClustered <- function(n_samples = 8, n_per = 80, n_genes = 30, field = 500,
+                          sd_patient = 0.7, seed = 1) {
+  set.seed(seed)
+  cell_types <- c("A", "B", "C")
+  gene_names <- sprintf("G%d", seq_len(n_genes))
+  sample_ids <- sprintf("S%d", seq_len(n_samples))
+  cond_levels <- rep(c("Responder", "Non-responder"), length.out = n_samples)
+  names(cond_levels) <- sample_ids
+
+  cells <- lapply(sample_ids, function(sid) {
+    x <- runif(n_per, 0, field)
+    y <- runif(n_per, 0, field)
+    ct <- ifelse(x > 0.6 * field & runif(n_per) < 0.7, "B",
+                 sample(c("A", "C"), n_per, replace = TRUE))
+    data.frame(sample_id = sid, condition = cond_levels[[sid]],
+               x = x, y = y, cell_type = ct, stringsAsFactors = FALSE)
+  })
+  cd <- do.call(rbind, cells)
+  n <- nrow(cd)
+  cd$cell_id <- sprintf("cell%d", seq_len(n))
+
+  ct_base <- matrix(rnorm(n_genes * length(cell_types), mean = 1.5, sd = 0.6),
+                    nrow = n_genes, dimnames = list(gene_names, cell_types))
+  lmu <- ct_base[, cd$cell_type, drop = FALSE]
+  # per-(gene, sample) random intercept applied to every cell of the sample
+  u <- matrix(rnorm(n_genes * n_samples, 0, sd_patient), nrow = n_genes,
+              dimnames = list(gene_names, sample_ids))
+  lmu <- lmu + u[, cd$sample_id, drop = FALSE]
+
+  mu <- exp(lmu)
+  counts <- matrix(rnbinom(length(mu), mu = as.vector(mu), size = 5),
+                   nrow = n_genes, dimnames = list(gene_names, cd$cell_id))
+  cd$Area <- exp(rnorm(n, sd = 0.2))
+  cd$nCount <- colSums(counts)
+
+  SpatialExperiment::SpatialExperiment(
+    assays = list(counts = counts),
+    colData = S4Vectors::DataFrame(cd),
+    spatialCoords = as.matrix(cd[, c("x", "y")])
+  )
+}
