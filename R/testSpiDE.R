@@ -16,7 +16,11 @@
 #'   Wald/Brown inference if it is not already present on the fits).
 #' @param assay a character, the counts assay (used only if inference must be
 #'   computed).
-#' @param fdr a numeric, the target false discovery rate (default 0.05).
+#' @param fdr a numeric in (0, 1], the target false discovery rate (default
+#'   0.05). Up/Down association directions are tested separately and combined,
+#'   which is mathematically equivalent to gating the reported, combined
+#'   `fdr.gene`/`fdr.index`/`fdr.niche` values at `fdr` directly - so
+#'   `fdr = 1` returns every (gene, index, niche) result, unfiltered.
 #' @param weight.thresh a numeric, Cauchy weights below this are set to zero.
 #' @param block.size a numeric, genes per inference block (NULL = single block).
 #' @param BPPARAM a BiocParallelParam for the inference stage.
@@ -42,6 +46,7 @@ setMethod(
   definition = function(object, spe = NULL, assay = "counts", fdr = 0.05,
                         weight.thresh = 0.1, block.size = NULL,
                         BPPARAM = BiocParallel::SerialParam(), ...) {
+    checkFdr(fdr)
     fits <- object@fits
 
     # compute Wald/Brown inference if missing

@@ -17,8 +17,11 @@
 .geneIndexFDR <- function(p.pos, p.neg, fdr) {
   per_dir <- function(P, dir) {
     gene_p <- P[, 1]
-    adj_gene <- stats::p.adjust(gene_p, method = "BH")
-    pass <- !is.na(adj_gene) & adj_gene < fdr / 2
+    # doubled, capped-at-1 BH-adjusted p-value: the two-sided-equivalent FDR
+    # for this direction, comparable directly against the user's `fdr` (which
+    # ranges over (0, 1]) rather than against an uncapped fdr/2 pre-gate.
+    fdr_gene <- pmin(stats::p.adjust(gene_p, method = "BH") * 2, 1)
+    pass <- !is.na(fdr_gene) & fdr_gene <= fdr
     if (!any(pass)) {
       return(NULL)
     }
@@ -27,14 +30,15 @@
     fdr_index <- t(apply(idxmat, 1, stats::p.adjust, method = "BH"))
     dim(fdr_index) <- dim(idxmat)
     dimnames(fdr_index) <- dimnames(idxmat)
-    keep <- which(fdr_index < fdr / 2, arr.ind = TRUE)
+    fdr_index <- pmin(fdr_index * 2, 1)
+    keep <- which(fdr_index <= fdr, arr.ind = TRUE)
     if (nrow(keep) == 0) {
       return(NULL)
     }
     data.frame(
       gene = genes[keep[, 1]],
       ct_index = colnames(idxmat)[keep[, 2]],
-      fdr.gene = adj_gene[pass][keep[, 1]],
+      fdr.gene = fdr_gene[pass][keep[, 1]],
       fdr.index = fdr_index[keep],
       Direction = dir,
       stringsAsFactors = FALSE
@@ -52,10 +56,12 @@
     best <- which.min(sub$fdr.index)
     n <- nrow(sub)
     dir <- if (n == 2) "Both" else sub$Direction[best]
+    # fdr.gene/fdr.index are already doubled and capped at 1 per direction;
+    # combining the two directions is a min, not a further doubling.
     data.frame(
       gene = sub$gene[1], ct_index = sub$ct_index[1],
-      fdr.gene = min(min(sub$fdr.gene) * 2, 1),
-      fdr.index = min(min(sub$fdr.index) * 2, 1),
+      fdr.gene = min(sub$fdr.gene),
+      fdr.index = min(sub$fdr.index),
       DirectionGene = dir, DirectionIndex = dir,
       stringsAsFactors = FALSE
     )
@@ -141,9 +147,10 @@
   pair2 <- paste(combined$gene, combined$ct_index, sep = "\r")
   combined$fdr.niche <- NA_real_
   for (k in split(seq_len(nrow(combined)), pair2)) {
-    combined$fdr.niche[k] <- pmin(stats::p.adjust(combined$p.niche[k], "BH") * 2, 1)
+    combined$fdr.niche[k] <-
+      pmin(stats::p.adjust(combined$p.niche[k], "BH") * 2, 1)
   }
-  combined[combined$fdr.niche < fdr, , drop = FALSE]
+  combined[combined$fdr.niche <= fdr, , drop = FALSE]
 }
 
 #' Full hierarchical FDR: assemble the tidy results table

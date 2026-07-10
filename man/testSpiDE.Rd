@@ -29,7 +29,12 @@ Wald/Brown inference if it is not already present on the fits).}
 \item{assay}{a character, the counts assay (used only if inference must be
 computed).}
 
-\item{fdr}{a numeric, the target false discovery rate (default 0.05).}
+\item{fdr}{a numeric in (0, 1], the target false discovery rate (default
+0.05). Up/Down association directions are tested separately and combined,
+which is mathematically equivalent to gating the reported, combined
+\code{fdr.gene}/\code{fdr.index}/\code{fdr.niche} values at \code{fdr}
+directly - so \code{fdr = 1} returns every (gene, index, niche) result,
+unfiltered.}
 
 \item{weight.thresh}{a numeric, Cauchy weights below this are set to zero.}
 

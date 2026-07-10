@@ -99,6 +99,15 @@ checkSample <- function(spe, condition, sample_id = "sample_id",
   invisible(TRUE)
 }
 
+# fdr must be a single value in (0, 1]; 1 is allowed as the "show everything"
+# threshold (see testSpiDE()'s documentation).
+checkFdr <- function(fdr) {
+  if (!is.numeric(fdr) || length(fdr) != 1 || is.na(fdr) || fdr <= 0 || fdr > 1) {
+    stop("'fdr' should be a single numeric value in (0, 1]")
+  }
+  invisible(TRUE)
+}
+
 # The requested niche reducedDim must have been built.
 checkNiche <- function(spe, sigma, name = "Niche") {
   nms <- SingleCellExperiment::reducedDimNames(spe)
