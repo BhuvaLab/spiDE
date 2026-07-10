@@ -43,12 +43,28 @@ test_that("inference recovers the planted neighbourhood effect", {
   tf <- .toyFit()
   f <- spiDE:::.blockedInference(tf$fit, tf$Y)
 
-  expect_true(all(f@p.brown.pos >= 0 & f@p.brown.pos <= 1))
-  expect_true(all(f@p.brown.neg >= 0 & f@p.brown.neg <= 1))
+  expect_true(all(f@p.combined.pos >= 0 & f@p.combined.pos <= 1))
+  expect_true(all(f@p.combined.neg >= 0 & f@p.combined.neg <= 1))
   # G1 is the most significant gene for index A in the up direction
-  expect_equal(names(which.min(f@p.brown.pos[, "A"])), "G1")
+  expect_equal(names(which.min(f@p.combined.pos[, "A"])), "G1")
   # and its A-niche effect is up, not down
-  expect_lt(f@p.brown.pos["G1", "A"], f@p.brown.neg["G1", "A"])
+  expect_lt(f@p.combined.pos["G1", "A"], f@p.combined.neg["G1", "A"])
+})
+
+test_that("Cauchy combination recovers the planted effect and is valid", {
+  tf <- .toyFit()
+  f <- spiDE:::.blockedInference(tf$fit, tf$Y, combine = "cauchy")
+
+  expect_true(all(f@p.combined.pos >= 0 & f@p.combined.pos <= 1))
+  expect_true(all(f@p.combined.neg >= 0 & f@p.combined.neg <= 1))
+  # G1 is still the most significant gene for index A in the up direction
+  expect_equal(names(which.min(f@p.combined.pos[, "A"])), "G1")
+  expect_lt(f@p.combined.pos["G1", "A"], f@p.combined.neg["G1", "A"])
+
+  # Cauchy path is invariant to block.size
+  fb <- spiDE:::.blockedInference(tf$fit, tf$Y, combine = "cauchy",
+                                  block.size = 3)
+  expect_equal(f@p.combined.pos, fb@p.combined.pos)
 })
 
 test_that("inference is invariant to block.size, BPPARAM and DelayedArray", {
@@ -56,19 +72,19 @@ test_that("inference is invariant to block.size, BPPARAM and DelayedArray", {
   base <- spiDE:::.blockedInference(tf$fit, tf$Y)
   blocked <- spiDE:::.blockedInference(tf$fit, tf$Y, block.size = 3)
   expect_equal(base@t_stat, blocked@t_stat)
-  expect_equal(base@p.brown.pos, blocked@p.brown.pos)
+  expect_equal(base@p.combined.pos, blocked@p.combined.pos)
   expect_equal(base@loglik, blocked@loglik)
 
   skip_if_not_installed("DelayedArray")
   yd <- DelayedArray::DelayedArray(tf$Y)
   da <- spiDE:::.blockedInference(tf$fit, yd, block.size = 5)
   expect_equal(base@t_stat, da@t_stat)
-  expect_equal(base@p.brown.pos, da@p.brown.pos)
+  expect_equal(base@p.combined.pos, da@p.combined.pos)
 
   skip_on_os("windows")
   mc <- spiDE:::.blockedInference(tf$fit, tf$Y,
     block.size = 4, BPPARAM = BiocParallel::MulticoreParam(2))
-  expect_equal(base@p.brown.pos, mc@p.brown.pos)
+  expect_equal(base@p.combined.pos, mc@p.combined.pos)
 })
 
 test_that(".chunkGenes partitions all genes exactly once", {

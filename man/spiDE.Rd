@@ -23,6 +23,7 @@ spiDE(spe, condition, ...)
   backend = c("auto", "cpu", "gpu"),
   name = "Niche",
   fdr = 0.05,
+  combine = c("cauchy", "brown"),
   block.size = NULL,
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
@@ -71,6 +72,9 @@ penalty on the fixed columns).}
 \item{name}{a character, the niche reducedDim prefix.}
 
 \item{fdr}{a numeric, the target false discovery rate.}
+
+\item{combine}{one of "cauchy" (default) or "brown", the within-gene combiner
+for the correlated niche p-values (passed to \code{\link[=testSpiDE]{testSpiDE()}}).}
 
 \item{block.size}{a numeric, genes per inference block (NULL = single block).}
 

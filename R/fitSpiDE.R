@@ -149,8 +149,8 @@
     df = df,
     t_stat = NULL,
     se = NULL,
-    p.brown.pos = NULL,
-    p.brown.neg = NULL,
+    p.combined.pos = NULL,
+    p.combined.neg = NULL,
     sampling = fit$sampling
   )
 }

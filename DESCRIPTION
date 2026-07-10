@@ -5,7 +5,7 @@ Authors@R: c(
             person(given = "Dharmesh D.",
                    family = "Bhuva",
                    role = c("aut", "cre"),
-                   email = "dharmesh.bhuva@adelaide.edu.au",
+                   email = "d.bhuva@uq.edu.au",
                    comment = c(ORCID = "0000-0002-6398-9157")),
             person(given = "Chin Wee",
                    family = "Tan",
@@ -20,9 +20,9 @@ Description: spiDE identifies context-specific, neighbourhood-dependent
     types. Niche covariates are constructed from Gaussian kernel density
     estimates at multiple bandwidths; a per-gene negative binomial GLM is fit
     using the SpaNorm fitting engine; and neighbourhood effects are tested via
-    Wald statistics combined across correlated covariates (Brown's method),
-    across bandwidths (Cauchy combination), and corrected with a hierarchical
-    false discovery rate procedure.
+    Wald statistics combined across correlated covariates (Cauchy combination by
+    default, or Brown's method), across bandwidths (Cauchy combination), and
+    corrected with a hierarchical false discovery rate procedure.
 License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -55,7 +55,8 @@ Suggests:
     BiocStyle,
     covr,
     torch,
-    HDF5Array
+    HDF5Array,
+    ggplot2
 URL: https://github.com/bhuvad/spiDE
 BugReports: https://github.com/bhuvad/spiDE/issues
 VignetteBuilder: knitr

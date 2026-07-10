@@ -1,0 +1,323 @@
+---
+title: "Combining correlated niche p-values: Brown's method vs Cauchy combination"
+author: "Dharmesh D. Bhuva"
+package: spiDE
+output:
+  BiocStyle::html_document:
+    toc_float: true
+vignette: >
+  %\VignetteIndexEntry{Brown vs Cauchy combination of niche p-values}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE, comment = "#>",
+  fig.width = 7, fig.height = 4.2, dpi = 90
+)
+set.seed(1)
+```
+
+# Overview
+
+Within a gene, `spiDE` tests several correlated `celltype:condition:niche`
+(*ResponseNiche*) coefficients and must collapse them into a single gene-level
+p-value and one p-value per index cell type. The default combiner is **Brown's
+method** — a correlation-aware generalisation of Fisher's method that consumes
+the coefficient correlation matrix. This vignette evaluates an alternative, the
+**Cauchy combination test** (ACAT), which *ignores* the correlation structure
+entirely yet is reported in the literature to remain well-calibrated even under
+strong positive dependence.
+
+The combiner is selectable via the `combine` argument of `testSpiDE()` /
+`spiDE()`:
+
+```{r api, eval = FALSE}
+res <- spiDE(spe, condition = "condition", combine = "cauchy") # default
+res <- spiDE(spe, condition = "condition", combine = "brown")  # alternative
+```
+
+The results below motivated making **Cauchy the default combiner**; Brown is
+retained as an option for back-compatibility.
+
+The assessment has two tiers:
+
+1. an **isolated Monte Carlo** that feeds both combiners identical, exactly
+   correlated p-values so their behaviour is compared in a controlled setting;
+2. a **full-pipeline** comparison on the packaged toy dataset, where only the
+   combiner differs.
+
+```{r libs, message = FALSE}
+library(spiDE)
+library(ggplot2)
+theme_set(theme_bw(base_size = 11))
+methods_pal <- c(Brown = "#1b7837", Cauchy = "#762a83")
+```
+
+# The two combiners
+
+Given $m$ one-sided p-values $p_1,\dots,p_m$ for a gene:
+
+* **Brown's method** treats $-2\sum\log p_j$ as a scaled $\chi^2$ whose
+  scale/df are adjusted for the correlation $R$ of the underlying statistics.
+  `spiDE` estimates $R$ from the Wald coefficient covariance and combines with
+  `poolr::fisher(adjust = "generalized")`. It is *exact* under the assumed
+  multivariate-normal dependence but needs a well-conditioned $R$.
+* **Cauchy combination (ACAT)** forms
+  $T = \tfrac{1}{m}\sum_j \tan\{(0.5 - p_j)\pi\}$ and returns
+  $1 - F_{\text{Cauchy}}(T)$. Because a weighted sum of Cauchy variates is
+  Cauchy regardless of dependence, the tail is (asymptotically) valid under
+  *arbitrary* correlation, with no $R$ to estimate.
+
+The functions below reproduce exactly what the package does internally
+(`.cauchyCombine()` and the `poolr` call in `.waldBrownGene()`).
+
+```{r combiners}
+# exchangeable-correlated standard normals via a shared common factor:
+#   Z_j = sqrt(rho) * U + sqrt(1 - rho) * E_j   =>   cor(Z_i, Z_j) = rho
+rmvnorm_exch <- function(n, k, rho, mean = 0) {
+  u <- rnorm(n)
+  e <- matrix(rnorm(n * k), n, k)
+  sqrt(rho) * u + sqrt(1 - rho) * e + mean
+}
+
+cauchy_combine <- function(P) {                    # ACAT, matches .cauchyCombine
+  P <- pmin(pmax(P, 1e-15), 1 - 1e-15)
+  1 - pcauchy(rowMeans(tan((0.5 - P) * pi)))
+}
+
+brown_combine <- function(P, R) {                  # Brown, matches .waldBrownGene
+  Rm <- poolr::mvnconv(R, target = "m2lp", side = 1, cov2cor = FALSE)
+  apply(P, 1, function(p) {
+    poolr::fisher(p, side = 1, R = Rm, adjust = "generalized")$p
+  })
+}
+```
+
+# Tier 1: isolated Monte Carlo
+
+We draw $m$ correlated z-scores with exchangeable correlation $\rho$, turn them
+into one-sided p-values $p_j = \Pr(Z > z_j)$, and combine. Under the null the
+z-scores have mean 0 and the combined p-value should be Uniform(0, 1).
+
+```{r sim-grid}
+nsim  <- 3000
+rhos  <- c(0, 0.3, 0.6, 0.9)
+ks    <- c(3, 5, 10)
+
+simulate_null <- function(k, rho) {
+  R <- matrix(rho, k, k); diag(R) <- 1
+  Z <- rmvnorm_exch(nsim, k, rho)
+  P <- pnorm(Z, lower.tail = FALSE)
+  data.frame(
+    Brown  = brown_combine(P, R),
+    Cauchy = cauchy_combine(P)
+  )
+}
+
+null_res <- do.call(rbind, lapply(ks, function(k) {
+  do.call(rbind, lapply(rhos, function(rho) {
+    d <- simulate_null(k, rho)
+    data.frame(k = k, rho = rho,
+               method = rep(c("Brown", "Cauchy"), each = nsim),
+               p = c(d$Brown, d$Cauchy))
+  }))
+}))
+```
+
+## Null calibration (uniformity)
+
+A perfectly calibrated test lies on the diagonal of a p-value QQ plot. We show
+$m = 5$ across the four correlation levels.
+
+```{r qq, fig.height = 4.6}
+qq_df <- do.call(rbind, by(
+  subset(null_res, k == 5), list(null_res$method[null_res$k == 5],
+                                 null_res$rho[null_res$k == 5]),
+  function(d) {
+    d <- d[order(d$p), ]
+    d$expected <- (seq_len(nrow(d)) - 0.5) / nrow(d)
+    d
+  }
+))
+
+ggplot(qq_df, aes(-log10(expected), -log10(p), colour = method)) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2, colour = "grey50") +
+  geom_line(linewidth = 0.8) +
+  facet_wrap(~ paste0("rho = ", rho), nrow = 1) +
+  scale_colour_manual(values = methods_pal) +
+  labs(x = expression(-log[10]("expected")),
+       y = expression(-log[10]("observed")),
+       colour = NULL, title = "Null QQ plots (m = 5 correlated p-values)") +
+  theme(legend.position = "top")
+```
+
+At $\rho = 0$ both track the diagonal. As correlation grows, **Brown** (which is
+handed the true $R$) stays on the diagonal, while **Cauchy** bends slightly
+below it in the body — mildly conservative in the bulk — but the two converge
+again in the extreme tail that actually drives FDR.
+
+## Type-I error at $\alpha = 0.05$
+
+```{r typeI}
+typeI <- aggregate(p ~ method + k + rho, null_res,
+                   function(x) mean(x <= 0.05))
+names(typeI)[names(typeI) == "p"] <- "typeI"
+
+ggplot(typeI, aes(rho, typeI, colour = method)) +
+  geom_hline(yintercept = 0.05, linetype = 2, colour = "grey50") +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.8) +
+  facet_wrap(~ paste0("m = ", k), nrow = 1) +
+  scale_colour_manual(values = methods_pal) +
+  labs(x = expression(rho), y = "empirical type-I error (nominal 0.05)",
+       colour = NULL, title = "Type-I error vs correlation") +
+  theme(legend.position = "top")
+```
+
+```{r typeI-table}
+knitr::kable(
+  reshape(typeI, idvar = c("k", "rho"), timevar = "method",
+          direction = "wide"),
+  digits = 3, row.names = FALSE,
+  col.names = c("m", "rho", "Brown", "Cauchy"),
+  caption = "Empirical type-I error at alpha = 0.05."
+)
+```
+
+Both combiners control type-I error across every correlation level; neither is
+anti-conservative. Cauchy is marginally conservative as $\rho \to 0.9$,
+consistent with the QQ plots.
+
+## Power under the alternative
+
+We now shift a subset of the $m$ columns by a common effect $\delta$ (the rest
+stay null) and measure the detection rate at the 0.05 threshold, sweeping
+$\delta$ at a challenging $\rho = 0.6$, $m = 5$ with 2 signal columns.
+
+```{r power}
+delta_grid <- seq(0, 3, by = 0.5)
+k <- 5; rho <- 0.6; n_signal <- 2
+
+power_res <- do.call(rbind, lapply(delta_grid, function(delta) {
+  R <- matrix(rho, k, k); diag(R) <- 1
+  mu <- c(rep(delta, n_signal), rep(0, k - n_signal))
+  Z <- rmvnorm_exch(nsim, k, rho) + matrix(mu, nsim, k, byrow = TRUE)
+  P <- pnorm(Z, lower.tail = FALSE)
+  data.frame(
+    delta = delta,
+    method = c("Brown", "Cauchy"),
+    power = c(mean(brown_combine(P, R) <= 0.05),
+              mean(cauchy_combine(P) <= 0.05))
+  )
+}))
+
+ggplot(power_res, aes(delta, power, colour = method)) +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.8) +
+  scale_colour_manual(values = methods_pal) +
+  labs(x = expression(paste("effect size ", delta,
+                            " (2 of 5 columns)")),
+       y = "power at alpha = 0.05", colour = NULL,
+       title = "Power vs effect size (rho = 0.6)") +
+  theme(legend.position = "top")
+```
+
+The two curves are near-identical: Cauchy sacrifices essentially no power to
+gain its distribution-free calibration, and is marginally ahead once the signal
+is strong (its heavy tail rewards a single very small p-value).
+
+# Tier 2: the full spiDE pipeline
+
+We now run the entire pipeline on the packaged toy dataset — which carries a
+planted signal (gene `G1` up-regulated in index cell type `A`, driven by the
+local density of niche cell type `B`) — under both combiners, changing nothing
+else.
+
+```{r pipeline, message = FALSE}
+data(toySpiDE)
+spe <- buildNiches(toySpiDE, sigma = c(10, 30, 50))
+
+fit_brown  <- testSpiDE(fitSpiDE(spe, condition = "condition", verbose = FALSE),
+                        spe = spe, fdr = 1, combine = "brown")
+fit_cauchy <- testSpiDE(fitSpiDE(spe, condition = "condition", verbose = FALSE),
+                        spe = spe, fdr = 1, combine = "cauchy")
+
+tb <- results(fit_brown)
+tc <- results(fit_cauchy)
+```
+
+## Recovery of the planted G1 / A / B signal
+
+```{r recovery}
+planted <- function(tab, method) {
+  x <- tab[tab$gene == "G1" & tab$ct_index == "A" & tab$ct_niche == "B", ]
+  g1a <- tab[tab$gene == "G1" & tab$ct_index == "A", ]
+  data.frame(
+    method = method,
+    direction = x$DirectionNiche,
+    t = round(x$t, 2),
+    fdr.niche = signif(x$fdr.niche, 3),
+    strongest_niche_for_G1A = g1a$ct_niche[which.max(abs(g1a$t))]
+  )
+}
+knitr::kable(rbind(planted(tb, "Brown"), planted(tc, "Cauchy")),
+             row.names = FALSE,
+             caption = "Both combiners recover the planted G1/A/B effect.")
+```
+
+Both flag the same effect, in the same (Up) direction, with `B` as the strongest
+niche for `G1` in index `A` — the combiner does not disturb signal recovery.
+
+## Agreement across all genes
+
+```{r agreement, fig.height = 4.2}
+m <- merge(
+  tb[, c("gene", "ct_index", "ct_niche", "fdr.niche")],
+  tc[, c("gene", "ct_index", "ct_niche", "fdr.niche")],
+  by = c("gene", "ct_index", "ct_niche"), suffixes = c(".brown", ".cauchy")
+)
+
+ggplot(m, aes(-log10(fdr.niche.brown), -log10(fdr.niche.cauchy))) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2, colour = "grey50") +
+  geom_point(alpha = 0.5, colour = "#2166ac") +
+  labs(x = expression(-log[10]("niche FDR (Brown)")),
+       y = expression(-log[10]("niche FDR (Cauchy)")),
+       title = "Per-(gene, index, niche) FDRs agree closely")
+```
+
+```{r agreement-cor}
+cor_val <- cor(-log10(m$fdr.niche.brown), -log10(m$fdr.niche.cauchy),
+               method = "spearman")
+```
+
+The two rankings are highly concordant (Spearman
+$\rho = `r round(cor_val, 3)`$ on the niche-level FDRs).
+
+# Summary
+
+```{r verdict, echo = FALSE}
+knitr::kable(data.frame(
+  Property = c("Correlation handling", "Needs correlation matrix",
+               "Type-I control (all rho)", "Power", "Dependency"),
+  Brown = c("explicit (uses R)", "yes", "nominal", "reference", "poolr"),
+  Cauchy = c("distribution-free", "no", "nominal, mildly conservative at high rho",
+             "matches Brown", "none")
+), caption = "Brown vs Cauchy at a glance.")
+```
+
+**Verdict.** On both the controlled Monte Carlo and the full pipeline, Cauchy
+combination matches or beats Brown's method: it controls type-I error at every
+correlation level, loses no meaningful power, recovers the planted signal
+identically, and does so without estimating a correlation matrix or depending on
+`poolr`. Its only cost is mild conservativeness in the p-value *body* under very
+strong dependence — irrelevant for the extreme-tail regime that FDR control
+depends on.
+
+**These results motivate making Cauchy combination the default** for the
+within-gene combination step (`combine = "cauchy"`). Brown's method is retained
+as a selectable alternative (`combine = "brown"`) for back-compatibility and for
+settings where an explicit, correlation-aware combiner is preferred.
+
+```{r session}
+sessionInfo()
+```

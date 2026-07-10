@@ -65,10 +65,11 @@ normal reference).}
 
 \item{\code{se}}{a matrix, per-gene coefficient standard errors (genes x covariates).}
 
-\item{\code{p.brown.pos}}{a matrix, Brown-combined p-values for up-regulation
-(genes x (gene-level plus per-index-cell-type)).}
+\item{\code{p.combined.pos}}{a matrix, combined p-values for up-regulation
+(genes x (gene-level plus per-index-cell-type)). The within-gene combiner
+is Brown's method or the Cauchy combination test (see \code{combine}).}
 
-\item{\code{p.brown.neg}}{a matrix, Brown-combined p-values for down-regulation.}
+\item{\code{p.combined.neg}}{a matrix, combined p-values for down-regulation.}
 
 \item{\code{sampling}}{a factor, cells used for GLM/dispersion estimation (from
 \code{\link[SpaNorm:fitNB]{SpaNorm::fitNB()}}).}

@@ -37,6 +37,25 @@ test_that("the planted neighbourhood effect is recovered and niche-specific", {
   expect_equal(g1a$ct_niche[which.max(abs(g1a$t))], "B")
 })
 
+test_that("combine = 'cauchy' produces valid results recovering G1/A/B", {
+  spe <- .toySPE()
+  res <- spiDE(spe,
+    condition = "condition", sigma = c(10, 30, 50),
+    covariates = "Age", combine = "cauchy", verbose = FALSE
+  )
+  expect_s4_class(res, "SpiDEResults")
+  tab <- results(res)
+  expect_true(nrow(tab) > 0)
+  expect_true(all(tab$fdr.niche >= 0 & tab$fdr.niche <= 1))
+
+  # the planted G1 (A index, B niche, up) is recovered and niche-specific
+  ab <- tab[tab$gene == "G1" & tab$ct_index == "A" & tab$ct_niche == "B", ]
+  expect_equal(nrow(ab), 1)
+  expect_equal(ab$DirectionNiche, "Up")
+  g1a <- tab[tab$gene == "G1" & tab$ct_index == "A", ]
+  expect_equal(g1a$ct_niche[which.max(abs(g1a$t))], "B")
+})
+
 test_that("spiDE is deterministic and invariant to block.size", {
   spe <- .toySPE()
   a <- spiDE(spe, condition = "condition", sigma = c(10, 30),

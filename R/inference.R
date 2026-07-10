@@ -1,8 +1,10 @@
-# Wald + Brown inference. For each gene the working weights, Wald covariance,
+# Wald inference + within-gene p-value combination (Brown's method or Cauchy/
+# ACAT, per the `combine` argument). For each gene the working weights, Wald
+# covariance,
 # standard errors and t-statistics of the Response / ResponseNiche coefficients
 # are computed, then per-covariate p-values are combined across correlated
-# ResponseNiche covariates with Brown's method (poolr) into a gene-level and a
-# per-index-cell-type p-value, separately for the up and down directions.
+# ResponseNiche covariates (Cauchy/ACAT by default, or Brown's method) into a
+# gene-level and a per-index-cell-type p-value, separately for up and down.
 # Reproduces the per-gene loop in batch_nichede_v9.R. Each gene is independent,
 # so the loop is chunked into gene-blocks and parallelised with BiocParallel;
 # the counts are realised one block at a time (DelayedArray-friendly).
@@ -17,7 +19,12 @@
   split(seq_len(n), ceiling(seq_len(n) / block.size))
 }
 
-#' Wald + Brown inference for a single gene
+#' Wald inference + within-gene p-value combination for a single gene
+#'
+#' Computes per-column Wald t-statistics/SEs, then combines the correlated
+#' ResponseNiche p-values into a gene-level and per-index-cell-type p-value
+#' (separately per direction). The combiner is Brown's method (correlation-aware,
+#' via \code{poolr}) or the Cauchy combination test (ACAT, correlation-agnostic).
 #'
 #' @param alpha_g numeric coefficients for the Response/ResponseNiche columns.
 #' @param Wsub the Response/ResponseNiche sub-design (cells x k).
@@ -27,6 +34,8 @@
 #' @param cov_niche logical marking the ResponseNiche columns within the subset.
 #' @param index_ct index cell type of each ResponseNiche column.
 #' @param uniq_index the unique index cell types (column order of the output).
+#' @param combine one of "cauchy" (Cauchy/ACAT combination, default) or "brown"
+#'   (Brown's method) for the within-gene combination.
 #' @param W_full the full design (fixed + random columns); NULL for the
 #'   fixed-effects fit, in which case the covariance is formed from \code{Wsub}
 #'   alone and a normal reference is used.
@@ -41,8 +50,10 @@
 #' @importFrom stats pnorm pt cov2cor setNames
 #' @noRd
 .waldBrownGene <- function(alpha_g, Wsub, wt_g, psi_g, cov_niche, index_ct,
-                           uniq_index, W_full = NULL, penalty = NULL,
+                           uniq_index, combine = c("cauchy", "brown"),
+                           W_full = NULL, penalty = NULL,
                            sel = NULL, df = NULL) {
+  combine <- match.arg(combine)
   if (is.null(W_full)) {
     # fixed-effects fit: covariance from the tested sub-design, normal reference
     varcov <- SpaNorm::invert_mat(crossprod(Wsub * wt_g, Wsub))
@@ -58,21 +69,36 @@
   t_stat <- alpha_g / se
   names(se) <- names(t_stat) <- colnames(Wsub)
 
-  # correlation structure of the ResponseNiche coefficients -> Brown weights
-  vc <- varcov[cov_niche, cov_niche, drop = FALSE]
-  a <- diag(1 / diag(vc), nrow = nrow(vc))
-  vc <- a %*% vc %*% t(a)
-  vc <- stats::cov2cor(vc)
-  vc <- poolr::mvnconv(vc, target = "m2lp", side = 1, cov2cor = FALSE)
+  if (combine == "brown") {
+    # correlation structure of the ResponseNiche coefficients -> Brown weights
+    vc <- varcov[cov_niche, cov_niche, drop = FALSE]
+    a <- diag(1 / diag(vc), nrow = nrow(vc))
+    vc <- a %*% vc %*% t(a)
+    vc <- stats::cov2cor(vc)
+    vc <- poolr::mvnconv(vc, target = "m2lp", side = 1, cov2cor = FALSE)
+    combineP <- function(xn) poolr::fisher(xn, side = 1, R = vc,
+                                           adjust = "generalized")$p
+    combinePsub <- function(xn, is_ct) {
+      poolr::fisher(xn[is_ct], side = 1, R = vc[is_ct, is_ct, drop = FALSE],
+                    adjust = "generalized")$p
+    }
+  } else {
+    # Cauchy (ACAT) combination: correlation-agnostic, no poolr / mvnconv. The
+    # tan transform blows up at p = 0/1, so clamp the one-sided p-values first.
+    eps <- 1e-15
+    clamp <- function(xn) pmin(pmax(xn, eps), 1 - eps)
+    combineP <- function(xn) .cauchyCombine(matrix(clamp(xn), nrow = 1))
+    combinePsub <- function(xn, is_ct) {
+      .cauchyCombine(matrix(clamp(xn[is_ct]), nrow = 1))
+    }
+  }
 
   dirs <- lapply(c(p.pos = FALSE, p.neg = TRUE), function(lower.tail) {
     x <- ptail(t_stat, lower.tail)
     xn <- x[cov_niche]
-    p_gene <- poolr::fisher(xn, side = 1, R = vc, adjust = "generalized")$p
+    p_gene <- combineP(xn)
     p_ct <- vapply(uniq_index, function(ct) {
-      is_ct <- index_ct == ct
-      poolr::fisher(xn[is_ct], side = 1, R = vc[is_ct, is_ct, drop = FALSE],
-                    adjust = "generalized")$p
+      combinePsub(xn, index_ct == ct)
     }, numeric(1))
     c(Gene = p_gene, p_ct)
   })
@@ -80,9 +106,9 @@
   list(t_stat = t_stat, se = se, p.pos = dirs$p.pos, p.neg = dirs$p.neg)
 }
 
-#' Compute Wald + Brown inference for a SpiDEFit, block-wise
+#' Compute Wald inference + within-gene combination for a SpiDEFit, block-wise
 #'
-#' Fills the \code{t_stat}, \code{se}, \code{p.brown.pos}, \code{p.brown.neg}
+#' Fills the \code{t_stat}, \code{se}, \code{p.combined.pos}, \code{p.combined.neg}
 #' and (recomputed) \code{loglik} slots. Genes are processed in blocks so the
 #' genes x cells fitted-mean / weight matrices are never fully materialised, and
 #' blocks are dispatched with BiocParallel.
@@ -96,7 +122,9 @@
 #' @importFrom BiocParallel bplapply SerialParam
 #' @noRd
 .blockedInference <- function(fit, Y, block.size = NULL,
+                              combine = c("cauchy", "brown"),
                               BPPARAM = BiocParallel::SerialParam()) {
+  combine <- match.arg(combine)
   W_full <- fit@W
   covtype <- as.character(fit@covtype)
   cols_gene <- grepl("Response", covtype) # Response + ResponseNiche columns
@@ -139,7 +167,7 @@
     per_gene <- lapply(seq_along(gi), function(i) {
       scale_i <- if (has_re) dispb[i] else psib[i]
       .waldBrownGene(alpha_sub[gi[i], ], Wsub, wtb[i, ], scale_i,
-                     cov_niche, index_ct, uniq_index,
+                     cov_niche, index_ct, uniq_index, combine = combine,
                      W_full = if (has_re) W_full else NULL,
                      penalty = penalty, sel = sel, df = re_df)
     })
@@ -166,8 +194,8 @@
 
   fit@t_stat <- t_stat
   fit@se <- se
-  fit@p.brown.pos <- p.pos
-  fit@p.brown.neg <- p.neg
+  fit@p.combined.pos <- p.pos
+  fit@p.combined.neg <- p.neg
   fit@loglik <- loglik
   fit
 }

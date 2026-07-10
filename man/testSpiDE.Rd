@@ -13,6 +13,7 @@ testSpiDE(object, ...)
   assay = "counts",
   fdr = 0.05,
   weight.thresh = 0.1,
+  combine = c("cauchy", "brown"),
   block.size = NULL,
   BPPARAM = BiocParallel::SerialParam(),
   ...
@@ -32,11 +33,17 @@ computed).}
 \item{fdr}{a numeric in (0, 1], the target false discovery rate (default
 0.05). Up/Down association directions are tested separately and combined,
 which is mathematically equivalent to gating the reported, combined
-\code{fdr.gene}/\code{fdr.index}/\code{fdr.niche} values at \code{fdr}
-directly - so \code{fdr = 1} returns every (gene, index, niche) result,
-unfiltered.}
+\code{fdr.gene}/\code{fdr.index}/\code{fdr.niche} values at \code{fdr} directly - so
+\code{fdr = 1} returns every (gene, index, niche) result, unfiltered.}
 
 \item{weight.thresh}{a numeric, Cauchy weights below this are set to zero.}
+
+\item{combine}{one of "cauchy" or "brown", the within-gene combiner for the
+correlated niche p-values (gene-level and per-index-cell-type). "cauchy"
+(default) is the correlation-agnostic Cauchy combination test (ACAT), which
+controls type-I error under correlation without estimating a correlation
+matrix; "brown" is the correlation-aware Brown's method. Used only if the
+Wald inference is not already present on the fits.}
 
 \item{block.size}{a numeric, genes per inference block (NULL = single block).}
 

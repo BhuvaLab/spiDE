@@ -12,6 +12,8 @@
 #' @param sample_id a character, the colData column identifying samples (used
 #'   when niches must be built and for the random-effects fit).
 #' @param fdr a numeric, the target false discovery rate.
+#' @param combine one of "cauchy" (default) or "brown", the within-gene combiner
+#'   for the correlated niche p-values (passed to [testSpiDE()]).
 #' @param block.size a numeric, genes per inference block (NULL = single block).
 #' @param BPPARAM a BiocParallelParam for niche construction and inference.
 #'
@@ -38,10 +40,12 @@ setMethod(
                         random = c("none", "intercept", "slope"),
                         winsor = 4, lambda.a = 0,
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
-                        fdr = 0.05, block.size = NULL,
+                        fdr = 0.05, combine = c("cauchy", "brown"),
+                        block.size = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
     random <- match.arg(random)
+    combine <- match.arg(combine)
 
     # build niches if the requested bandwidths are not already present
     need <- paste0(name, sigma)
@@ -59,7 +63,7 @@ setMethod(
                     backend = backend, name = name, BPPARAM = BPPARAM,
                     verbose = verbose, ...)
 
-    testSpiDE(res, spe = spe, assay = assay, fdr = fdr,
+    testSpiDE(res, spe = spe, assay = assay, fdr = fdr, combine = combine,
               block.size = block.size, BPPARAM = BPPARAM)
   }
 )

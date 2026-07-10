@@ -30,9 +30,10 @@
 #'   normal reference).
 #' @slot t_stat a matrix, per-gene Wald t-statistics (genes x covariates).
 #' @slot se a matrix, per-gene coefficient standard errors (genes x covariates).
-#' @slot p.brown.pos a matrix, Brown-combined p-values for up-regulation
-#'   (genes x (gene-level plus per-index-cell-type)).
-#' @slot p.brown.neg a matrix, Brown-combined p-values for down-regulation.
+#' @slot p.combined.pos a matrix, combined p-values for up-regulation
+#'   (genes x (gene-level plus per-index-cell-type)). The within-gene combiner
+#'   is Brown's method or the Cauchy combination test (see \code{combine}).
+#' @slot p.combined.neg a matrix, combined p-values for down-regulation.
 #' @slot sampling a factor, cells used for GLM/dispersion estimation (from
 #'   [SpaNorm::fitNB()]).
 #'
@@ -63,8 +64,8 @@ setClass(
     df = "ANY",
     t_stat = "ANY",
     se = "ANY",
-    p.brown.pos = "ANY",
-    p.brown.neg = "ANY",
+    p.combined.pos = "ANY",
+    p.combined.neg = "ANY",
     sampling = "ANY"
   ),
   prototype = list(

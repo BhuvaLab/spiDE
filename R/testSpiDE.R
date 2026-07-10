@@ -22,6 +22,12 @@
 #'   `fdr.gene`/`fdr.index`/`fdr.niche` values at `fdr` directly - so
 #'   `fdr = 1` returns every (gene, index, niche) result, unfiltered.
 #' @param weight.thresh a numeric, Cauchy weights below this are set to zero.
+#' @param combine one of "cauchy" or "brown", the within-gene combiner for the
+#'   correlated niche p-values (gene-level and per-index-cell-type). "cauchy"
+#'   (default) is the correlation-agnostic Cauchy combination test (ACAT), which
+#'   controls type-I error under correlation without estimating a correlation
+#'   matrix; "brown" is the correlation-aware Brown's method. Used only if the
+#'   Wald inference is not already present on the fits.
 #' @param block.size a numeric, genes per inference block (NULL = single block).
 #' @param BPPARAM a BiocParallelParam for the inference stage.
 #' @param ... ignored.
@@ -44,12 +50,14 @@ setMethod(
   "testSpiDE",
   signature = "SpiDEResults",
   definition = function(object, spe = NULL, assay = "counts", fdr = 0.05,
-                        weight.thresh = 0.1, block.size = NULL,
+                        weight.thresh = 0.1, combine = c("cauchy", "brown"),
+                        block.size = NULL,
                         BPPARAM = BiocParallel::SerialParam(), ...) {
     checkFdr(fdr)
+    combine <- match.arg(combine)
     fits <- object@fits
 
-    # compute Wald/Brown inference if missing
+    # compute Wald + within-gene combination inference if missing
     needs_inf <- any(vapply(fits, function(f) is.null(f@t_stat), logical(1)))
     if (needs_inf) {
       if (is.null(spe)) {
@@ -57,15 +65,16 @@ setMethod(
       }
       Y <- SummarizedExperiment::assay(spe, assay)
       fits <- lapply(fits, function(f) {
-        .blockedInference(f, Y, block.size = block.size, BPPARAM = BPPARAM)
+        .blockedInference(f, Y, block.size = block.size, combine = combine,
+                          BPPARAM = BPPARAM)
       })
       object@fits <- fits
     }
 
     # combine across bandwidths
     gene.w <- .geneWeights(fits, weight.thresh)
-    p.pos <- .combineBandwidths(fits, "p.brown.pos", gene.w)
-    p.neg <- .combineBandwidths(fits, "p.brown.neg", gene.w)
+    p.pos <- .combineBandwidths(fits, "p.combined.pos", gene.w)
+    p.neg <- .combineBandwidths(fits, "p.combined.neg", gene.w)
 
     object@gene.weights <- gene.w
     object@p.cauchy.pos <- p.pos

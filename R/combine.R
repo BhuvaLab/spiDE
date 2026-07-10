@@ -38,10 +38,10 @@
   w
 }
 
-#' Combine each column of the per-bandwidth Brown p-values across bandwidths
+#' Combine each column of the per-bandwidth combined p-values across bandwidths
 #'
 #' @param fits a list of SpiDEFit objects.
-#' @param slot one of "p.brown.pos" or "p.brown.neg".
+#' @param slot one of "p.combined.pos" or "p.combined.neg".
 #' @param gene.w the gene weight matrix from .geneWeights().
 #' @return a genes x (1 + n_index) matrix of combined p-values.
 #' @noRd
