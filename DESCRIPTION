@@ -1,0 +1,63 @@
+Package: spiDE
+Title: Context-specific, neighbourhood-dependent differential expression
+Version: 0.99.0
+Authors@R: c(
+            person(given = "Dharmesh D.",
+                   family = "Bhuva",
+                   role = c("aut", "cre"),
+                   email = "dharmesh.bhuva@adelaide.edu.au",
+                   comment = c(ORCID = "0000-0002-6398-9157")),
+            person(given = "Chin Wee",
+                   family = "Tan",
+                   role = c("aut"),
+                   email = "cwtan@wehi.edu.au",
+                   comment = c(ORCID = "0000-0001-9695-7218"))
+            )
+Description: spiDE identifies context-specific, neighbourhood-dependent
+    differential expression in spatial transcriptomics data. Within an index
+    cell type, it tests how gene expression changes with an experimental
+    condition as a function of the local density (niche) of surrounding cell
+    types. Niche covariates are constructed from Gaussian kernel density
+    estimates at multiple bandwidths; a per-gene negative binomial GLM is fit
+    using the SpaNorm fitting engine; and neighbourhood effects are tested via
+    Wald statistics combined across correlated covariates (Brown's method),
+    across bandwidths (Cauchy combination), and corrected with a hierarchical
+    false discovery rate procedure.
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 8.0.0
+biocViews: Software, Spatial, DifferentialExpression, GeneExpression,
+    Transcriptomics, Regression, CellBiology
+Depends:
+    R (>= 4.4)
+Imports:
+    SpaNorm (>= 1.7.4),
+    SpatialExperiment,
+    SingleCellExperiment,
+    SummarizedExperiment,
+    S4Vectors,
+    spatstat.geom,
+    spatstat.explore,
+    poolr,
+    BiocParallel,
+    DelayedArray,
+    DelayedMatrixStats,
+    Matrix,
+    matrixStats,
+    methods,
+    stats,
+    utils
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    BiocStyle,
+    covr,
+    torch,
+    HDF5Array
+URL: https://github.com/bhuvad/spiDE
+BugReports: https://github.com/bhuvad/spiDE/issues
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+LazyData: false
