@@ -37,6 +37,15 @@ NPAR <- if (RUN_FULL) 8 else 1            # parallel workers
 BPPARAM <- if (NPAR > 1) MulticoreParam(NPAR) else SerialParam()
 ```
 
+`MulticoreParam` parallelises by forking. SpaNorm's GPU path (used by
+`fitSpiDE()` when `backend = "auto"`, the default) initialises `torch`'s
+Metal/MPS runtime, and that runtime is **not fork-safe** — a forked worker
+crashes with `+[MPSGraphObject initialize] ... fork() ... Crashing instead`. All
+fits below therefore pass `backend = "cpu"`, which keeps SpaNorm off the GPU so
+the forked workers are safe. (The models here are small; the CPU path is the
+right choice anyway. On a machine with a usable GPU, keep the GPU by parallelising
+with the non-forking `SnowParam(NPAR)` instead.)
+
 # Data generators
 
 Both generators plant a **patient-level random intercept** (`sd_patient`) on top of the cell-type baseline, so — unlike `.toySPE()` — every simulated dataset has genuine between-sample clustering, the actual source of pseudo-replication. `sim_null()` has no response effect at all (used for Type-I error / calibration); `sim_alt()` additionally plants a known, gene-indexed A-index / B-niche response effect in a specified fraction of genes (used for power and FDR).
@@ -123,7 +132,7 @@ For a given simulated dataset we fit all three `random` modes at a single bandwi
 -   **end-to-end discoveries** from `results()`, thresholded on `fdr.niche` — what a user actually sees.
 
 ```{r driver}
-sigma_fixed <- 30
+sigma_fixed <- 50
 
 .raw_AB_p <- function(fit1) {
   cn <- colnames(fit1@t_stat)
@@ -137,8 +146,11 @@ sigma_fixed <- 30
 
 run_one <- function(spe, random, fdr = 0.05) {
   spe <- buildNiches(spe, sigma = sigma_fixed)
+  # backend = "cpu" is required for the parallel runs below: SpaNorm's GPU path
+  # initialises torch's Metal/MPS runtime, which is not fork-safe, so the default
+  # ("auto") crashes the forked MulticoreParam workers (see the setup chunk).
   fit <- fitSpiDE(spe, "condition", sigma = sigma_fixed, random = random,
-                  verbose = FALSE)
+                  backend = "cpu", verbose = FALSE)
   res <- testSpiDE(fit, spe = spe, fdr = fdr)
   f1 <- fits(res)[[1]]
   raw <- .raw_AB_p(f1)
@@ -256,7 +268,7 @@ partC <- bplapply(fdr_grid, function(target) {
     vapply(methods, function(m) {
       spe <- buildNiches(sim$spe, sigma = sigma_fixed)
       fit <- fitSpiDE(spe, "condition", sigma = sigma_fixed, random = m,
-                      verbose = FALSE)
+                      backend = "cpu", verbose = FALSE)
       res <- testSpiDE(fit, spe = spe, fdr = target)
       tab <- results(res)
       hit <- tab$gene[tab$ct_index == "A" & tab$ct_niche == "B" &
