@@ -187,7 +187,7 @@ several seeds. Small spread here is the justification for keeping sampling on by
 default.
 
 ```{r rng}
-seeds <- 1:6
+seeds <- 1:10
 rng <- lapply(seeds, function(s) {
   o <- runOne(spe, re.prop = 0.1, re.maxit.psi = 1, seed = s)
   data.frame(seed = s, tau2_int = o$tau2[["SampleInt"]],
@@ -195,7 +195,7 @@ rng <- lapply(seeds, function(s) {
              tstat_cor = cor(as.vector(o$tstat), as.vector(ref$tstat)))
 })
 rng <- do.call(rbind, rng)
-knitr::kable(rng, digits = 4, row.names = FALSE)
+knitr::kable(rng[1:5, ], digits = 4, row.names = FALSE)
 
 data.frame(
   metric = c("tau2 (intercept)", "t-stat cor vs ref"),

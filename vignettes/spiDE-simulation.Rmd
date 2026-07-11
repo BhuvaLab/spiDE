@@ -31,20 +31,14 @@ library(ggplot2)
 
 # keep the default vignette build light; bump these for a real study (see the
 # final section for suggested "full" settings and expected runtime)
-RUN_FULL <- FALSE
+RUN_FULL <- TRUE
 B <- if (RUN_FULL) 40 else 6              # replicate seeds per design point
 NPAR <- if (RUN_FULL) 8 else 1            # parallel workers
-BPPARAM <- if (NPAR > 1) MulticoreParam(NPAR) else SerialParam()
+BPPARAM <- if (NPAR > 1) MulticoreParam(NPAR, RNGseed = 1) else SerialParam()
+set.seed(1)  # fitSpiDE is stochastic (fitNB subsamples cells for dispersion)
 ```
 
-`MulticoreParam` parallelises by forking. SpaNorm's GPU path (used by
-`fitSpiDE()` when `backend = "auto"`, the default) initialises `torch`'s
-Metal/MPS runtime, and that runtime is **not fork-safe** — a forked worker
-crashes with `+[MPSGraphObject initialize] ... fork() ... Crashing instead`. All
-fits below therefore pass `backend = "cpu"`, which keeps SpaNorm off the GPU so
-the forked workers are safe. (The models here are small; the CPU path is the
-right choice anyway. On a machine with a usable GPU, keep the GPU by parallelising
-with the non-forking `SnowParam(NPAR)` instead.)
+`MulticoreParam` parallelises by forking. SpaNorm's GPU path (used by `fitSpiDE()` when `backend = "auto"`, the default) initialises `torch`'s Metal/MPS runtime, and that runtime is **not fork-safe** — a forked worker crashes with `+[MPSGraphObject initialize] ... fork() ... Crashing instead`. All fits below therefore pass `backend = "cpu"`, which keeps SpaNorm off the GPU so the forked workers are safe. (The models here are small; the CPU path is the right choice anyway. On a machine with a usable GPU, keep the GPU by parallelising with the non-forking `SnowParam(NPAR)` instead.)
 
 # Data generators
 
@@ -150,7 +144,7 @@ run_one <- function(spe, random, fdr = 0.05) {
   # initialises torch's Metal/MPS runtime, which is not fork-safe, so the default
   # ("auto") crashes the forked MulticoreParam workers (see the setup chunk).
   fit <- fitSpiDE(spe, "condition", sigma = sigma_fixed, random = random,
-                  backend = "cpu", verbose = FALSE)
+                  backend = "cpu", verbose = FALSE, re.prop = 0.2)
   res <- testSpiDE(fit, spe = spe, fdr = fdr)
   f1 <- fits(res)[[1]]
   raw <- .raw_AB_p(f1)
@@ -191,21 +185,55 @@ ggplot(partA, aes(S, reject_rate, colour = method)) +
   theme_bw()
 ```
 
-A QQ-plot at a representative `S` makes the same point at the level of the full p-value distribution rather than a single threshold:
+A QQ-plot makes the same point at the level of the full p-value distribution
+rather than a single threshold. Two subtleties matter for reading it correctly,
+and a *single* simulated dataset gets both wrong:
 
-```{r partA-qq, fig.cap = "QQ-plot of null response-niche p-values at S = 10. The mixed-effects fits track the uniform (dashed) reference; the fixed-effects fit is badly anti-conservative."}
-spe_qq <- sim_null(S = 10, seed = 99)
-p_qq <- lapply(methods, function(m) run_one(spe_qq, m)$raw_p)
-qq_df <- do.call(rbind, lapply(names(p_qq), function(m) {
-  p <- sort(p_qq[[m]])
-  data.frame(method = m, expected = -log10(ppoints(length(p))), observed = -log10(p))
+* The variance components (`tau2`) are **shared across genes and estimated from
+  only `S` samples**, so all `n_genes` response-niche p-values in one dataset
+  ride on the *same* `tau2` estimate. One unlucky variance-component draw tilts
+  the entire curve — the departure is coherent, not gene-by-gene noise. This is
+  most pronounced for `random = "slope"`, whose extra per-sample slope variance
+  is the least stable component. So we **pool over all `B` datasets**.
+* `fitSpiDE()` is **not deterministic by default**: `fitNB` subsamples cells for
+  the dispersion estimate using the RNG, so the same data + model can give
+  visibly different p-values run to run. We therefore `set.seed()` before every
+  fit (identically across the three methods, so they see the same draw).
+
+```{r partA-qq, fig.cap = "QQ-plot of null response-niche p-values at S = 10, pooled over all B datasets with the fit RNG fixed. The fixed-effects fit is badly anti-conservative; the mixed-effects fits are far closer to the uniform (dashed) reference, though both remain mildly anti-conservative at this small S (the residual tail shrinks as S grows, cf. Part A)."}
+p_qq <- bplapply(seq_len(B), function(b) {
+  spe <- sim_null(S = 10, seed = 7000 + b)
+  lapply(methods, function(m) { set.seed(b); run_one(spe, m)$raw_p })
+}, BPPARAM = BPPARAM)
+qq_df <- do.call(rbind, lapply(names(methods), function(m) {
+  p <- sort(unlist(lapply(p_qq, `[[`, m), use.names = FALSE))
+  data.frame(method = m, expected = -log10(ppoints(length(p))),
+             observed = -log10(p))
 }))
 ggplot(qq_df, aes(expected, observed, colour = method)) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey40") +
-  geom_point(size = 1.5, alpha = 0.7) +
+  geom_point(size = 1, alpha = 0.5) +
   labs(x = "expected -log10(p)", y = "observed -log10(p)") +
   theme_bw()
 ```
+
+Two practical takeaways from this null study:
+
+* **Reproducibility, not just averaging.** Because `fitNB` subsamples cells for
+  the dispersion estimate from the RNG, the same data and model can give
+  materially different response-niche p-values (and `tau2` estimates) from run to
+  run. Set a seed before fitting — as done above and in the setup chunk — if you
+  need reproducible variance components. (Raising `fitNB`'s `maxn.psi` to cover
+  all cells removes the subsampling entirely and makes the fit deterministic, at
+  some cost.)
+* **`random = "slope"` is the less stable model at small `S`.** Its extra
+  per-sample slope variance is collinear with the tested fixed effect and is
+  estimated from only `S` samples, so it is heavy-tailed and, per dataset, tends
+  to be a little more anti-conservative than `"intercept"` (visible as the slope
+  curve sitting slightly above intercept). Both converge to nominal as `S` grows
+  (Part A); flooring or clamping `tau2` does *not* fix the small-`S` gap. Prefer
+  `"intercept"` when you have few samples and no reason to expect the niche-slope
+  itself to vary between patients.
 
 # Part B — power vs samples and vs cells
 

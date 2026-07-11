@@ -256,8 +256,15 @@
 #'   design columns) to correct anti-conservative inference caused by
 #'   cell-level pseudo-replication. "intercept" adds a per-sample random
 #'   intercept; "slope" additionally adds per-sample random slopes on the niche
-#'   covariates (recommended, since it protects the response x niche tests). See
-#'   the mixed-effects vignette.
+#'   covariates, which protects the response x niche tests when the niche-slope
+#'   varies between samples. Note that "slope" estimates an extra variance
+#'   component (\code{tau2} for \code{SampleSlope}) that is collinear with the
+#'   tested fixed effect and, with few samples, is less stable than the
+#'   intercept-only variance; prefer "intercept" at small \code{S}, and "slope"
+#'   when between-sample niche-slope variation is expected. The fit is also
+#'   stochastic (\code{fitNB} subsamples cells for the dispersion estimate), so
+#'   set a seed for reproducible variance components. See the mixed-effects and
+#'   simulation vignettes.
 #' @param winsor,lambda.a fitting parameters forwarded to
 #'   \code{\link[SpaNorm]{fitNB}} (coefficient winsorisation and the base ridge
 #'   penalty on the fixed columns).
