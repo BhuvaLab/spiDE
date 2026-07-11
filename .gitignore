@@ -2,4 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
-.claude/
+.claude/*
+!.claude/skills
+.claude/skills/*
+!.claude/skills/deploy-bioc
