@@ -1,0 +1,20 @@
+{
+	"name": "Existing Dockerfile",
+	"build": {
+		"context": "..",
+		"dockerfile": "Dockerfile"
+	},
+
+	"features": {
+		"ghcr.io/rocker-org/devcontainer-features/r-packages:latest": {
+			"packages": "pak,devtools,tidyverse,nx10/httpgd,languageserver,github::bhuvad/restools",
+			"installSystemRequirements": true
+		}
+	},
+
+	"customizations": {
+		"vscode": {
+			"extensions": ["reditorsupport.r", "mikhail-arkhipov.r", "anthropic.claude-code"]
+		}
+	}
+}

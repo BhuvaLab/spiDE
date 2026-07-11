@@ -1,0 +1,62 @@
+# Bioconductor R CMD check workflow
+# Generated via biocthis::use_bioc_github_action()
+on:
+  push:
+    branches: [main, devel, RELEASE_*]
+  pull_request:
+    branches: [main, devel]
+
+name: R-CMD-check-bioc
+
+jobs:
+  R-CMD-check-bioc:
+    runs-on: ${{ matrix.config.os }}
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: ubuntu-latest,  r: devel,   bioc: devel}
+          - {os: ubuntu-latest,  r: release, bioc: release}
+          - {os: macOS-latest,   r: release, bioc: release}
+          - {os: windows-latest, r: release, bioc: release}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up R ${{ matrix.config.r }}
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          use-public-rspm: true
+
+      - name: Set up Bioconductor ${{ matrix.config.bioc }}
+        uses: grimbough/bioc-actions/setup-bioc@v1
+        with:
+          bioc-version: ${{ matrix.config.bioc }}
+
+      - name: Set up pandoc
+        uses: r-lib/actions/setup-pandoc@v2
+
+      - name: Install dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck, any::BiocCheck
+          needs: check
+
+      - name: Run R CMD check
+        uses: r-lib/actions/check-r-package@v2
+        with:
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: '"error"'
+          upload-snapshots: true
+
+      - name: Run BiocCheck
+        if: runner.os != 'Windows'
+        run: BiocCheck::BiocCheck(".", `no-check-version-num` = TRUE)
+        shell: Rscript {0}
