@@ -20,23 +20,13 @@ knitr::opts_chunk$set(
 
 # Introduction
 
-`spiDE` identifies **context-specific, neighbourhood-dependent differential
-expression** in spatial transcriptomics data. Within an *index* cell type, it
-tests how gene expression changes with an experimental *condition* as a function
-of the local density (the *niche*) of surrounding cell types.
+`spiDE` identifies **context-specific, neighbourhood-dependent differential expression** in spatial transcriptomics data. Within an *index* cell type, it tests how gene expression changes with an experimental *condition* as a function of the local density (the *niche*) of surrounding cell types.
 
 The method proceeds in three steps:
 
-1. **Niche construction** (`buildNiches()`): for each sample and each spatial
-   bandwidth, a Gaussian kernel density estimate of every cell type is evaluated
-   at each cell, giving per-cell "effective niche" densities.
-2. **Model fitting** (`fitSpiDE()`): a per-gene negative binomial GLM is fit over
-   a design containing the three-way `cell type : condition : niche`
-   interactions, using the `r BiocStyle::Biocpkg("SpaNorm")` `fitNB()` engine.
-3. **Testing** (`testSpiDE()`): per-gene Wald statistics for the neighbourhood
-   interactions are combined across correlated covariates with Brown's method and
-   across bandwidths with a Cauchy combination, then subjected to a hierarchical
-   (gene &rarr; index cell type &rarr; niche cell type) FDR correction.
+1.  **Niche construction** (`buildNiches()`): for each sample and each spatial bandwidth, a Gaussian kernel density estimate of every cell type is evaluated at each cell, giving per-cell "effective niche" densities.
+2.  **Model fitting** (`fitSpiDE()`): a per-gene negative binomial GLM is fit over a design containing the three-way `cell type : condition : niche` interactions, using the `r BiocStyle::Biocpkg("SpaNorm")` `fitNB()` engine.
+3.  **Testing** (`testSpiDE()`): per-gene Wald statistics for the neighbourhood interactions are combined across correlated covariates with Brown's method and across bandwidths with a Cauchy combination, then subjected to a hierarchical (gene → index cell type → niche cell type) FDR correction.
 
 `spiDE()` wraps the three steps.
 
@@ -47,11 +37,7 @@ library(SpatialExperiment)
 
 # Example data
 
-The package ships a small synthetic `SpatialExperiment`, `toySpiDE`, with 20
-genes across 480 cells from 6 samples (3 Responders, 3 Non-responders) and three
-cell types (A, B, C). A neighbourhood signal is planted: gene `G1` is
-up-regulated in index cell type **A**, in Responders, in proportion to the local
-density of niche cell type **B**.
+The package ships a small synthetic `SpatialExperiment`, `toySpiDE`, with 20 genes across 480 cells from 6 samples (3 Responders, 3 Non-responders) and three cell types (A, B, C). A neighbourhood signal is planted: gene `G1` is up-regulated in index cell type **A**, in Responders, in proportion to the local density of niche cell type **B**.
 
 ```{r data}
 data(toySpiDE)
@@ -72,16 +58,14 @@ res <- spiDE(
 res
 ```
 
-The tidy results table is returned by `results()`, keyed by
-(gene, index cell type, niche cell type, bandwidth):
+The tidy results table is returned by `results()`, keyed by (gene, index cell type, niche cell type, bandwidth):
 
 ```{r results}
 tab <- results(res)
 head(tab[order(tab$fdr.niche), ], 10)
 ```
 
-The planted `G1` / index A / niche B effect is recovered with a positive
-(up-regulated) direction:
+The planted `G1` / index A / niche B effect is recovered with a positive (up-regulated) direction:
 
 ```{r recovered}
 tab[tab$gene == "G1" & tab$ct_index == "A" & tab$ct_niche == "B", ]
@@ -89,15 +73,11 @@ tab[tab$gene == "G1" & tab$ct_index == "A" & tab$ct_niche == "B", ]
 
 # Step by step
 
-The wrapper is equivalent to running the three stages explicitly, which is
-useful when you want to inspect intermediate objects, reuse a fit, or change
-parameters at a single stage.
+The wrapper is equivalent to running the three stages explicitly, which is useful when you want to inspect intermediate objects, reuse a fit, or change parameters at a single stage.
 
 ## 1. Build niches
 
-`buildNiches()` adds one `reducedDim` per bandwidth. Optionally, fine cell types
-can be merged into coarser niches with `mergeNiches()`, and per-sample
-library-size offsets computed with `computeSizeFactors()`.
+`buildNiches()` adds one `reducedDim` per bandwidth. Optionally, fine cell types can be merged into coarser niches with `mergeNiches()`, and per-sample library-size offsets computed with `computeSizeFactors()`.
 
 ```{r build}
 spe <- buildNiches(toySpiDE, sigma = c(10, 30, 50))
@@ -111,8 +91,7 @@ fit <- fitSpiDE(spe, condition = "condition", covariates = "Age", verbose = FALS
 fit
 ```
 
-Each bandwidth's fit is a `SpiDEFit` object exposing the coefficient matrix
-`alpha`, dispersions `psi`, the design `W`, and the covariate-type tags:
+Each bandwidth's fit is a `SpiDEFit` object exposing the coefficient matrix `alpha`, dispersions `psi`, the design `W`, and the covariate-type tags:
 
 ```{r fitobj}
 f1 <- fits(fit)[[1]]
@@ -128,12 +107,7 @@ nrow(results(res2))
 
 # Scaling
 
-Fitting is performed over all genes at once (the negative binomial dispersion is
-moderated across genes). The per-gene inference is independent across genes and
-is processed in gene-blocks, dispatched with
-`r BiocStyle::Biocpkg("BiocParallel")`; the counts matrix may be a
-`r BiocStyle::Biocpkg("DelayedArray")` and is realised one block at a time.
-Results are invariant to the block size and the parallel backend.
+Fitting is performed over all genes at once (the negative binomial dispersion is moderated across genes). The per-gene inference is independent across genes and is processed in gene-blocks, dispatched with `r BiocStyle::Biocpkg("BiocParallel")`; the counts matrix may be a `r BiocStyle::Biocpkg("DelayedArray")` and is realised one block at a time. Results are invariant to the block size and the parallel backend.
 
 ```{r parallel, eval = FALSE}
 library(BiocParallel)
@@ -146,28 +120,18 @@ res <- spiDE(
 )
 ```
 
-The `backend` argument (`"auto"`, `"cpu"`, `"gpu"`) is forwarded to
-`SpaNorm::fitNB()` and selects the compute backend for the model fit.
+The `backend` argument (`"auto"`, `"cpu"`, `"gpu"`) is forwarded to `SpaNorm::fitNB()` and selects the compute backend for the model fit.
 
 # Mixed-effects inference for pseudo-replication
 
-By default each cell is treated as an independent observation. When many cells
-come from few patients, the response-related tests become anti-conservative
-(cell-level pseudo-replication), because the clinical response is a patient-level
-label. Passing `random = "slope"` (or `"intercept"`) to `spiDE()` / `fitSpiDE()`
-adds patient-level random effects — implemented as ridge-penalised design
-columns — that test the response effects against between-patient variability:
+By default each cell is treated as an independent observation. When many cells come from few patients, the response-related tests become anti-conservative (cell-level pseudo-replication), because the clinical response is a patient-level label. Passing `random = "slope"` (or `"intercept"`) to `spiDE()` / `fitSpiDE()` adds patient-level random effects — implemented as ridge-penalised design columns — that test the response effects against between-patient variability:
 
 ```{r random, eval = FALSE}
 res <- spiDE(toySpiDE, condition = "condition", sigma = c(10, 30, 50),
              random = "slope")
 ```
 
-The model, the ridge = random-effects equivalence, and a worked calibration
-example are described in the companion vignette *The spiDE model and
-mixed-effects inference*. Note that a per-sample random intercept absorbs all
-between-sample effects, so sample-level covariates (e.g. `Age`) must be dropped
-when random effects are used.
+The model, the ridge = random-effects equivalence, and a worked calibration example are described in the companion vignette *The spiDE model and mixed-effects inference*. Note that a per-sample random intercept absorbs all between-sample effects, so sample-level covariates (e.g. `Age`) must be dropped when random effects are used.
 
 # Session info
 

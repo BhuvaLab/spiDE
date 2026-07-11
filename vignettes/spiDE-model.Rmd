@@ -173,15 +173,7 @@ $$
 -   The random **intercept** $u_{g,s}$ is the patient-level counterpart of the response main effect $\eta_g$: it lets each patient's baseline float, so $\eta_g$ is identified from between-patient contrasts.
 -   The random **slopes** $v_{g,s,t,t'}$ are the patient-level counterparts of the $\beta_{g,t,t'}$ terms: they let each patient's niche→expression slope float, so $\beta_{g,t,t'}$ is tested against between-patient *slope* variability. A random intercept alone would not protect $\beta$, because $\beta$ multiplies a covariate that varies *within* a patient.
 
-`random = "intercept"` adds $u_{g,s}$ only; `random = "slope"` adds both. The
-slope model gives the fullest protection of $\beta$, but note the trade-off: the
-random slope $v_{g,s,t,t'}$ and the fixed effect $\beta_{g,t,t'}$ both describe
-how the niche→expression slope differs across patients, so with **few patients
-per response group** the random slope can absorb a genuine $\beta$ (a real effect
-seen in only a handful of responders is, statistically, hard to distinguish from
-patient-to-patient slope noise). With an adequate number of samples prefer
-`"slope"`; with only a few, `"intercept"` is a more powerful default and still
-corrects the dominant (baseline) source of pseudo-replication.
+`random = "intercept"` adds $u_{g,s}$ only; `random = "slope"` adds both. The slope model gives the fullest protection of $\beta$, but note the trade-off: the random slope $v_{g,s,t,t'}$ and the fixed effect $\beta_{g,t,t'}$ both describe how the niche→expression slope differs across patients, so with **few patients per response group** the random slope can absorb a genuine $\beta$ (a real effect seen in only a handful of responders is, statistically, hard to distinguish from patient-to-patient slope noise). With an adequate number of samples prefer `"slope"`; with only a few, `"intercept"` is a more powerful default and still corrects the dominant (baseline) source of pseudo-replication.
 
 ## Ridge $\equiv$ random effects
 
@@ -262,19 +254,8 @@ res <- spiDE(spe, condition = "condition", sigma = c(10, 30, 50),
 
 -   **Sample-level covariates.** A per-sample random intercept already adjusts for *all* between-sample nuisance variation, so it is confounded with measured sample-level covariates (Age, Sex, Stage). `spiDE` therefore errors if such a covariate is passed together with `random != "none"` — drop it; the random intercept subsumes it.
 -   **Number of samples.** The correction is only as good as the between-sample information: with very few samples the variance components (and the $S-2$ reference df) are unstable, and a warning is issued.
--   **Correct, not merely "fixed with extras".** The mixed fit does more than add
-    a between-patient variance component: it also replaces the default's NB
-    dispersion scaling and sub-design covariance with the correct **working
-    (quasi-NB) dispersion** and **full penalised covariance**. So even when
-    $\tau^2 \to 0$ (no genuine clustering) the mixed fit does *not* reproduce the
-    default fit — it gives the correctly-scaled, and hence more conservative,
-    standard errors. This is deliberate: the default fit is known to be
-    anti-conservative, so its larger apparent "power" is partly spurious.
--   **Power needs samples and effect size.** Because the test is now honest, a
-    real response-niche effect must be visible *between patients* to be declared.
-    With few patients, or an effect seen in only a handful of responders, the
-    between-patient df ($S-2$) and the inflated SEs will (correctly) leave it
-    non-significant. Larger sample sizes restore power.
+-   **Correct, not merely "fixed with extras".** The mixed fit does more than add a between-patient variance component: it also replaces the default's NB dispersion scaling and sub-design covariance with the correct **working (quasi-NB) dispersion** and **full penalised covariance**. So even when $\tau^2 \to 0$ (no genuine clustering) the mixed fit does *not* reproduce the default fit — it gives the correctly-scaled, and hence more conservative, standard errors. This is deliberate: the default fit is known to be anti-conservative, so its larger apparent "power" is partly spurious.
+-   **Power needs samples and effect size.** Because the test is now honest, a real response-niche effect must be visible *between patients* to be declared. With few patients, or an effect seen in only a handful of responders, the between-patient df ($S-2$) and the inflated SEs will (correctly) leave it non-significant. Larger sample sizes restore power.
 
 # Session info
 

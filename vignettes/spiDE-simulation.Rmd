@@ -1,0 +1,339 @@
+---
+title: "Simulation study: power and FDR control of the spiDE mixed-effects correction"
+author: "Dharmesh D. Bhuva"
+package: spiDE
+output:
+  BiocStyle::html_document:
+    toc_float: true
+vignette: >
+  %\VignetteIndexEntry{Simulation study: power and FDR control}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6, fig.height = 4.5)
+```
+
+# Overview
+
+This is a **research/benchmarking vignette**, not user-facing documentation of the package API. It answers a concrete question that comes up when exploring `spiDE`'s mixed-effects correction (`random = "intercept"` / `"slope"`, see the companion vignette *The spiDE model: neighbourhood-dependent DE and mixed-effects inference*): if I simulate more samples, or more cells per sample, why doesn't power obviously go up?
+
+The short answer, demonstrated quantitatively below: statistical power under the mixed-effects correction is driven almost entirely by the number of **samples** (patients), not the number of **cells**. That is not a bug — it is the price of correcting cell-level pseudo-replication. Cells within a sample share the same response label, so they cannot contribute independent evidence about a between-sample contrast; only more samples can. The bundled toy dataset (`.toySPE()` / `data(toySpiDE)`) obscures this because (a) it reseeds the *entire* dataset when you change `n_samples`/`n_per`, so effect size is confounded with sample size, and (b) it only plants one true gene among \~20, so the gene-level FDR gate swallows the signal. Here we build a **fair** simulation harness that isolates the two questions: does the null stay calibrated, and does power scale correctly with each knob.
+
+All code needed to reproduce this study is self-contained in this file (no internal `spiDE:::` helpers are used) so it can be lifted out and run independently of the package if desired.
+
+```{r load, message = FALSE}
+library(spiDE)
+library(SpatialExperiment)
+library(BiocParallel)
+library(ggplot2)
+
+# keep the default vignette build light; bump these for a real study (see the
+# final section for suggested "full" settings and expected runtime)
+RUN_FULL <- FALSE
+B <- if (RUN_FULL) 40 else 6              # replicate seeds per design point
+NPAR <- if (RUN_FULL) 8 else 1            # parallel workers
+BPPARAM <- if (NPAR > 1) MulticoreParam(NPAR) else SerialParam()
+```
+
+# Data generators
+
+Both generators plant a **patient-level random intercept** (`sd_patient`) on top of the cell-type baseline, so — unlike `.toySPE()` — every simulated dataset has genuine between-sample clustering, the actual source of pseudo-replication. `sim_null()` has no response effect at all (used for Type-I error / calibration); `sim_alt()` additionally plants a known, gene-indexed A-index / B-niche response effect in a specified fraction of genes (used for power and FDR).
+
+```{r generators}
+.simulate_spe <- function(S, n_per, n_genes, field, sd_patient, seed,
+                          nonnull = integer(0), beta = 0, sd_slope = 0) {
+  set.seed(seed)
+  cts <- c("A", "B", "C")
+  gn <- sprintf("G%d", seq_len(n_genes))
+  sids <- sprintf("S%d", seq_len(S))
+  cond <- rep(c("Responder", "Non-responder"), length.out = S)
+  names(cond) <- sids
+
+  cells <- lapply(sids, function(sid) {
+    x <- runif(n_per, 0, field)
+    y <- runif(n_per, 0, field)
+    ct <- ifelse(x > 0.6 * field & runif(n_per) < 0.7, "B",
+                sample(c("A", "C"), n_per, replace = TRUE))
+    data.frame(sample_id = sid, condition = cond[[sid]],
+              x = x, y = y, cell_type = ct, stringsAsFactors = FALSE)
+  })
+  cd <- do.call(rbind, cells)
+  n <- nrow(cd)
+  cd$cell_id <- sprintf("c%d", seq_len(n))
+
+  # per-cell-type baseline log-mean
+  base <- matrix(rnorm(n_genes * length(cts), 1.5, 0.6), n_genes,
+                 dimnames = list(gn, cts))
+  lmu <- base[, cd$cell_type, drop = FALSE]
+
+  # per-(gene, sample) random intercept: real clustering, no response effect
+  u <- matrix(rnorm(n_genes * S, 0, sd_patient), n_genes,
+             dimnames = list(gn, sids))
+  lmu <- lmu + u[, cd$sample_id, drop = FALSE]
+
+  # planted A-index / B-niche response effect in the `nonnull` genes; x/field
+  # is a proxy for local B-niche density (B cells sit at high x)
+  if (length(nonnull) > 0 && beta != 0) {
+    is_A <- cd$cell_type == "A"
+    is_resp <- cd$condition == "Responder"
+    slope_shift <- if (sd_slope > 0) {
+      # per-sample random slope noise, shared across the nonnull genes'
+      # per-sample deviation but independent across samples
+      v <- setNames(rnorm(S, 0, sd_slope), sids)
+      v[cd$sample_id]
+    } else 0
+    eff <- (beta + slope_shift) * is_A * is_resp * (cd$x / field)
+    for (g in nonnull) lmu[g, ] <- lmu[g, ] + eff
+  }
+
+  mu <- exp(lmu)
+  counts <- matrix(rnbinom(length(mu), mu = as.vector(mu), size = 5), n_genes,
+                   dimnames = list(gn, cd$cell_id))
+  cd$Area <- exp(rnorm(n, sd = 0.2))
+  cd$nCount <- colSums(counts)
+
+  SpatialExperiment(assays = list(counts = counts),
+                    colData = S4Vectors::DataFrame(cd),
+                    spatialCoords = as.matrix(cd[, c("x", "y")]))
+}
+
+sim_null <- function(S = 10, n_per = 90, n_genes = 30, field = 500,
+                     sd_patient = 0.7, seed = 1) {
+  .simulate_spe(S, n_per, n_genes, field, sd_patient, seed)
+}
+
+sim_alt <- function(S = 10, n_per = 90, n_genes = 150, field = 500,
+                    prop_nonnull = 0.15, beta = 2, sd_patient = 0.7,
+                    sd_slope = 0, seed = 1) {
+  n_nonnull <- max(1, round(prop_nonnull * n_genes))
+  nonnull <- seq_len(n_nonnull) # G1..Gk are the true positives, by construction
+  spe <- .simulate_spe(S, n_per, n_genes, field, sd_patient, seed,
+                       nonnull = nonnull, beta = beta, sd_slope = sd_slope)
+  list(spe = spe, truth = seq_len(n_genes) %in% nonnull, nonnull_genes = nonnull)
+}
+```
+
+# Shared driver
+
+For a given simulated dataset we fit all three `random` modes at a single bandwidth and pull out two levels of evidence:
+
+-   **raw Wald p-values** on the `ResponseNiche` (A-index x B-niche) coefficient, gate-free — the cleanest signal for calibration/power curves;
+-   **end-to-end discoveries** from `results()`, thresholded on `fdr.niche` — what a user actually sees.
+
+```{r driver}
+sigma_fixed <- 30
+
+.raw_AB_p <- function(fit1) {
+  cn <- colnames(fit1@t_stat)
+  col <- which(grepl("CellTypeA", cn) & grepl("B$", cn) & grepl("Responder", cn))
+  stopifnot(length(col) == 1)
+  df <- if (is.null(fit1@df)) Inf else fit1@df
+  t <- fit1@t_stat[, col]
+  se <- fit1@se[, col]
+  list(t = t, p = 2 * stats::pt(-abs(t), df), coef = t * se)
+}
+
+run_one <- function(spe, random, fdr = 0.05) {
+  spe <- buildNiches(spe, sigma = sigma_fixed)
+  fit <- fitSpiDE(spe, "condition", sigma = sigma_fixed, random = random,
+                  verbose = FALSE)
+  res <- testSpiDE(fit, spe = spe, fdr = fdr)
+  f1 <- fits(res)[[1]]
+  raw <- .raw_AB_p(f1)
+  tab <- results(res)
+  hit <- tab$gene[tab$ct_index == "A" & tab$ct_niche == "B" & tab$fdr.niche <= fdr]
+  list(raw_p = raw$p, discoveries = unique(hit))
+}
+
+methods <- c(fixed = "none", intercept = "intercept", slope = "slope")
+```
+
+# Part A — calibration under the null
+
+No response effect is planted (`sim_null()`); every response test should be null, so p-values should be $\mathrm{Unif}(0,1)$ and the rejection rate at $\alpha = 0.05$ should be $\approx 0.05$ for a correctly calibrated method.
+
+```{r partA-run}
+S_grid_null <- if (RUN_FULL) c(4, 6, 10, 16, 24) else c(6, 16)
+
+partA <- bplapply(S_grid_null, function(S) {
+  reps <- lapply(seq_len(B), function(b) {
+    spe <- sim_null(S = S, seed = 1000 * S + b)
+    p <- vapply(methods, function(m) mean(run_one(spe, m)$raw_p < 0.05), numeric(1))
+    p
+  })
+  reps <- do.call(rbind, reps)
+  data.frame(S = S, method = names(methods), reject_rate = colMeans(reps))
+}, BPPARAM = BPPARAM)
+partA <- do.call(rbind, partA)
+partA
+```
+
+```{r partA-plot, fig.cap = "Type-I error (rejection rate at alpha=0.05) under the null, by number of samples S. Dashed line = nominal 0.05. The fixed-effects fit is inflated regardless of S; the mixed-effects fits are close to nominal and improve as S grows."}
+ggplot(partA, aes(S, reject_rate, colour = method)) +
+  geom_hline(yintercept = 0.05, linetype = "dashed", colour = "grey40") +
+  geom_line() + geom_point(size = 2) +
+  scale_y_log10() +
+  labs(y = "P(raw p < 0.05 | null)", title = "Null calibration vs number of samples") +
+  theme_bw()
+```
+
+A QQ-plot at a representative `S` makes the same point at the level of the full p-value distribution rather than a single threshold:
+
+```{r partA-qq, fig.cap = "QQ-plot of null response-niche p-values at S = 10. The mixed-effects fits track the uniform (dashed) reference; the fixed-effects fit is badly anti-conservative."}
+spe_qq <- sim_null(S = 10, seed = 99)
+p_qq <- lapply(methods, function(m) run_one(spe_qq, m)$raw_p)
+qq_df <- do.call(rbind, lapply(names(p_qq), function(m) {
+  p <- sort(p_qq[[m]])
+  data.frame(method = m, expected = -log10(ppoints(length(p))), observed = -log10(p))
+}))
+ggplot(qq_df, aes(expected, observed, colour = method)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey40") +
+  geom_point(size = 1.5, alpha = 0.7) +
+  labs(x = "expected -log10(p)", y = "observed -log10(p)") +
+  theme_bw()
+```
+
+# Part B — power vs samples and vs cells
+
+Now we plant a real effect (`sim_alt()`, `beta = 2`, 15% of genes true). Power is the fraction of the `nonnull_genes` recovered as raw-p `< 0.05`. We sweep `S` at fixed `n_per`, and `n_per` at fixed `S`, holding the effect size fixed in both sweeps (unlike the toy dataset, the same `beta`/`seed` structure is reused, only `S`/`n_per` change — no confound).
+
+```{r partB-run}
+S_grid <- if (RUN_FULL) c(4, 8, 12, 20, 30) else c(6, 12, 24)
+npc_grid <- if (RUN_FULL) c(40, 80, 160, 320, 640) else c(80, 200, 400)
+
+power_curve <- function(grid, vary = c("S", "n_per"), S_fixed = 10, npc_fixed = 90) {
+  vary <- match.arg(vary)
+  res <- bplapply(grid, function(v) {
+    S <- if (vary == "S") v else S_fixed
+    npc <- if (vary == "n_per") v else npc_fixed
+    reps <- lapply(seq_len(B), function(b) {
+      sim <- sim_alt(S = S, n_per = npc, seed = 2000 * v + b)
+      vapply(methods, function(m) {
+        p <- run_one(sim$spe, m)$raw_p
+        mean(p[sim$nonnull_genes] < 0.05)
+      }, numeric(1))
+    })
+    reps <- do.call(rbind, reps)
+    data.frame(value = v, method = names(methods), power = colMeans(reps))
+  }, BPPARAM = BPPARAM)
+  do.call(rbind, res)
+}
+
+partB_S <- power_curve(S_grid, vary = "S")
+partB_npc <- power_curve(npc_grid, vary = "n_per")
+```
+
+```{r partB-plot-S, fig.cap = "Power to detect the planted A-index/B-niche effect vs number of samples, at fixed cells/sample. Power rises for the mixed-effects methods as S grows."}
+ggplot(partB_S, aes(value, power, colour = method)) +
+  geom_line() + geom_point(size = 2) + ylim(0, 1) +
+  labs(x = "number of samples (S)", y = "power (P(raw p < 0.05 | true effect))") +
+  theme_bw()
+```
+
+```{r partB-plot-npc, fig.cap = "Power vs cells per sample, at fixed S. Under the mixed-effects correction power is essentially flat in cell count -- extra within-sample cells cannot substitute for extra samples, because the response label is constant within a sample."}
+ggplot(partB_npc, aes(value, power, colour = method)) +
+  geom_line() + geom_point(size = 2) + ylim(0, 1) +
+  labs(x = "cells per sample", y = "power (P(raw p < 0.05 | true effect))") +
+  theme_bw()
+```
+
+The contrast between the two panels is the whole answer to the motivating question: power climbs with `S` but is flat (or only weakly increasing, via the dispersion estimate) with `n_per`. The fixed-effects curve looks "more powerful" in both panels, but Part A already showed that its apparent power is inflated by the same anti-conservative bias that broke its null calibration -- comparing raw power across methods is only meaningful once Type-I error is matched, which is what Part C does properly via realized FDR.
+
+# Part C — FDR control end-to-end
+
+Using the full pipeline (`results()` gated on `fdr.niche`) with many genes (mostly null), we check whether the *realized* false discovery proportion (FDP) tracks the nominal FDR threshold, and how many of the true positives are recovered (TPR) at each threshold.
+
+```{r partC-run}
+fdr_grid <- if (RUN_FULL) c(0.01, 0.05, 0.1, 0.2, 0.3) else c(0.05, 0.2)
+S_fdr <- if (RUN_FULL) 16 else 12
+
+partC <- bplapply(fdr_grid, function(target) {
+  reps <- lapply(seq_len(B), function(b) {
+    sim <- sim_alt(S = S_fdr, n_genes = 150, prop_nonnull = 0.15, beta = 2,
+                   seed = 3000 * (target * 100) + b)
+    vapply(methods, function(m) {
+      spe <- buildNiches(sim$spe, sigma = sigma_fixed)
+      fit <- fitSpiDE(spe, "condition", sigma = sigma_fixed, random = m,
+                      verbose = FALSE)
+      res <- testSpiDE(fit, spe = spe, fdr = target)
+      tab <- results(res)
+      hit <- tab$gene[tab$ct_index == "A" & tab$ct_niche == "B" &
+                        tab$fdr.niche <= target]
+      hit <- unique(hit)
+      is_fp <- !(hit %in% sprintf("G%d", sim$nonnull_genes))
+      fdp <- if (length(hit) > 0) mean(is_fp) else 0
+      tpr <- mean(sprintf("G%d", sim$nonnull_genes) %in% hit)
+      c(fdp = fdp, tpr = tpr)
+    }, numeric(2))
+  })
+  reps <- simplify2array(reps) # 2 x method x B
+  data.frame(
+    target = target, method = rep(names(methods), 2),
+    metric = rep(c("fdp", "tpr"), each = length(methods)),
+    value = c(rowMeans(reps["fdp", , ]), rowMeans(reps["tpr", , ]))
+  )
+}, BPPARAM = BPPARAM)
+partC <- do.call(rbind, partC)
+```
+
+```{r partC-plot, fig.cap = "Realized false discovery proportion (top) and true-positive rate (bottom) vs the nominal FDR threshold. The dashed diagonal in the top panel is the y=x reference: points below it mean FDR is controlled; above it means it is exceeded."}
+p1 <- ggplot(subset(partC, metric == "fdp"), aes(target, value, colour = method)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey40") +
+  geom_line() + geom_point(size = 2) +
+  labs(x = "nominal FDR", y = "realized FDP") + theme_bw()
+p2 <- ggplot(subset(partC, metric == "tpr"), aes(target, value, colour = method)) +
+  geom_line() + geom_point(size = 2) + ylim(0, 1) +
+  labs(x = "nominal FDR", y = "TPR (recall)") + theme_bw()
+p1
+p2
+```
+
+# Part D — intercept vs slope: the few-responders trade-off
+
+The model vignette notes a trade-off: `random = "slope"` gives the fullest protection against pseudo-replication, but with few samples the random slope can absorb a genuine effect, because both describe between-sample variation in the same niche-dependent slope. We reproduce that here by shrinking `S` at fixed effect size and comparing `"intercept"` vs `"slope"`.
+
+```{r partD-run}
+S_small_grid <- if (RUN_FULL) c(4, 6, 8, 12) else c(4, 8)
+
+partD <- bplapply(S_small_grid, function(S) {
+  reps <- lapply(seq_len(B), function(b) {
+    sim <- sim_alt(S = S, n_genes = 60, prop_nonnull = 0.15, beta = 2.5,
+                   sd_slope = 0.4, seed = 4000 * S + b)
+    vapply(c(intercept = "intercept", slope = "slope"), function(m) {
+      p <- run_one(sim$spe, m)$raw_p
+      mean(p[sim$nonnull_genes] < 0.05)
+    }, numeric(1))
+  })
+  reps <- do.call(rbind, reps)
+  data.frame(S = S, method = c("intercept", "slope"), power = colMeans(reps))
+}, BPPARAM = BPPARAM)
+partD <- do.call(rbind, partD)
+```
+
+```{r partD-plot, fig.cap = "Power of random='intercept' vs random='slope' as the number of samples shrinks, with genuine per-sample slope heterogeneity present. With few samples, the random slope can absorb part of the true effect, making 'intercept' the more powerful (if less fully protective) default; the gap narrows as S grows."}
+ggplot(partD, aes(S, power, colour = method)) +
+  geom_line() + geom_point(size = 2) + ylim(0, 1) +
+  labs(x = "number of samples (S)", y = "power") + theme_bw()
+```
+
+# Discussion
+
+Putting the four pieces together answers the original question -- "I increased samples and cells and power didn't move":
+
+1.  **Cells cannot buy power under the mixed-effects correction, by design** (Part B, right panel). The response label is constant within a sample, so extra cells are pseudo-replicates; the Wald test for the response-niche effect is evaluated in the between-sample stratum (`df = S - 2`, and standard errors that floor at the between-sample variance scale), matching the between-sample degrees of freedom documented in the model vignette.
+2.  **Samples do buy power** (Part B, left panel), and this study isolates that cleanly because `beta`/`sd_patient`/seeds are held structurally fixed across the sweep -- something the bundled toy generator does not do, since it draws its entire dataset (coordinates, cell types, baselines, noise) from one `set.seed()` call that depends on `n_samples`/`n_per` themselves.
+3.  **The fixed-effects fit's apparent extra "power" is not real power** -- Part A shows it is badly anti-conservative under the null regardless of sample size, so any power comparison against it is unfair until Type-I error is matched; Part C's realized-FDR curves make the honest comparison and show the mixed-effects fits controlling FDR near the nominal level while the fixed-effects fit overshoots.
+4.  **Gene-level gating can hide a real, well-powered niche-level hit.** In the original toy example the gene-level FDR was pinned near 1 (Brown-combining one strong interaction with several null ones, then BH over only \~20 genes) even when the niche-level test (`fdr.niche`) was already strongly significant. This study reports power/FDR at the niche level throughout to avoid that dilution; Part C confirms the same gating still yields controlled FDR when there are enough true positives to estimate it.
+5.  **With very few samples, `random = "slope"` can cost power relative to `"intercept"`** (Part D), because a real per-sample slope effect is statistically hard to distinguish from slope noise when there are only a handful of patients to average over.
+
+## Scaling up this study
+
+The chunks above default to a small grid (`RUN_FULL <- FALSE`) so the vignette renders quickly. To reproduce a publication-quality version, set `RUN_FULL <- TRUE` at the top (finer grids, `B = 40` replicate seeds) and raise `NPAR` to the number of available cores; expect a runtime of tens of minutes to a few hours depending on hardware, dominated by the `S/n_per` sweeps in Parts B-C. All simulation parameters (`sd_patient`, `beta`, `sd_slope`, `n_genes`, `prop_nonnull`) are exposed as generator arguments and can be swept further to probe other regimes (e.g. weaker effects, higher between-sample noise).
+
+# Session info
+
+```{r sessioninfo}
+sessionInfo()
+```

@@ -170,6 +170,7 @@ ggplot(typeI, aes(rho, typeI, colour = method)) +
   geom_line(linewidth = 0.8) + geom_point(size = 1.8) +
   facet_wrap(~ paste0("m = ", k), nrow = 1) +
   scale_colour_manual(values = methods_pal) +
+  ylim(0, 0.1) +
   labs(x = expression(rho), y = "empirical type-I error (nominal 0.05)",
        colour = NULL, title = "Type-I error vs correlation") +
   theme(legend.position = "top")

@@ -67,9 +67,16 @@ so they can be forwarded via `...` without renaming.
      this stage IS blockable, dispatched via `BiocParallel`), computes working weights from
      `SpaNorm::calculateMu`, Wald t-statistics/SEs for the `Response`/`ResponseNiche` columns
      (`SpaNorm::invert_mat` for the covariance inverse), then combines correlated `ResponseNiche`
-     p-values within a gene using **Brown's method** (`poolr::mvnconv` + `poolr::fisher`), separately
-     for up/down directions and at both gene-level and per-index-cell-type granularity. This mirrors
-     the per-gene loop in the original `batch_nichede_v9.R` almost line-for-line.
+     p-values within a gene — separately for up/down directions and at both gene-level and
+     per-index-cell-type granularity — using the combiner chosen by the `combine` argument of
+     `testSpiDE()`/`spiDE()`: **`"cauchy"`** (the default; the correlation-agnostic tan-transform
+     Cauchy/ACAT test via `.cauchyCombine()`, with a `1e-15` clamp on the one-sided p-values) or
+     **`"brown"`** (Brown's method, `poolr::mvnconv` + `poolr::fisher`, which consumes the
+     coefficient correlation matrix). Brown's method mirrors the per-gene loop in the original
+     `batch_nichede_v9.R` almost line-for-line; Cauchy was made the default after a calibration/power
+     study (`vignettes/spiDE-cauchy-vs-brown.Rmd`) showed it matches or beats Brown while controlling
+     type-I error under correlation without estimating `R`. The two combiners populate the same
+     `p.combined.pos`/`p.combined.neg` slots (see below), so downstream code is combiner-agnostic.
    - `.cauchyCombine()` / `.geneWeights()` / `.combineBandwidths()` (`R/combine.R`) — combines
      p-values **across bandwidths** with a tan-transform Cauchy combination test, weighted by each
      gene's relative log-likelihood across bandwidths (`exp(loglik - rowMax)`, thresholded).
@@ -83,15 +90,17 @@ so they can be forwarded via `...` without renaming.
 The counts matrix `Y` may be dense, sparse, or a `DelayedArray` and is never eagerly densified. The
 **fit** stage (`fitSpiDE`) always sees the entire gene set in one `fitNB` call. The **inference**
 stage (`.blockedInference`) is the only place genes are chunked (`.chunkGenes()`,
-user-controlled via `block.size`) and parallelised (`BPPARAM`) — because per-gene Wald/Brown results
-depend only on that gene's own `alpha`/`psi`, this is exact, not an approximation. When modifying
-either stage, preserve this split.
+user-controlled via `block.size`) and parallelised (`BPPARAM`) — because per-gene Wald +
+combination results depend only on that gene's own `alpha`/`psi`, this is exact, not an
+approximation. When modifying either stage, preserve this split.
 
 ### S4 classes
 
 - `SpiDEFit` (`R/AllClasses.R`) — one bandwidth's fit + inference (design `W`, per-column `covtype`
-  tags, `coefmap`, per-gene `alpha`/`psi`/`loglik`, and once inferred: `t_stat`, `se`, `p.brown.pos`,
-  `p.brown.neg`).
+  tags, `coefmap`, per-gene `alpha`/`psi`/`loglik`, and once inferred: `t_stat`, `se`,
+  `p.combined.pos`, `p.combined.neg` — the last two hold the within-gene combined p-values from
+  whichever combiner (`"cauchy"` default / `"brown"`) was used; they are a
+  `genes × (1 + n_index)` matrix, column `"Gene"` then one per index cell type).
 - `SpiDEResults` (`R/AllClasses.R`) — container for a list of `SpiDEFit` (one per bandwidth) plus
   cross-bandwidth combined p-values and the final tidy `results` data.frame. Both classes expose a
   `$` accessor (`slot(x, name)`) and a `show` method; validity is enforced via `setValidity()`.
