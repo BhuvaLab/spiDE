@@ -11,7 +11,13 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE, comment = "#>",
+  fig.width = 7, fig.height = 4, dpi = 150, fig.retina = 2
+)
+set.seed(1)
+```
 
 > **Note (maintainers):** this is a *precomputed* vignette. The results and figures
 > below are baked in from a local run; the shipped `.Rmd` is not re-executed at build
@@ -42,8 +48,7 @@ full dispersion** produces the coefficients and dispersion that inference uses.
 So subsampling perturbs only the shared variance estimate, not the per-gene
 effect sizes. This vignette quantifies the time saved and the accuracy cost.
 
-
-``` r
+```{r libs, message = FALSE}
 library(spiDE)
 library(ggplot2)
 ```
@@ -55,8 +60,7 @@ above the 100-cell floor), with both a planted patient-level random intercept
 (so `tau2 > 0`) and a recoverable `response x niche` signal on gene `G1` in index
 cell type `A` (so the response-niche t-statistics have a real range to compare).
 
-
-``` r
+```{r makedata}
 makeBenchData <- function(n_samples = 6, n_per = 600, n_genes = 80,
                           field = 500, sd_patient = 0.6, beta = 1.2, seed = 1) {
   set.seed(seed)
@@ -98,16 +102,7 @@ makeBenchData <- function(n_samples = 6, n_per = 600, n_genes = 80,
 
 spe <- buildNiches(makeBenchData(), sigma = 30, verbose = FALSE)
 dim(spe)
-#> [1]   80 3600
 table(spe$sample_id, spe$cell_type)
-#>     
-#>        A   B   C
-#>   S1 205 157 238
-#>   S2 198 162 240
-#>   S3 221 167 212
-#>   S4 223 158 219
-#>   S5 213 170 217
-#>   S6 225 148 227
 ```
 
 We fix `backend = "cpu"` throughout so the timings reflect compute alone. (With
@@ -116,8 +111,7 @@ independent of the model and would obscure the comparison on a GPU-less machine.
 
 # A single fit-and-test helper
 
-
-``` r
+```{r helper}
 runOne <- function(spe, re.prop, re.maxit.psi, seed = 1) {
   set.seed(seed)
   t <- system.time(
@@ -146,8 +140,7 @@ dispersion). Each subsampled fit is compared against it: we report the wall-cloc
 speed-up, the correlation of the response-niche t-statistics, and whether the
 planted `G1` hit stays top-ranked.
 
-
-``` r
+```{r sweep}
 ref <- runOne(spe, re.prop = 1, re.maxit.psi = 25)
 
 props <- c(1, 0.5, 0.25, 0.1, 0.05)
@@ -167,20 +160,7 @@ sweep <- do.call(rbind, sweep)
 knitr::kable(sweep, digits = 3, row.names = FALSE)
 ```
 
-
-
-| re.prop|   time| speedup| tstat_cor| tau2_int| tau2_slope| rank_G1|
-|-------:|------:|-------:|---------:|--------:|----------:|-------:|
-|    1.00| 11.745|   1.542|         1|    0.386|          0|       1|
-|    0.50|  7.080|   2.559|         1|    0.384|          0|       1|
-|    0.25|  7.204|   2.515|         1|    0.388|          0|       1|
-|    0.10|  7.165|   2.528|         1|    0.388|          0|       1|
-|    0.05|  6.948|   2.607|         1|    0.388|          0|       1|
-
-
-
-
-``` r
+```{r plot-time, fig.cap = "Wall-clock time falls sharply as cells are subsampled; the fully-accurate reference is the leftmost point."}
 ggplot(sweep, aes(re.prop, time)) +
   geom_line(colour = "grey60") +
   geom_point(aes(colour = factor(re.prop)), size = 3) +
@@ -190,13 +170,7 @@ ggplot(sweep, aes(re.prop, time)) +
   theme_bw()
 ```
 
-<div class="figure">
-<img src="spiDE-mixed-benchmark-fig-plot-time-1.png" alt="Wall-clock time falls sharply as cells are subsampled; the fully-accurate reference is the leftmost point." width="1050" />
-<p class="caption">Wall-clock time falls sharply as cells are subsampled; the fully-accurate reference is the leftmost point.</p>
-</div>
-
-
-``` r
+```{r plot-acc, fig.cap = "Response-niche t-statistics stay almost perfectly correlated with the full-data reference across the whole sampling range."}
 ggplot(sweep, aes(re.prop, tstat_cor)) +
   geom_line(colour = "grey60") +
   geom_point(aes(colour = factor(re.prop)), size = 3) +
@@ -206,11 +180,6 @@ ggplot(sweep, aes(re.prop, tstat_cor)) +
        y = "t-stat correlation vs reference", colour = "re.prop") +
   theme_bw()
 ```
-
-<div class="figure">
-<img src="spiDE-mixed-benchmark-fig-plot-acc-1.png" alt="Response-niche t-statistics stay almost perfectly correlated with the full-data reference across the whole sampling range." width="1050" />
-<p class="caption">Response-niche t-statistics stay almost perfectly correlated with the full-data reference across the whole sampling range.</p>
-</div>
 
 Accuracy stays high because the coefficients come from the full final fit;
 `re.prop` only moves the shared `tau2`, and `tau2` moves little (below).
@@ -222,8 +191,7 @@ quantify how much that jitters the estimates by repeating the default fit over
 several seeds. Small spread here is the justification for keeping sampling on by
 default.
 
-
-``` r
+```{r rng}
 seeds <- 1:10
 rng <- lapply(seeds, function(s) {
   o <- runOne(spe, re.prop = 0.1, re.maxit.psi = 1, seed = s)
@@ -233,21 +201,6 @@ rng <- lapply(seeds, function(s) {
 })
 rng <- do.call(rbind, rng)
 knitr::kable(rng[1:5, ], digits = 4, row.names = FALSE)
-```
-
-
-
-| seed| tau2_int| tau2_slope| rank_G1| tstat_cor|
-|----:|--------:|----------:|-------:|---------:|
-|    1|   0.3883|          0|       1|    0.9996|
-|    2|   0.3838|          0|       1|    0.9996|
-|    3|   0.3822|          0|       1|    0.9996|
-|    4|   0.3777|          0|       1|    0.9996|
-|    5|   0.3796|          0|       1|    0.9996|
-
-
-
-``` r
 
 data.frame(
   metric = c("tau2 (intercept)", "t-stat cor vs ref"),
@@ -257,17 +210,7 @@ data.frame(
 ) |> knitr::kable(digits = 4)
 ```
 
-
-
-|metric            |   mean|     sd|     cv|
-|:-----------------|------:|------:|------:|
-|tau2 (intercept)  | 0.3819| 0.0033| 0.0086|
-|t-stat cor vs ref | 0.9996| 0.0000|     NA|
-
-
-
-
-``` r
+```{r plot-rng, fig.width = 6, fig.height = 3.5, fig.cap = "Across random subsamples the intercept variance component is tightly clustered around the reference (dashed line)."}
 ggplot(rng, aes(x = "re.prop = 0.1", y = tau2_int)) +
   geom_boxplot(width = 0.3, fill = "grey90") +
   geom_jitter(width = 0.05, size = 2, colour = "steelblue") +
@@ -276,11 +219,6 @@ ggplot(rng, aes(x = "re.prop = 0.1", y = tau2_int)) +
   labs(x = NULL, y = expression(tau^2 ~ "(SampleInt)")) +
   theme_bw()
 ```
-
-<div class="figure">
-<img src="spiDE-mixed-benchmark-fig-plot-rng-1.png" alt="Across random subsamples the intercept variance component is tightly clustered around the reference (dashed line)." width="900" />
-<p class="caption">Across random subsamples the intercept variance component is tightly clustered around the reference (dashed line).</p>
-</div>
 
 # Summary
 
@@ -293,78 +231,6 @@ ggplot(rng, aes(x = "re.prop = 0.1", y = tau2_int)) +
 * Set `re.prop = 1` for a fully reproducible (seed-independent) fit, at the cost
   of speed. Set an external `set.seed()` to make the subsampled fit reproducible.
 
-
-``` r
+```{r session}
 sessionInfo()
-#> R version 4.6.1 (2026-06-24)
-#> Platform: aarch64-apple-darwin23
-#> Running under: macOS Tahoe 26.5
-#> 
-#> Matrix products: default
-#> BLAS:   /Library/Frameworks/R.framework/Versions/4.6/Resources/lib/libRblas.0.dylib 
-#> LAPACK: /Library/Frameworks/R.framework/Versions/4.6/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.1
-#> 
-#> locale:
-#> [1] C.UTF-8/C.UTF-8/C.UTF-8/C/C.UTF-8/C.UTF-8
-#> 
-#> time zone: Australia/Brisbane
-#> tzcode source: internal
-#> 
-#> attached base packages:
-#> [1] stats     graphics  grDevices utils     datasets  methods   base     
-#> 
-#> other attached packages:
-#> [1] ggplot2_4.0.3  spiDE_0.99.0   testthat_3.3.2
-#> 
-#> loaded via a namespace (and not attached):
-#>   [1] deldir_2.0-4                poolr_1.2-0                
-#>   [3] rlang_1.3.0                 magrittr_2.0.5             
-#>   [5] otel_0.2.0                  matrixStats_1.5.0          
-#>   [7] compiler_4.6.1              spatstat.geom_3.8-1        
-#>   [9] DelayedMatrixStats_1.34.0   callr_3.8.0                
-#>  [11] vctrs_0.7.3                 pkgconfig_2.0.3            
-#>  [13] SpatialExperiment_1.22.0    fastmap_1.2.0              
-#>  [15] magick_2.9.1                XVector_0.52.0             
-#>  [17] ellipsis_0.3.3              labeling_0.4.3             
-#>  [19] sessioninfo_1.2.4           torch_0.17.0               
-#>  [21] purrr_1.2.2                 bit_4.6.0                  
-#>  [23] xfun_0.59                   cachem_1.1.0               
-#>  [25] beachmat_2.28.0             goftest_1.2-3              
-#>  [27] DelayedArray_0.38.2         spatstat.utils_3.2-3       
-#>  [29] BiocParallel_1.46.0         irlba_2.3.7                
-#>  [31] parallel_4.6.1              R6_2.6.1                   
-#>  [33] RColorBrewer_1.1-3          spatstat.data_3.1-9        
-#>  [35] limma_3.68.4                spatstat.univar_3.2-0      
-#>  [37] pkgload_1.5.3               brio_1.1.5                 
-#>  [39] GenomicRanges_1.64.0        Rcpp_1.1.1-1.1             
-#>  [41] Seqinfo_1.2.0               SummarizedExperiment_1.42.0
-#>  [43] knitr_1.51                  tensor_1.5.1               
-#>  [45] usethis_3.2.1               IRanges_2.46.0             
-#>  [47] splines_4.6.1               Matrix_1.7-5               
-#>  [49] tidyselect_1.2.1            rstudioapi_0.19.0          
-#>  [51] abind_1.4-8                 codetools_0.2-20           
-#>  [53] spatstat.random_3.5-0       spatstat.explore_3.8-1     
-#>  [55] processx_3.9.0              pkgbuild_1.4.8             
-#>  [57] lattice_0.22-9              tibble_3.3.1               
-#>  [59] Biobase_2.72.0              withr_3.0.3                
-#>  [61] S7_0.2.2                    evaluate_1.0.5             
-#>  [63] desc_1.4.3                  SpaNorm_1.7.4              
-#>  [65] polyclip_1.10-7             pillar_1.11.1              
-#>  [67] MatrixGenerics_1.24.0       stats4_4.6.1               
-#>  [69] generics_0.1.4              rprojroot_2.1.1            
-#>  [71] mathjaxr_2.0-0              S4Vectors_0.50.1           
-#>  [73] sparseMatrixStats_1.24.0    scales_1.4.0               
-#>  [75] coro_1.1.0                  glue_1.8.1                 
-#>  [77] tools_4.6.1                 ScaledMatrix_1.20.0        
-#>  [79] locfit_1.5-9.12             fs_2.1.0                   
-#>  [81] grid_4.6.1                  devtools_2.5.2             
-#>  [83] edgeR_4.10.1                SingleCellExperiment_1.34.0
-#>  [85] nlme_3.1-169                BiocSingular_1.28.0        
-#>  [87] cli_3.6.6                   rsvd_1.0.5                 
-#>  [89] spatstat.sparse_3.2-0       S4Arrays_1.12.0            
-#>  [91] dplyr_1.2.1                 gtable_0.3.6               
-#>  [93] BiocGenerics_0.58.1         SparseArray_1.12.2         
-#>  [95] rjson_0.2.23                farver_2.1.2               
-#>  [97] memoise_2.0.1               lifecycle_1.0.5            
-#>  [99] statmod_1.5.2               bit64_4.8.2
 ```

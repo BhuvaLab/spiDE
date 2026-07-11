@@ -216,7 +216,20 @@
 #' interactions (an index cell type against its own density) are dropped. This
 #' is an escape hatch for custom fits; most users should call [fitSpiDE()].
 #'
-#' @inheritParams .buildNicheDesign
+#' @param spe a SpatialExperiment with a niche reducedDim for \code{sigma}.
+#' @param condition a character, the colData column of the tested condition.
+#' @param sigma a numeric, the bandwidth (a single value).
+#' @param index,niche character vectors restricting index / niche cell types
+#'   (NULL = all).
+#' @param covariates a character vector of nuisance colData columns.
+#' @param cell_type a character, the colData column of cell type labels.
+#' @param name a character, the niche reducedDim prefix.
+#' @param sample_id a character, the colData column identifying samples
+#'   (patients); used only when \code{random != "none"}.
+#' @param random one of "none" (fixed-effects design, the default), "intercept"
+#'   (add a per-sample random intercept) or "slope" (also add per-sample random
+#'   slopes on the niche covariates). The random-effect columns are penalised at
+#'   fit time to implement a mixed model via ridge (see the vignette).
 #' @param ... ignored.
 #'
 #' @return a list with `W` (the design matrix), `covtype` (a factor of column

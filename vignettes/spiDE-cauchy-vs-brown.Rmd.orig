@@ -11,7 +11,13 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE, comment = "#>",
+  fig.width = 7, fig.height = 4.2, dpi = 150, fig.retina = 2
+)
+set.seed(1)
+```
 
 > **Note (maintainers):** this is a *precomputed* vignette. The results and figures
 > below are baked in from a local run; the shipped `.Rmd` is not re-executed at build
@@ -32,8 +38,7 @@ strong positive dependence.
 The combiner is selectable via the `combine` argument of `testSpiDE()` /
 `spiDE()`:
 
-
-``` r
+```{r api, eval = FALSE}
 res <- spiDE(spe, condition = "condition", combine = "cauchy") # default
 res <- spiDE(spe, condition = "condition", combine = "brown")  # alternative
 ```
@@ -48,8 +53,7 @@ The assessment has two tiers:
 2. a **full-pipeline** comparison on the packaged toy dataset, where only the
    combiner differs.
 
-
-``` r
+```{r libs, message = FALSE}
 library(spiDE)
 library(ggplot2)
 theme_set(theme_bw(base_size = 11))
@@ -74,8 +78,7 @@ Given $m$ one-sided p-values $p_1,\dots,p_m$ for a gene:
 The functions below reproduce exactly what the package does internally
 (`.cauchyCombine()` and the `poolr` call in `.waldBrownGene()`).
 
-
-``` r
+```{r combiners}
 # exchangeable-correlated standard normals via a shared common factor:
 #   Z_j = sqrt(rho) * U + sqrt(1 - rho) * E_j   =>   cor(Z_i, Z_j) = rho
 rmvnorm_exch <- function(n, k, rho, mean = 0) {
@@ -103,8 +106,7 @@ We draw $m$ correlated z-scores with exchangeable correlation $\rho$, turn them
 into one-sided p-values $p_j = \Pr(Z > z_j)$, and combine. Under the null the
 z-scores have mean 0 and the combined p-value should be Uniform(0, 1).
 
-
-``` r
+```{r sim-grid}
 nsim  <- 3000
 rhos  <- c(0, 0.3, 0.6, 0.9)
 ks    <- c(3, 5, 10)
@@ -134,8 +136,7 @@ null_res <- do.call(rbind, lapply(ks, function(k) {
 A perfectly calibrated test lies on the diagonal of a p-value QQ plot. We show
 $m = 5$ across the four correlation levels.
 
-
-``` r
+```{r qq, fig.height = 4.6}
 qq_df <- do.call(rbind, by(
   subset(null_res, k == 5), list(null_res$method[null_res$k == 5],
                                  null_res$rho[null_res$k == 5]),
@@ -157,11 +158,6 @@ ggplot(qq_df, aes(-log10(expected), -log10(p), colour = method)) +
   theme(legend.position = "top")
 ```
 
-<div class="figure">
-<img src="spiDE-cauchy-vs-brown-fig-qq-1.png" alt="plot of chunk qq" width="1050" />
-<p class="caption">plot of chunk qq</p>
-</div>
-
 At $\rho = 0$ both track the diagonal. As correlation grows, **Brown** (which is
 handed the true $R$) stays on the diagonal, while **Cauchy** bends slightly
 below it in the body — mildly conservative in the bulk — but the two converge
@@ -169,8 +165,7 @@ again in the extreme tail that actually drives FDR.
 
 ## Type-I error at $\alpha = 0.05$
 
-
-``` r
+```{r typeI}
 typeI <- aggregate(p ~ method + k + rho, null_res,
                    function(x) mean(x <= 0.05))
 names(typeI)[names(typeI) == "p"] <- "typeI"
@@ -186,13 +181,7 @@ ggplot(typeI, aes(rho, typeI, colour = method)) +
   theme(legend.position = "top")
 ```
 
-<div class="figure">
-<img src="spiDE-cauchy-vs-brown-fig-typeI-1.png" alt="plot of chunk typeI" width="1050" />
-<p class="caption">plot of chunk typeI</p>
-</div>
-
-
-``` r
+```{r typeI-table}
 knitr::kable(
   reshape(typeI, idvar = c("k", "rho"), timevar = "method",
           direction = "wide"),
@@ -201,27 +190,6 @@ knitr::kable(
   caption = "Empirical type-I error at alpha = 0.05."
 )
 ```
-
-
-
-Table: Empirical type-I error at alpha = 0.05.
-
-|  m| rho| Brown| Cauchy|
-|--:|---:|-----:|------:|
-|  3| 0.0| 0.042|  0.046|
-|  5| 0.0| 0.043|  0.045|
-| 10| 0.0| 0.052|  0.054|
-|  3| 0.3| 0.057|  0.063|
-|  5| 0.3| 0.044|  0.054|
-| 10| 0.3| 0.049|  0.064|
-|  3| 0.6| 0.046|  0.053|
-|  5| 0.6| 0.046|  0.057|
-| 10| 0.6| 0.051|  0.064|
-|  3| 0.9| 0.048|  0.051|
-|  5| 0.9| 0.049|  0.051|
-| 10| 0.9| 0.047|  0.051|
-
-
 
 Both combiners control type-I error across every correlation level; neither is
 anti-conservative. Cauchy is marginally conservative as $\rho \to 0.9$,
@@ -233,8 +201,7 @@ We now shift a subset of the $m$ columns by a common effect $\delta$ (the rest
 stay null) and measure the detection rate at the 0.05 threshold, sweeping
 $\delta$ at a challenging $\rho = 0.6$, $m = 5$ with 2 signal columns.
 
-
-``` r
+```{r power}
 delta_grid <- seq(0, 3, by = 0.5)
 k <- 5; rho <- 0.6; n_signal <- 2
 
@@ -261,11 +228,6 @@ ggplot(power_res, aes(delta, power, colour = method)) +
   theme(legend.position = "top")
 ```
 
-<div class="figure">
-<img src="spiDE-cauchy-vs-brown-fig-power-1.png" alt="plot of chunk power" width="1050" />
-<p class="caption">plot of chunk power</p>
-</div>
-
 The two curves are near-identical: Cauchy sacrifices essentially no power to
 gain its distribution-free calibration, and is marginally ahead once the signal
 is strong (its heavy tail rewards a single very small p-value).
@@ -277,8 +239,7 @@ planted signal (gene `G1` up-regulated in index cell type `A`, driven by the
 local density of niche cell type `B`) — under both combiners, changing nothing
 else.
 
-
-``` r
+```{r pipeline, message = FALSE}
 data(toySpiDE)
 spe <- buildNiches(toySpiDE, sigma = c(10, 30, 50))
 
@@ -293,8 +254,7 @@ tc <- results(fit_cauchy)
 
 ## Recovery of the planted G1 / A / B signal
 
-
-``` r
+```{r recovery}
 planted <- function(tab, method) {
   x <- tab[tab$gene == "G1" & tab$ct_index == "A" & tab$ct_niche == "B", ]
   g1a <- tab[tab$gene == "G1" & tab$ct_index == "A", ]
@@ -311,24 +271,12 @@ knitr::kable(rbind(planted(tb, "Brown"), planted(tc, "Cauchy")),
              caption = "Both combiners recover the planted G1/A/B effect.")
 ```
 
-
-
-Table: Both combiners recover the planted G1/A/B effect.
-
-|method |direction |     t| fdr.niche|strongest_niche_for_G1A |
-|:------|:---------|-----:|---------:|:-----------------------|
-|Brown  |Up        | 15.56|         0|B                       |
-|Cauchy |Up        | 15.56|         0|B                       |
-
-
-
 Both flag the same effect, in the same (Up) direction, with `B` as the strongest
 niche for `G1` in index `A` — the combiner does not disturb signal recovery.
 
 ## Agreement across all genes
 
-
-``` r
+```{r agreement, fig.height = 4.2}
 m <- merge(
   tb[, c("gene", "ct_index", "ct_niche", "fdr.niche")],
   tc[, c("gene", "ct_index", "ct_niche", "fdr.niche")],
@@ -343,35 +291,25 @@ ggplot(m, aes(-log10(fdr.niche.brown), -log10(fdr.niche.cauchy))) +
        title = "Per-(gene, index, niche) FDRs agree closely")
 ```
 
-<div class="figure">
-<img src="spiDE-cauchy-vs-brown-fig-agreement-1.png" alt="plot of chunk agreement" width="1050" />
-<p class="caption">plot of chunk agreement</p>
-</div>
-
-
-``` r
+```{r agreement-cor}
 cor_val <- cor(-log10(m$fdr.niche.brown), -log10(m$fdr.niche.cauchy),
                method = "spearman")
 ```
 
 The two rankings are highly concordant (Spearman
-$\rho = 1$ on the niche-level FDRs).
+$\rho = `r round(cor_val, 3)`$ on the niche-level FDRs).
 
 # Summary
 
-
-
-Table: Brown vs Cauchy at a glance.
-
-|Property                 |Brown             |Cauchy                                   |
-|:------------------------|:-----------------|:----------------------------------------|
-|Correlation handling     |explicit (uses R) |distribution-free                        |
-|Needs correlation matrix |yes               |no                                       |
-|Type-I control (all rho) |nominal           |nominal, mildly conservative at high rho |
-|Power                    |reference         |matches Brown                            |
-|Dependency               |poolr             |none                                     |
-
-
+```{r verdict, echo = FALSE}
+knitr::kable(data.frame(
+  Property = c("Correlation handling", "Needs correlation matrix",
+               "Type-I control (all rho)", "Power", "Dependency"),
+  Brown = c("explicit (uses R)", "yes", "nominal", "reference", "poolr"),
+  Cauchy = c("distribution-free", "no", "nominal, mildly conservative at high rho",
+             "matches Brown", "none")
+), caption = "Brown vs Cauchy at a glance.")
+```
 
 **Verdict.** On both the controlled Monte Carlo and the full pipeline, Cauchy
 combination matches or beats Brown's method: it controls type-I error at every
@@ -386,78 +324,6 @@ within-gene combination step (`combine = "cauchy"`). Brown's method is retained
 as a selectable alternative (`combine = "brown"`) for back-compatibility and for
 settings where an explicit, correlation-aware combiner is preferred.
 
-
-``` r
+```{r session}
 sessionInfo()
-#> R version 4.6.1 (2026-06-24)
-#> Platform: aarch64-apple-darwin23
-#> Running under: macOS Tahoe 26.5
-#> 
-#> Matrix products: default
-#> BLAS:   /Library/Frameworks/R.framework/Versions/4.6/Resources/lib/libRblas.0.dylib 
-#> LAPACK: /Library/Frameworks/R.framework/Versions/4.6/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.1
-#> 
-#> locale:
-#> [1] C.UTF-8/C.UTF-8/C.UTF-8/C/C.UTF-8/C.UTF-8
-#> 
-#> time zone: Australia/Brisbane
-#> tzcode source: internal
-#> 
-#> attached base packages:
-#> [1] stats     graphics  grDevices utils     datasets  methods   base     
-#> 
-#> other attached packages:
-#> [1] ggplot2_4.0.3  spiDE_0.99.0   testthat_3.3.2
-#> 
-#> loaded via a namespace (and not attached):
-#>   [1] deldir_2.0-4                poolr_1.2-0                
-#>   [3] rlang_1.3.0                 magrittr_2.0.5             
-#>   [5] otel_0.2.0                  matrixStats_1.5.0          
-#>   [7] compiler_4.6.1              spatstat.geom_3.8-1        
-#>   [9] DelayedMatrixStats_1.34.0   callr_3.8.0                
-#>  [11] vctrs_0.7.3                 pkgconfig_2.0.3            
-#>  [13] SpatialExperiment_1.22.0    fastmap_1.2.0              
-#>  [15] magick_2.9.1                XVector_0.52.0             
-#>  [17] ellipsis_0.3.3              labeling_0.4.3             
-#>  [19] sessioninfo_1.2.4           torch_0.17.0               
-#>  [21] purrr_1.2.2                 bit_4.6.0                  
-#>  [23] xfun_0.59                   cachem_1.1.0               
-#>  [25] beachmat_2.28.0             goftest_1.2-3              
-#>  [27] DelayedArray_0.38.2         spatstat.utils_3.2-3       
-#>  [29] BiocParallel_1.46.0         irlba_2.3.7                
-#>  [31] parallel_4.6.1              R6_2.6.1                   
-#>  [33] RColorBrewer_1.1-3          spatstat.data_3.1-9        
-#>  [35] limma_3.68.4                spatstat.univar_3.2-0      
-#>  [37] pkgload_1.5.3               brio_1.1.5                 
-#>  [39] GenomicRanges_1.64.0        Rcpp_1.1.1-1.1             
-#>  [41] Seqinfo_1.2.0               SummarizedExperiment_1.42.0
-#>  [43] knitr_1.51                  tensor_1.5.1               
-#>  [45] usethis_3.2.1               IRanges_2.46.0             
-#>  [47] splines_4.6.1               Matrix_1.7-5               
-#>  [49] tidyselect_1.2.1            rstudioapi_0.19.0          
-#>  [51] abind_1.4-8                 codetools_0.2-20           
-#>  [53] spatstat.random_3.5-0       spatstat.explore_3.8-1     
-#>  [55] processx_3.9.0              pkgbuild_1.4.8             
-#>  [57] lattice_0.22-9              tibble_3.3.1               
-#>  [59] Biobase_2.72.0              withr_3.0.3                
-#>  [61] S7_0.2.2                    evaluate_1.0.5             
-#>  [63] desc_1.4.3                  SpaNorm_1.7.4              
-#>  [65] polyclip_1.10-7             pillar_1.11.1              
-#>  [67] MatrixGenerics_1.24.0       stats4_4.6.1               
-#>  [69] generics_0.1.4              rprojroot_2.1.1            
-#>  [71] mathjaxr_2.0-0              S4Vectors_0.50.1           
-#>  [73] sparseMatrixStats_1.24.0    scales_1.4.0               
-#>  [75] coro_1.1.0                  glue_1.8.1                 
-#>  [77] tools_4.6.1                 ScaledMatrix_1.20.0        
-#>  [79] locfit_1.5-9.12             fs_2.1.0                   
-#>  [81] grid_4.6.1                  devtools_2.5.2             
-#>  [83] edgeR_4.10.1                SingleCellExperiment_1.34.0
-#>  [85] nlme_3.1-169                BiocSingular_1.28.0        
-#>  [87] cli_3.6.6                   rsvd_1.0.5                 
-#>  [89] spatstat.sparse_3.2-0       S4Arrays_1.12.0            
-#>  [91] dplyr_1.2.1                 gtable_0.3.6               
-#>  [93] BiocGenerics_0.58.1         SparseArray_1.12.2         
-#>  [95] rjson_0.2.23                farver_2.1.2               
-#>  [97] memoise_2.0.1               lifecycle_1.0.5            
-#>  [99] statmod_1.5.2               bit64_4.8.2
 ```

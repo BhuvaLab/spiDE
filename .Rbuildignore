@@ -7,3 +7,9 @@
 ^\.devcontainer$
 ^LICENSE\.md$
 ^\.lintr$
+^vignettes/.*\.Rmd\.orig$
+^vignettes/precompile\.R$
+^CLAUDE\.md$
+^\.claude$
+^\.DS_Store$
+^.*/\.DS_Store$

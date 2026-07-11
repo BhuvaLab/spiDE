@@ -1,0 +1,43 @@
+url: https://bhuvad.github.io/spiDE
+
+template:
+  bootstrap: 5
+  light-switch: true
+
+navbar:
+  structure:
+    left:  [articles, validation, reference, news]
+    right: [search, github, lightswitch]
+  components:
+    articles:
+      text: Articles
+      menu:
+      - text: Neighbourhood-dependent DE with spiDE
+        href: articles/spiDE.html
+      - text: The spiDE model
+        href: articles/spiDE-model.html
+    validation:
+      text: Statistical validation
+      menu:
+      - text: Combining niche p-values — Brown vs Cauchy
+        href: articles/spiDE-cauchy-vs-brown.html
+      - text: Speeding up the mixed-effects fit
+        href: articles/spiDE-mixed-benchmark.html
+      - text: Simulation study — power & FDR control
+        href: articles/spiDE-simulation.html
+
+# Group the /articles/ index page to match the navbar split.
+articles:
+- title: Articles
+  navbar: ~
+  contents:
+  - spiDE
+  - spiDE-model
+- title: Statistical validation
+  desc: >
+    Calibration, power/FDR, and performance studies behind the method. These
+    vignettes are precomputed; see vignettes/precompile.R.
+  contents:
+  - spiDE-cauchy-vs-brown
+  - spiDE-mixed-benchmark
+  - spiDE-simulation
