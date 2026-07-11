@@ -136,7 +136,18 @@ added as ridge-penalised design columns (tagged `"Random"` in `covtype`), target
 response-related fixed effects — a random intercept per sample (counterpart of the `Response` main
 effect) and, under `"slope"`, per-sample random slopes on the `CellType:niche` bases (counterparts of
 the `ResponseNiche` β terms). `.fitNBmixed()` (`R/fitSpiDE.R`) estimates the variance components
-`tau2` with a shared-across-genes Schall/PQL loop; `.blockedInference()` (`R/inference.R`) then uses
+`tau2` with a shared-across-genes Schall/PQL loop. That loop is the mixed fit's
+dominant cost (it re-fits every gene per iteration), so it is sped up the same
+way `fitNB` subsamples cells for dispersion: the inner iterations fit on a
+stratified cell subsample (`re.prop`, sampled per cell type × sample with a
+`re.min.cells` floor) with a single dispersion iteration (`re.maxit.psi`), then a
+**final fit on all cells with full dispersion** supplies the coefficients/`psi`
+inference uses — so subsampling only perturbs the shared `tau2`, not the per-gene
+effects. Defaults (`re.prop=0.1`, `re.maxit.psi=1L`) give ~2.7× on CPU with the
+response-niche t-stats correlated ~0.9996 vs the full fit (see
+`vignettes/spiDE-mixed-benchmark.Rmd`); `re.prop=1` restores the reproducible,
+all-cell path. No seed is set internally (set one externally).
+`.blockedInference()` (`R/inference.R`) then uses
 the **full** penalised covariance `(X'WX + Λ)⁻¹`, the working **Pearson** dispersion (not the NB
 `psi`), and a **between-patient** reference df (`S − 2`, stored in `SpiDEFit@df`) — the three together
 are what restore calibration (see `tests/testthat/test-mixedEffects.R`). New `SpiDEFit` slots:

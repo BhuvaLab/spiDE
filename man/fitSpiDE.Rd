@@ -25,6 +25,9 @@ fitSpiDE(spe, condition, ...)
   re.maxit = 10L,
   re.tol = 0.001,
   tau2.init = 1,
+  re.prop = 0.1,
+  re.maxit.psi = 1L,
+  re.min.cells = 100L,
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
   ...
@@ -73,9 +76,25 @@ penalty on the fixed columns).}
 
 \item{re.maxit, re.tol}{iteration cap and relative tolerance for the
 random-effect variance-component (Schall/PQL) loop (used when
-\code{random != "none"}).}
+\code{random != "none"}). The tolerance is a relative change on
+\code{log(tau2)}.}
 
 \item{tau2.init}{initial random-effect variance component.}
+
+\item{re.prop}{the cell-subsampling proportion used to speed up the
+variance-component (PQL) loop, sampled per cell type within each sample
+(\code{random != "none"}). For a stratum of \code{n} cells,
+\code{min(n, max(ceil(re.prop * n), re.min.cells))} are used. \code{1}
+disables subsampling (all cells, fully reproducible). The final fit that
+feeds inference always uses all cells; only the shared \code{tau2} estimate
+is affected. No seed is set internally — set one externally for
+reproducibility.}
+
+\item{re.maxit.psi}{dispersion iterations for the inner PQL loop fits (the
+final all-cell fit always uses full dispersion). \code{1} (default) skips
+the redundant re-estimation of the barely-moving dispersion each iteration.}
+
+\item{re.min.cells}{the per-stratum floor for \code{re.prop} subsampling.}
 
 \item{BPPARAM}{a BiocParallelParam (reserved for the inference stage).}
 

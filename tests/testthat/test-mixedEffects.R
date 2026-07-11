@@ -48,6 +48,47 @@ test_that("checkSample rejects within-sample condition and sample-level covariat
   )
 })
 
+test_that(".stratifiedCellIdx honours the proportion, floor and cap per stratum", {
+  set.seed(1)
+  # three samples x two cell types; stratum sizes span the floor and the prop
+  cell_type <- rep(c("A", "B"), times = c(1500, 40))
+  sample <- rep(c("S1", "S2", "S3"), length.out = length(cell_type))
+  cell_type <- sample(cell_type) # shuffle so strata interleave
+  idx <- spiDE:::.stratifiedCellIdx(cell_type, sample, prop = 0.1,
+                                    min.cells = 100L)
+  expect_type(idx, "logical")
+  expect_length(idx, length(cell_type))
+
+  strata <- interaction(sample, cell_type, drop = TRUE)
+  for (s in levels(strata)) {
+    n <- sum(strata == s)
+    kept <- sum(idx[strata == s])
+    expect_equal(kept, min(n, max(ceiling(0.1 * n), 100L)))
+  }
+  # every stratum keeps at least one cell (samples stay represented)
+  expect_true(all(tapply(idx, strata, any)))
+
+  # prop >= 1 keeps everything
+  expect_true(all(spiDE:::.stratifiedCellIdx(cell_type, sample, prop = 1)))
+})
+
+test_that("re.prop is validated and small strata are taken whole", {
+  spe <- buildNiches(.toySPE(), sigma = 20)
+  expect_error(
+    fitSpiDE(spe, "condition", sigma = 20, random = "intercept",
+             re.prop = 1.5, verbose = FALSE),
+    "re.prop"
+  )
+  # the toy strata (~27 cells) are below the 100-cell floor, so re.prop must not
+  # change the fit relative to using all cells
+  fa <- fitSpiDE(spe, "condition", sigma = 20, random = "intercept",
+                 re.prop = 0.1, verbose = FALSE)
+  fb <- fitSpiDE(spe, "condition", sigma = 20, random = "intercept",
+                 re.prop = 1, verbose = FALSE)
+  expect_equal(fits(fa)[[1]]@tau2, fits(fb)[[1]]@tau2)
+  expect_equal(fits(fa)[[1]]@alpha, fits(fb)[[1]]@alpha)
+})
+
 test_that("the mixed fit recovers the planted between-sample variance", {
   spe <- buildNiches(.toyClustered(sd_patient = 0.7), sigma = 30)
   fit <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",

@@ -14,6 +14,39 @@
   sort(as.numeric(sub(sprintf("^%s", name), "", hits)))
 }
 
+#' Draw a stratified cell subsample for the PQL loop
+#'
+#' Samples cells per \code{(cell_type, sample)} stratum so every sample and cell
+#' type stays represented (the random-effect BLUPs need each sample populated).
+#' For a stratum of size \code{n} the number kept is
+#' \code{min(n, max(ceil(prop * n), min.cells))}: strata at or below
+#' \code{min.cells} are taken whole, otherwise the larger of \code{prop} of the
+#' cells and \code{min.cells}. No seed is set here; reproducibility is the
+#' caller's responsibility via an external \code{set.seed()}.
+#'
+#' @param cell_type,sample per-cell cell-type and sample labels (length ncells).
+#' @param prop the sampling proportion (in (0, 1]); \code{>= 1} keeps all cells.
+#' @param min.cells the per-stratum floor.
+#' @return a logical vector (length ncells) marking the sampled cells.
+#' @noRd
+.stratifiedCellIdx <- function(cell_type, sample, prop, min.cells = 100L) {
+  n <- length(cell_type)
+  if (is.null(prop) || prop >= 1) {
+    return(rep(TRUE, n))
+  }
+  strata <- interaction(as.character(sample), as.character(cell_type),
+                        drop = TRUE)
+  idx <- logical(n)
+  for (s in levels(strata)) {
+    pos <- which(strata == s)
+    ns <- length(pos)
+    k <- min(ns, max(ceiling(prop * ns), min.cells))
+    sel <- if (k >= ns) pos else sample(pos, k)
+    idx[sel] <- TRUE
+  }
+  idx
+}
+
 #' Estimate random-effect variance components (Schall / PQL, shared across genes)
 #'
 #' Implements the mixed model via ridge: random-effect columns are penalised by
@@ -24,12 +57,23 @@
 #' random-effect group is shared across genes (matching the dispersion
 #' moderation), estimated with a representative (gene-averaged) working weight.
 #'
+#' For speed the inner loop fits on a stratified cell subsample (\code{idx}) with
+#' a single dispersion iteration (\code{re.maxit.psi}); the variance components
+#' being shared scalars do not need every cell. Once \code{tau2} converges a
+#' single \strong{final fit} is run on all cells with full dispersion, and its
+#' coefficients / dispersion are what inference uses.
+#'
 #' @param Y counts (genes x cells).
 #' @param W the full design (fixed + random columns).
 #' @param re_group per-column random-effect group (NA for fixed columns).
 #' @param lambda.a base ridge penalty for the fixed columns (usually 0).
-#' @param re.maxit,re.tol outer-loop iteration cap and relative tolerance.
+#' @param re.maxit,re.tol outer-loop iteration cap and relative tolerance (the
+#'   tolerance is a relative change on \code{log(tau2)}).
 #' @param tau2.init initial variance component.
+#' @param idx logical over cells: the subsample used for the inner loop fits
+#'   (NULL = all cells). The final fit always uses all cells.
+#' @param re.maxit.psi dispersion iterations (\code{maxit.psi}) for the inner
+#'   loop fits; the final fit uses full dispersion.
 #' @return a list with the fitNB result plus \code{penalty} (per-column
 #'   \code{lambda.a}), \code{tau2} (named variance components) and \code{df}
 #'   (effective residual degrees of freedom).
@@ -37,15 +81,23 @@
 #' @noRd
 .fitNBmixed <- function(Y, W, re_group, lambda.a, winsor, backend, verbose,
                         re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
-                        tau2.range = c(1e-8, 1e4), ...) {
+                        tau2.range = c(1e-8, 1e4), idx = NULL,
+                        re.maxit.psi = 1L, ...) {
   p <- ncol(W)
   groups <- unique(re_group[!is.na(re_group)])
   base <- if (length(lambda.a) == 1) rep(lambda.a, p) else lambda.a
   base[!is.na(re_group)] <- 0
   tau2 <- stats::setNames(rep(tau2.init, length(groups)), groups)
+  if (is.null(idx)) idx <- rep(TRUE, ncol(Y))
+  Wi <- W[idx, , drop = FALSE]
+
+  # the inner loop forces maxit.psi = re.maxit.psi; strip any user maxit.psi so
+  # it does not collide, but forward it (if given) to the full final fit.
+  dots <- list(...)
+  dots_loop <- dots
+  dots_loop$maxit.psi <- NULL
 
   pen <- base
-  fit <- NULL
   for (it in seq_len(re.maxit)) {
     pen <- base
     for (g in groups) pen[which(re_group == g)] <- 1 / tau2[[g]]
@@ -53,14 +105,18 @@
 
     if (verbose) message(sprintf("  RE iteration %d: %s", it,
       paste(sprintf("%s=%.3g", groups, tau2), collapse = ", ")))
-    fit <- SpaNorm::fitNB(Y, W, lambda.a = pen, winsor = winsor,
-                          backend = backend, verbose = FALSE, ...)
+    fit <- do.call(SpaNorm::fitNB, c(
+      list(Y, W, idx = idx, lambda.a = pen, winsor = winsor,
+           backend = backend, maxit.psi = re.maxit.psi, verbose = FALSE),
+      dots_loop))
     alpha <- fit$alpha
 
-    # representative (gene-averaged) NB working weight per cell, shared info
-    mu <- SpaNorm::calculateMu(rep(0, nrow(alpha)), alpha, W)
+    # representative (gene-averaged) NB working weight per cell, shared info,
+    # computed on the SAME sampled cells the fit used (Wi) so the Schall update
+    # is internally consistent with the penalised fit.
+    mu <- SpaNorm::calculateMu(rep(0, nrow(alpha)), alpha, Wi)
     wbar <- colMeans(mu / (1 + fit$psi * mu))
-    info <- crossprod(W * sqrt(wbar))
+    info <- crossprod(Wi * sqrt(wbar))
     minv <- SpaNorm::invert_mat(info + diag(pen))
 
     tau2_new <- tau2
@@ -74,11 +130,22 @@
       # covariates and per-sample columns are collinear in the tau2 -> Inf limit
       tau2_new[[g]] <- min(max(b2 / (ng * edf), tau2.range[1]), tau2.range[2])
     }
-    converged <- max(abs(tau2_new - tau2) / (tau2 + 1e-8)) < re.tol
+    # relative change on log(tau2): natural for a scale parameter and robust to
+    # the slow monotone decay of the slope variance
+    converged <- max(abs(log(tau2_new) - log(tau2))) < re.tol
     tau2 <- tau2_fit
     if (converged) break
     tau2 <- tau2_new
   }
+
+  # final fit: ALL cells, FULL dispersion, at the converged penalty. This is the
+  # fit inference uses (alpha / psi / gmean); the loop only supplied tau2.
+  pen <- base
+  for (g in groups) pen[which(re_group == g)] <- 1 / tau2[[g]]
+  fit <- do.call(SpaNorm::fitNB, c(
+    list(Y, W, lambda.a = pen, winsor = winsor, backend = backend,
+         verbose = verbose),
+    dots))
 
   # between-patient reference df for the Wald t-test: the response contrasts live
   # in the between-sample error stratum, so they are tested against the number of
@@ -100,7 +167,9 @@
 .fitOneBandwidth <- function(Y, spe, condition, sigma, index, niche, covariates,
                              cell_type, winsor, lambda.a, backend, name,
                              verbose, sample_id = "sample_id", random = "none",
-                             re.maxit = 10L, re.tol = 1e-3, tau2.init = 1, ...) {
+                             re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
+                             re.prop = 0.1, re.maxit.psi = 1L,
+                             re.min.cells = 100L, ...) {
   des <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
                            cell_type, name, sample_id, random)
   W <- des$W
@@ -114,9 +183,13 @@
     tau2 <- NULL
     df <- NULL
   } else {
+    cd <- SummarizedExperiment::colData(spe)
+    idx <- .stratifiedCellIdx(cd[[cell_type]], cd[[sample_id]], re.prop,
+                              re.min.cells)
     fit <- .fitNBmixed(Y, W, des$re_group, lambda.a, winsor, backend, verbose,
                        re.maxit = re.maxit, re.tol = re.tol,
-                       tau2.init = tau2.init, ...)
+                       tau2.init = tau2.init, idx = idx,
+                       re.maxit.psi = re.maxit.psi, ...)
     penalty <- fit$penalty
     tau2 <- fit$tau2
     df <- fit$df
@@ -126,10 +199,10 @@
   colnames(alpha) <- colnames(W)
 
   # per-gene log-likelihood for Cauchy weighting (recomputed from the fit; the
-  # fitNB $loglik is per-iteration, not per-gene). Computed on the fitted-mean
-  # matrix; .blockedInference() recomputes this block-wise for large data.
-  mu <- SpaNorm::calculateMu(rep(0, nrow(alpha)), alpha, W)
-  loglik <- rowSums(dnbinom(as.matrix(Y), mu = mu, size = 1 / fit$psi, log = TRUE))
+  # fitNB $loglik is per-iteration, not per-gene). Computed gene-block-wise so
+  # the whole counts matrix is never densified (the invariant); .blockedInference
+  # recomputes this too, so this value is only used if inference is skipped.
+  loglik <- .blockLoglik(Y, alpha, W, fit$psi)
 
   new(
     "SpiDEFit",
@@ -193,8 +266,21 @@
 #' @param name a character, the niche reducedDim prefix.
 #' @param re.maxit,re.tol iteration cap and relative tolerance for the
 #'   random-effect variance-component (Schall/PQL) loop (used when
-#'   \code{random != "none"}).
+#'   \code{random != "none"}). The tolerance is a relative change on
+#'   \code{log(tau2)}.
 #' @param tau2.init initial random-effect variance component.
+#' @param re.prop the cell-subsampling proportion used to speed up the
+#'   variance-component (PQL) loop, sampled per cell type within each sample
+#'   (\code{random != "none"}). For a stratum of \code{n} cells,
+#'   \code{min(n, max(ceil(re.prop * n), re.min.cells))} are used. \code{1}
+#'   disables subsampling (all cells, fully reproducible). The final fit that
+#'   feeds inference always uses all cells; only the shared \code{tau2} estimate
+#'   is affected. No seed is set internally — set one externally for
+#'   reproducibility.
+#' @param re.maxit.psi dispersion iterations for the inner PQL loop fits (the
+#'   final all-cell fit always uses full dispersion). \code{1} (default) skips
+#'   the redundant re-estimation of the barely-moving dispersion each iteration.
+#' @param re.min.cells the per-stratum floor for \code{re.prop} subsampling.
 #' @param BPPARAM a BiocParallelParam (reserved for the inference stage).
 #' @param verbose a logical, whether to print fitting progress.
 #' @param ... further arguments forwarded to \code{\link[SpaNorm]{fitNB}}.
@@ -221,13 +307,20 @@ setMethod(
                         winsor = 4, lambda.a = 0,
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
+                        re.prop = 0.1, re.maxit.psi = 1L, re.min.cells = 100L,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
     random <- match.arg(random)
     checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
     checkCondition(spe, condition)
     checkCovariates(spe, covariates)
-    if (random != "none") checkSample(spe, condition, sample_id, covariates)
+    if (random != "none") {
+      checkSample(spe, condition, sample_id, covariates)
+      if (!is.numeric(re.prop) || length(re.prop) != 1 || re.prop <= 0 ||
+          re.prop > 1) {
+        stop("'re.prop' must be a single number in (0, 1]")
+      }
+    }
 
     if (is.null(sigma)) {
       sigma <- .detectSigma(spe, name)
@@ -243,7 +336,9 @@ setMethod(
                        cell_type, winsor, lambda.a, backend, name, verbose,
                        sample_id = sample_id, random = random,
                        re.maxit = re.maxit, re.tol = re.tol,
-                       tau2.init = tau2.init, ...)
+                       tau2.init = tau2.init, re.prop = re.prop,
+                       re.maxit.psi = re.maxit.psi,
+                       re.min.cells = re.min.cells, ...)
     })
     names(fits) <- paste0(name, sigma)
 

@@ -1,0 +1,231 @@
+---
+title: "Speeding up the mixed-effects fit: the PQL subsampling trade-off"
+author: "Dharmesh D. Bhuva"
+package: spiDE
+output:
+  BiocStyle::html_document:
+    toc_float: true
+vignette: >
+  %\VignetteIndexEntry{Speeding up the mixed-effects fit}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE, comment = "#>",
+  fig.width = 7, fig.height = 4, dpi = 90
+)
+set.seed(1)
+```
+
+# Overview
+
+The mixed-effects fit (`fitSpiDE(..., random = "intercept" | "slope")`) corrects
+the anti-conservative inference that cell-level pseudo-replication causes (see
+the *mixed-effects model* vignette). It does so with a Schall/PQL loop that
+re-estimates the shared random-effect variance components `tau2`, and that loop
+is the expensive part: it re-fits the negative-binomial GLM once per iteration.
+
+The variance components are a *single shared scalar per random-effect group* — a
+population quantity. Estimating them does not need every cell, exactly as
+`SpaNorm::fitNB` already subsamples cells for its dispersion step. `spiDE`
+exposes three knobs that trade a little `tau2` accuracy for a large speed-up:
+
+| argument       | default | effect |
+|----------------|---------|--------|
+| `re.prop`      | `0.1`   | fraction of cells sampled **per cell type within each sample** for the PQL loop |
+| `re.maxit.psi` | `1`     | dispersion iterations inside each PQL step (the final fit uses full dispersion) |
+| `re.min.cells` | `100`   | per-stratum floor for `re.prop` |
+
+Crucially the loop only supplies `tau2`; a single **final fit on all cells with
+full dispersion** produces the coefficients and dispersion that inference uses.
+So subsampling perturbs only the shared variance estimate, not the per-gene
+effect sizes. This vignette quantifies the time saved and the accuracy cost.
+
+```{r libs, message = FALSE}
+library(spiDE)
+library(ggplot2)
+```
+
+# Benchmark data
+
+We generate a data set large enough that subsampling actually engages (strata
+above the 100-cell floor), with both a planted patient-level random intercept
+(so `tau2 > 0`) and a recoverable `response x niche` signal on gene `G1` in index
+cell type `A` (so the response-niche t-statistics have a real range to compare).
+
+```{r makedata}
+makeBenchData <- function(n_samples = 6, n_per = 600, n_genes = 80,
+                          field = 500, sd_patient = 0.6, beta = 1.2, seed = 1) {
+  set.seed(seed)
+  cts <- c("A", "B", "C")
+  genes <- sprintf("G%d", seq_len(n_genes))
+  sids <- sprintf("S%d", seq_len(n_samples))
+  cond <- rep(c("Responder", "Non-responder"), length.out = n_samples)
+  names(cond) <- sids
+
+  cells <- lapply(sids, function(s) {
+    x <- runif(n_per, 0, field); y <- runif(n_per, 0, field)
+    ct <- ifelse(x > 0.6 * field & runif(n_per) < 0.7, "B",
+                 sample(c("A", "C"), n_per, replace = TRUE))
+    data.frame(sample_id = s, condition = cond[[s]], x = x, y = y,
+               cell_type = ct, stringsAsFactors = FALSE)
+  })
+  cd <- do.call(rbind, cells)
+  cd$cell_id <- sprintf("cell%d", seq_len(nrow(cd)))
+
+  base <- matrix(rnorm(n_genes * 3, 1.5, 0.6), n_genes,
+                 dimnames = list(genes, cts))
+  lmu <- base[, cd$cell_type, drop = FALSE]
+  # patient-level random intercept shared by every cell of a sample
+  u <- matrix(rnorm(n_genes * n_samples, 0, sd_patient), n_genes,
+              dimnames = list(genes, sids))
+  lmu <- lmu + u[, cd$sample_id, drop = FALSE]
+  # planted response x niche signal: G1 up in A cells, in Responders, with x
+  is_A <- cd$cell_type == "A"; is_r <- cd$condition == "Responder"
+  lmu["G1", ] <- lmu["G1", ] + beta * is_A * is_r * (cd$x / field)
+
+  counts <- matrix(rnbinom(length(lmu), mu = exp(as.vector(lmu)), size = 5),
+                   n_genes, dimnames = list(genes, cd$cell_id))
+  cd$Area <- exp(rnorm(nrow(cd), sd = 0.2)); cd$nCount <- colSums(counts)
+  SpatialExperiment::SpatialExperiment(
+    assays = list(counts = counts),
+    colData = S4Vectors::DataFrame(cd),
+    spatialCoords = as.matrix(cd[, c("x", "y")]))
+}
+
+spe <- buildNiches(makeBenchData(), sigma = 30, verbose = FALSE)
+dim(spe)
+table(spe$sample_id, spe$cell_type)
+```
+
+We fix `backend = "cpu"` throughout so the timings reflect compute alone. (With
+`backend = "auto"` each `fitNB` call also pays a one-off GPU-probe cost that is
+independent of the model and would obscure the comparison on a GPU-less machine.)
+
+# A single fit-and-test helper
+
+```{r helper}
+runOne <- function(spe, re.prop, re.maxit.psi, seed = 1) {
+  set.seed(seed)
+  t <- system.time(
+    fit <- fitSpiDE(spe, "condition", sigma = 30, random = "slope",
+                    backend = "cpu", re.prop = re.prop,
+                    re.maxit.psi = re.maxit.psi, verbose = FALSE)
+  )[["elapsed"]]
+  res <- testSpiDE(fit, spe = spe, verbose = FALSE)
+  f <- fits(res)[[1]]
+  rn <- as.character(f@covtype) == "ResponseNiche"
+  list(
+    time = t,
+    tau2 = f@tau2,
+    tstat = f@t_stat[, f@coefmap$covariate[rn], drop = FALSE],
+    # gene-level combined p for G1 (the planted hit) and its rank
+    p_G1 = res@p.cauchy.pos["G1", "Gene"],
+    rank_G1 = rank(res@p.cauchy.pos[, "Gene"])[["G1"]]
+  )
+}
+```
+
+# Time versus accuracy across `re.prop`
+
+The reference is the fully accurate configuration (`re.prop = 1`, full
+dispersion). Each subsampled fit is compared against it: we report the wall-clock
+speed-up, the correlation of the response-niche t-statistics, and whether the
+planted `G1` hit stays top-ranked.
+
+```{r sweep}
+ref <- runOne(spe, re.prop = 1, re.maxit.psi = 25)
+
+props <- c(1, 0.5, 0.25, 0.1, 0.05)
+sweep <- lapply(props, function(p) {
+  o <- if (p == 1) runOne(spe, 1, 1) else runOne(spe, p, 1)
+  data.frame(
+    re.prop = p,
+    time = o$time,
+    speedup = ref$time / o$time,
+    tstat_cor = cor(as.vector(o$tstat), as.vector(ref$tstat)),
+    tau2_int = o$tau2[["SampleInt"]],
+    tau2_slope = o$tau2[["SampleSlope"]],
+    rank_G1 = o$rank_G1
+  )
+})
+sweep <- do.call(rbind, sweep)
+knitr::kable(sweep, digits = 3, row.names = FALSE)
+```
+
+```{r plot-time, fig.cap = "Wall-clock time falls sharply as cells are subsampled; the fully-accurate reference is the leftmost point."}
+ggplot(sweep, aes(re.prop, time)) +
+  geom_line(colour = "grey60") +
+  geom_point(aes(colour = factor(re.prop)), size = 3) +
+  scale_x_continuous(trans = "reverse") +
+  labs(x = "re.prop (cell fraction, reversed)", y = "fit time (s)",
+       colour = "re.prop") +
+  theme_bw()
+```
+
+```{r plot-acc, fig.cap = "Response-niche t-statistics stay almost perfectly correlated with the full-data reference across the whole sampling range."}
+ggplot(sweep, aes(re.prop, tstat_cor)) +
+  geom_line(colour = "grey60") +
+  geom_point(aes(colour = factor(re.prop)), size = 3) +
+  scale_x_continuous(trans = "reverse") +
+  coord_cartesian(ylim = c(min(0.9, min(sweep$tstat_cor)), 1)) +
+  labs(x = "re.prop (cell fraction, reversed)",
+       y = "t-stat correlation vs reference", colour = "re.prop") +
+  theme_bw()
+```
+
+Accuracy stays high because the coefficients come from the full final fit;
+`re.prop` only moves the shared `tau2`, and `tau2` moves little (below).
+
+# Sampling (RNG) variation at the default `re.prop = 0.1`
+
+Because no seed is set internally, repeated runs subsample different cells. We
+quantify how much that jitters the estimates by repeating the default fit over
+several seeds. Small spread here is the justification for keeping sampling on by
+default.
+
+```{r rng}
+seeds <- 1:6
+rng <- lapply(seeds, function(s) {
+  o <- runOne(spe, re.prop = 0.1, re.maxit.psi = 1, seed = s)
+  data.frame(seed = s, tau2_int = o$tau2[["SampleInt"]],
+             tau2_slope = o$tau2[["SampleSlope"]], rank_G1 = o$rank_G1,
+             tstat_cor = cor(as.vector(o$tstat), as.vector(ref$tstat)))
+})
+rng <- do.call(rbind, rng)
+knitr::kable(rng, digits = 4, row.names = FALSE)
+
+data.frame(
+  metric = c("tau2 (intercept)", "t-stat cor vs ref"),
+  mean = c(mean(rng$tau2_int), mean(rng$tstat_cor)),
+  sd = c(sd(rng$tau2_int), sd(rng$tstat_cor)),
+  cv = c(sd(rng$tau2_int) / mean(rng$tau2_int), NA)
+) |> knitr::kable(digits = 4)
+```
+
+```{r plot-rng, fig.width = 6, fig.height = 3.5, fig.cap = "Across random subsamples the intercept variance component is tightly clustered around the reference (dashed line)."}
+ggplot(rng, aes(x = "re.prop = 0.1", y = tau2_int)) +
+  geom_boxplot(width = 0.3, fill = "grey90") +
+  geom_jitter(width = 0.05, size = 2, colour = "steelblue") +
+  geom_hline(yintercept = ref$tau2[["SampleInt"]], linetype = 2,
+             colour = "firebrick") +
+  labs(x = NULL, y = expression(tau^2 ~ "(SampleInt)")) +
+  theme_bw()
+```
+
+# Summary
+
+* Subsampling cells for the PQL loop (`re.prop`) plus a single inner dispersion
+  iteration (`re.maxit.psi = 1`) cuts the mixed-effects fit time substantially
+  while the final all-cell fit keeps the coefficients exact.
+* Response-niche t-statistics and the planted-hit ranking are essentially
+  unchanged across `re.prop`, and the shared `tau2` varies little across random
+  subsamples — so `re.prop = 0.1` is a safe default.
+* Set `re.prop = 1` for a fully reproducible (seed-independent) fit, at the cost
+  of speed. Set an external `set.seed()` to make the subsampled fit reproducible.
+
+```{r session}
+sessionInfo()
+```

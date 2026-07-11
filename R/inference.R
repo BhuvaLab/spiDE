@@ -19,6 +19,34 @@
   split(seq_len(n), ceiling(seq_len(n) / block.size))
 }
 
+#' Per-gene NB log-likelihood, computed gene-block-wise
+#'
+#' Sums the negative-binomial log-likelihood per gene without ever densifying
+#' the whole counts matrix (genes are chunked, so only a block of \code{Y} is
+#' realised at a time). Used for the cross-bandwidth Cauchy gene weights.
+#'
+#' @param Y counts (genes x cells; dense, sparse or DelayedArray).
+#' @param alpha the fitted coefficients (genes x p).
+#' @param W the design (cells x p).
+#' @param psi per-gene NB dispersion.
+#' @param block.size genes per block.
+#' @return a numeric vector of per-gene log-likelihoods.
+#' @importFrom stats dnbinom
+#' @noRd
+.blockLoglik <- function(Y, alpha, W, psi, block.size = 2000L) {
+  ng <- nrow(alpha)
+  blocks <- .chunkGenes(ng, block.size)
+  ll <- numeric(ng)
+  for (gi in blocks) {
+    Yb <- as.matrix(Y[gi, , drop = FALSE])
+    mub <- SpaNorm::calculateMu(rep(0, length(gi)),
+                                alpha[gi, , drop = FALSE], W)
+    ll[gi] <- rowSums(stats::dnbinom(Yb, mu = mub, size = 1 / psi[gi],
+                                     log = TRUE))
+  }
+  ll
+}
+
 #' Wald inference + within-gene p-value combination for a single gene
 #'
 #' Computes per-column Wald t-statistics/SEs, then combines the correlated
