@@ -55,6 +55,10 @@ setMethod(
                         BPPARAM = BiocParallel::SerialParam(), ...) {
     checkFdr(fdr)
     combine <- match.arg(combine)
+    if (combine == "brown" && !requireNamespace("poolr", quietly = TRUE)) {
+        stop("combine = \"brown\" requires the 'poolr' package; ",
+             "install it or use combine = \"cauchy\".", call. = FALSE)
+    }
     fits <- object@fits
 
     # compute Wald + within-gene combination inference if missing

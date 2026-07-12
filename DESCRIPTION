@@ -1,6 +1,6 @@
 Package: spiDE
 Title: Context-specific, neighbourhood-dependent differential expression
-Version: 0.99.1
+Version: 0.99.2
 Authors@R: c(
             person(given = "Dharmesh D.",
                    family = "Bhuva",
@@ -39,11 +39,7 @@ Imports:
     S4Vectors,
     spatstat.geom,
     spatstat.explore,
-    poolr,
     BiocParallel,
-    DelayedArray,
-    DelayedMatrixStats,
-    Matrix,
     matrixStats,
     methods,
     stats,
@@ -55,6 +51,8 @@ Suggests:
     BiocStyle,
     covr,
     torch,
+    poolr,
+    DelayedArray,
     HDF5Array,
     ggplot2
 Remotes:
