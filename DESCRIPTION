@@ -57,6 +57,8 @@ Suggests:
     torch,
     HDF5Array,
     ggplot2
+Remotes:
+    bhuvad/SpaNorm
 URL: https://github.com/bhuvad/spiDE
 BugReports: https://github.com/bhuvad/spiDE/issues
 VignetteBuilder: knitr
