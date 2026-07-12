@@ -46,6 +46,12 @@
 #'   so the sequencing depth is controlled independently of the gene count and
 #'   of the expression outliers. Leave \code{NULL} (default) for the tiny toy
 #'   fixtures, whose few genes must stay in the low-count regime.
+#' @param gmean optional pre-specified per-gene mean vector. When supplied the
+#'   Gamma draw, outliers, \code{mean.min}, \code{boost} and \code{total.count}
+#'   steps are all skipped and this abundance is used directly; only the BCV
+#'   trend (\code{size}) is derived from it. Lets a caller impose its own
+#'   expression structure (e.g. cell-type markers) while keeping the
+#'   dispersion trend single-sourced.
 #' @return a list with per-gene \code{gmean}, \code{bcv} and NB \code{size}.
 #' @references Zappia L, Phipson B, Oshlack A (2017). "Splatter: simulation of
 #'   single-cell RNA sequencing data." \emph{Genome Biology} 18:174.
@@ -55,22 +61,27 @@
                            bcv.common = 0.3, bcv.disp = 1, out.prob = 0.05,
                            out.facLoc = 2, out.facScale = 0.5, mean.min = 0,
                            boost = character(0), boost.gmean = 6,
-                           total.count = NULL) {
+                           total.count = NULL, gmean = NULL) {
   ng <- length(gene_names)
-  gmean <- pmax(rgamma(ng, shape = mean.shape, rate = mean.rate), 1e-3)
-  # expression outliers: a few highly expressed genes (the heavy right tail)
-  is_out <- runif(ng) < out.prob
-  if (any(is_out)) {
-    gmean[is_out] <- gmean[is_out] *
-      rlnorm(sum(is_out), meanlog = out.facLoc, sdlog = out.facScale)
+  if (is.null(gmean)) {
+    gmean <- pmax(rgamma(ng, shape = mean.shape, rate = mean.rate), 1e-3)
+    # expression outliers: a few highly expressed genes (the heavy right tail)
+    is_out <- runif(ng) < out.prob
+    if (any(is_out)) {
+      gmean[is_out] <- gmean[is_out] *
+        rlnorm(sum(is_out), meanlog = out.facLoc, sdlog = out.facScale)
+    }
+    gmean <- pmax(gmean, mean.min)
+    names(gmean) <- gene_names
+    # planted/boosted genes get a high, fixed abundance so effects stay estimable
+    if (length(boost)) gmean[boost] <- boost.gmean
+    # scale relative expression to a target library size (controls sequencing
+    # depth independently of gene count / outliers, as splatter does)
+    if (!is.null(total.count)) gmean <- gmean / sum(gmean) * total.count
+  } else {
+    gmean <- pmax(gmean, 1e-3)
+    names(gmean) <- gene_names
   }
-  gmean <- pmax(gmean, mean.min)
-  names(gmean) <- gene_names
-  # planted/boosted genes get a high, fixed abundance so effects stay estimable
-  if (length(boost)) gmean[boost] <- boost.gmean
-  # scale relative expression to a target library size (controls sequencing
-  # depth independently of gene count / outliers, as splatter does)
-  if (!is.null(total.count)) gmean <- gmean / sum(gmean) * total.count
   # trended overdispersion: BCV falls with abundance, so NB size rises with it
   bcv <- bcv.common + bcv.disp / sqrt(gmean)
   list(gmean = gmean, bcv = bcv, size = 1 / bcv^2)
