@@ -1,6 +1,7 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^data-raw$
+^research$
 ^_pkgdown\.yml$
 ^docs$
 ^dev$

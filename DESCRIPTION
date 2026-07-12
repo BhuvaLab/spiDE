@@ -54,7 +54,9 @@ Suggests:
     poolr,
     DelayedArray,
     HDF5Array,
-    ggplot2
+    ggplot2,
+    patchwork,
+    scales
 Remotes:
     bhuvad/SpaNorm
 URL: https://github.com/bhuvad/spiDE

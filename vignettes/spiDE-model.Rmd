@@ -29,6 +29,8 @@ For a task-oriented quickstart, see the companion vignette *Neighbourhood-depend
 ```{r load, message = FALSE}
 library(spiDE)
 library(SpatialExperiment)
+library(ggplot2)
+source(system.file("spide_palette.R", package = "spiDE"))
 ```
 
 # The full spiDE model
@@ -223,16 +225,21 @@ c(fixed = mean(p_fixed < 0.05), mixed = mean(p_mixed < 0.05))
 ```
 
 ```{r qq, fig.small = TRUE, fig.cap = "Null response-effect p-values. The fixed-effects fit is grossly anti-conservative; the mixed-effects fit is close to the uniform (dashed) reference."}
-qqp <- function(p, ...) {
-  points(sort(-log10(ppoints(length(p)))), sort(-log10(p)), ...)
+qq_points <- function(p, mode) {
+  data.frame(mode = mode, expected = sort(-log10(ppoints(length(p)))),
+             observed = sort(-log10(p)))
 }
-plot(NA, xlim = c(0, 3), ylim = c(0, 6), xlab = "expected -log10 p",
-     ylab = "observed -log10 p")
-abline(0, 1, lty = 2)
-qqp(p_fixed, pch = 16, col = "firebrick")
-qqp(p_mixed, pch = 16, col = "steelblue")
-legend("topleft", c("fixed", "mixed"), pch = 16,
-       col = c("firebrick", "steelblue"), bty = "n")
+qq_df <- rbind(qq_points(p_fixed, "fixed"), qq_points(p_mixed, "intercept"))
+qq_df$mode <- factor(qq_df$mode, levels = c("fixed", "intercept"),
+                     labels = c("fixed", "mixed"))
+ggplot(qq_df, aes(expected, observed, colour = mode)) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2, colour = spide_pal$ref) +
+  geom_point(size = 1.5) +
+  scale_colour_manual(values = unname(spide_pal$method[c("fixed",
+                                                         "intercept")]),
+                      name = NULL) +
+  labs(x = expression(-log[10]("expected p")),
+       y = expression(-log[10]("observed p")))
 ```
 
 The mixed-effects fit also **recovers the planted between-patient variance** ($0.7^2 = 0.49$):

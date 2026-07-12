@@ -1,0 +1,5 @@
+"layout","control","power_raw","recall_05","niche_specificity"
+"clustered",FALSE,0.3,0.075,0.55
+"gradient",FALSE,0.3,0.075,0.55
+"multiniche",FALSE,0.275,0.025,0.45
+"random",TRUE,0.175,0.05,0.575

@@ -11,360 +11,142 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE, comment = "#>", message = FALSE, warning = FALSE,
+  fig.width = 7, fig.height = 4, dpi = 150, fig.retina = 2
+)
+```
 
+```{r libs}
+library(spiDE)
+library(ggplot2)
+source(system.file("spide_palette.R", package = "spiDE"))
 
-> **Note (maintainers):** this is a *precomputed* vignette. The results and figures
-> below are baked in from a local run; the shipped `.Rmd` is not re-executed at build
-> time. Edit `spiDE-mixed-benchmark.Rmd.orig` and re-run `vignettes/precompile.R` to
-> regenerate. The timing numbers are snapshots of the machine that built them.
+bench <- function(f) {
+  path <- system.file("extdata", "benchmark", f, package = "spiDE")
+  if (file.exists(path)) utils::read.csv(path, check.names = FALSE) else NULL
+}
+```
 
 # Overview
 
 The mixed-effects fit (`fitSpiDE(..., random = "intercept" | "slope")`) corrects
 the anti-conservative inference that cell-level pseudo-replication causes (see
-the *mixed-effects model* vignette). It does so with a Schall/PQL loop that
-re-estimates the shared random-effect variance components `tau2`, and that loop
-is the expensive part: it re-fits the negative-binomial GLM once per iteration.
+*The spiDE model* vignette). It does so with a Schall/PQL loop that re-estimates
+the shared random-effect variance components `tau2`, re-fitting the
+negative-binomial GLM once per iteration — the expensive part of the fit.
 
-The variance components are a *single shared scalar per random-effect group* — a
-population quantity. Estimating them does not need every cell, exactly as
-`SpaNorm::fitNB` already subsamples cells for its dispersion step. `spiDE`
-exposes three knobs that trade a little `tau2` accuracy for a large speed-up:
+Those variance components are a *single shared scalar per random-effect group* — a
+population quantity that does not need every cell to estimate, exactly as
+`SpaNorm::fitNB` already subsamples cells for its dispersion step. `spiDE` exposes
+three knobs that trade a little `tau2` accuracy for a large speed-up:
 
 | argument       | default | effect |
 |----------------|---------|--------|
-| `re.prop`      | `0.1`   | fraction of cells sampled **per cell type within each sample** for the PQL loop |
-| `re.maxit.psi` | `1`     | dispersion iterations inside each PQL step (the final fit uses full dispersion) |
+| `re.prop`      | `0.1`   | fraction of cells sampled per cell type within each sample for the PQL loop |
+| `re.maxit.psi` | `1`     | dispersion iterations inside each PQL step |
 | `re.min.cells` | `100`   | per-stratum floor for `re.prop` |
 
 Crucially the loop only supplies `tau2`; a single **final fit on all cells with
-full dispersion** produces the coefficients and dispersion that inference uses.
-So subsampling perturbs only the shared variance estimate, not the per-gene
-effect sizes. This vignette quantifies the time saved and the accuracy cost.
-
-
-``` r
-library(spiDE)
-library(ggplot2)
-```
-
-# Benchmark data
-
-We generate a data set large enough that subsampling actually engages (strata
-above the 100-cell floor), with both a planted patient-level random intercept
-(so `tau2 > 0`) and a recoverable `response x niche` signal on gene `G1` in index
-cell type `A` (so the response-niche t-statistics have a real range to compare).
-
-
-``` r
-makeBenchData <- function(n_samples = 6, n_per = 600, n_genes = 80,
-                          field = 500, sd_patient = 0.6, beta = 1.2, seed = 1) {
-  set.seed(seed)
-  cts <- c("A", "B", "C")
-  genes <- sprintf("G%d", seq_len(n_genes))
-  sids <- sprintf("S%d", seq_len(n_samples))
-  cond <- rep(c("Responder", "Non-responder"), length.out = n_samples)
-  names(cond) <- sids
-
-  cells <- lapply(sids, function(s) {
-    x <- runif(n_per, 0, field); y <- runif(n_per, 0, field)
-    ct <- ifelse(x > 0.6 * field & runif(n_per) < 0.7, "B",
-                 sample(c("A", "C"), n_per, replace = TRUE))
-    data.frame(sample_id = s, condition = cond[[s]], x = x, y = y,
-               cell_type = ct, stringsAsFactors = FALSE)
-  })
-  cd <- do.call(rbind, cells)
-  cd$cell_id <- sprintf("cell%d", seq_len(nrow(cd)))
-
-  base <- matrix(rnorm(n_genes * 3, 1.5, 0.6), n_genes,
-                 dimnames = list(genes, cts))
-  lmu <- base[, cd$cell_type, drop = FALSE]
-  # patient-level random intercept shared by every cell of a sample
-  u <- matrix(rnorm(n_genes * n_samples, 0, sd_patient), n_genes,
-              dimnames = list(genes, sids))
-  lmu <- lmu + u[, cd$sample_id, drop = FALSE]
-  # planted response x niche signal: G1 up in A cells, in Responders, with x
-  is_A <- cd$cell_type == "A"; is_r <- cd$condition == "Responder"
-  lmu["G1", ] <- lmu["G1", ] + beta * is_A * is_r * (cd$x / field)
-
-  counts <- matrix(rnbinom(length(lmu), mu = exp(as.vector(lmu)), size = 5),
-                   n_genes, dimnames = list(genes, cd$cell_id))
-  cd$Area <- exp(rnorm(nrow(cd), sd = 0.2)); cd$nCount <- colSums(counts)
-  SpatialExperiment::SpatialExperiment(
-    assays = list(counts = counts),
-    colData = S4Vectors::DataFrame(cd),
-    spatialCoords = as.matrix(cd[, c("x", "y")]))
-}
-
-spe <- buildNiches(makeBenchData(), sigma = 30, verbose = FALSE)
-dim(spe)
-#> [1]   80 3600
-table(spe$sample_id, spe$cell_type)
-#>     
-#>        A   B   C
-#>   S1 205 157 238
-#>   S2 198 162 240
-#>   S3 221 167 212
-#>   S4 223 158 219
-#>   S5 213 170 217
-#>   S6 225 148 227
-```
-
-We fix `backend = "cpu"` throughout so the timings reflect compute alone. (With
-`backend = "auto"` each `fitNB` call also pays a one-off GPU-probe cost that is
-independent of the model and would obscure the comparison on a GPU-less machine.)
-
-# A single fit-and-test helper
-
-
-``` r
-runOne <- function(spe, re.prop, re.maxit.psi, seed = 1) {
-  set.seed(seed)
-  t <- system.time(
-    fit <- fitSpiDE(spe, "condition", sigma = 30, random = "slope",
-                    backend = "cpu", re.prop = re.prop,
-                    re.maxit.psi = re.maxit.psi, verbose = FALSE)
-  )[["elapsed"]]
-  res <- testSpiDE(fit, spe = spe, verbose = FALSE)
-  f <- fits(res)[[1]]
-  rn <- as.character(f@covtype) == "ResponseNiche"
-  list(
-    time = t,
-    tau2 = f@tau2,
-    tstat = f@t_stat[, f@coefmap$covariate[rn], drop = FALSE],
-    # gene-level combined p for G1 (the planted hit) and its rank
-    p_G1 = res@p.cauchy.pos["G1", "Gene"],
-    rank_G1 = rank(res@p.cauchy.pos[, "Gene"])[["G1"]]
-  )
-}
-```
+full dispersion** produces the coefficients and dispersion that inference uses. So
+subsampling perturbs only the shared variance estimate, not the per-gene effect
+sizes. This vignette quantifies the time saved and the accuracy retained, using
+the benchmark study in the package's `research/` directory.
 
 # Time versus accuracy across `re.prop`
 
-The reference is the fully accurate configuration (`re.prop = 1`, full
-dispersion). Each subsampled fit is compared against it: we report the wall-clock
-speed-up, the correlation of the response-niche t-statistics, and whether the
-planted `G1` hit stays top-ranked.
+The study fits the same realistic dataset at several values of `re.prop`, timing
+each fit and correlating its response-niche t-statistics against the fully
+accurate reference (`re.prop = 1`, all cells). Two figures tell the whole story:
+subsampling makes the fit much faster while the t-statistics it feeds into
+inference stay essentially unchanged.
 
+```{r pql, fig.height = 4, fig.cap = "Left: mixed-effects fit time falls sharply as the PQL cell fraction shrinks. Right: response-niche t-statistics remain almost perfectly correlated with the full-data reference across the whole sampling range."}
+timing <- bench("pql_timing.csv")
+acc <- bench("pql_accuracy.csv")
 
-``` r
-ref <- runOne(spe, re.prop = 1, re.maxit.psi = 25)
+if (!is.null(timing)) {
+  p_time <- ggplot(timing, aes(re.prop, elapsed)) +
+    geom_line(colour = spide_pal$ref) +
+    geom_point(size = 3, colour = spide_pal$accent) +
+    scale_x_continuous(trans = "reverse") +
+    labs(x = "re.prop (cell fraction, reversed)", y = "fit time (s)",
+         title = "Fit time versus subsampling")
 
-props <- c(1, 0.5, 0.25, 0.1, 0.05)
-sweep <- lapply(props, function(p) {
-  o <- if (p == 1) runOne(spe, 1, 1) else runOne(spe, p, 1)
-  data.frame(
-    re.prop = p,
-    time = o$time,
-    speedup = ref$time / o$time,
-    tstat_cor = cor(as.vector(o$tstat), as.vector(ref$tstat)),
-    tau2_int = o$tau2[["SampleInt"]],
-    tau2_slope = o$tau2[["SampleSlope"]],
-    rank_G1 = o$rank_G1
-  )
-})
-sweep <- do.call(rbind, sweep)
-knitr::kable(sweep, digits = 3, row.names = FALSE)
+  if (!is.null(acc)) {
+    # anchor the reference (re.prop = 1) at correlation 1
+    acc <- rbind(acc, data.frame(re.prop = 1, cor = 1))
+    p_acc <- ggplot(acc, aes(re.prop, cor)) +
+      geom_line(colour = spide_pal$ref) +
+      geom_point(size = 3, colour = spide_pal$accent) +
+      scale_x_continuous(trans = "reverse") +
+      coord_cartesian(ylim = c(min(0.9, min(acc$cor)), 1.001)) +
+      labs(x = "re.prop (cell fraction, reversed)",
+           y = "t-stat correlation vs full-data fit",
+           title = "Accuracy versus subsampling")
+    print(patchwork::wrap_plots(p_time, p_acc))
+  } else {
+    print(p_time)
+  }
+}
 ```
 
+Accuracy is retained because the coefficients come from the full final fit;
+`re.prop` only moves the shared `tau2`, and `tau2` itself moves little. The
+default `re.prop = 0.1` therefore delivers most of the speed-up at negligible
+cost to the inference.
 
-
-| re.prop|   time| speedup| tstat_cor| tau2_int| tau2_slope| rank_G1|
-|-------:|------:|-------:|---------:|--------:|----------:|-------:|
-|    1.00| 11.745|   1.542|         1|    0.386|          0|       1|
-|    0.50|  7.080|   2.559|         1|    0.384|          0|       1|
-|    0.25|  7.204|   2.515|         1|    0.388|          0|       1|
-|    0.10|  7.165|   2.528|         1|    0.388|          0|       1|
-|    0.05|  6.948|   2.607|         1|    0.388|          0|       1|
-
-
-
-
-``` r
-ggplot(sweep, aes(re.prop, time)) +
-  geom_line(colour = "grey60") +
-  geom_point(aes(colour = factor(re.prop)), size = 3) +
-  scale_x_continuous(trans = "reverse") +
-  labs(x = "re.prop (cell fraction, reversed)", y = "fit time (s)",
-       colour = "re.prop") +
-  theme_bw()
+```{r tau2-table, echo = FALSE}
+if (!is.null(timing)) {
+  knitr::kable(timing[order(-timing$re.prop),
+                      c("re.prop", "elapsed", "tau2")],
+               digits = 3, row.names = FALSE,
+               col.names = c("re.prop", "fit time (s)",
+                             "tau2 (intercept)"),
+               caption = "Fit time and the estimated intercept variance component across re.prop.")
+}
 ```
 
-<div class="figure">
-<img src="spiDE-mixed-benchmark-fig-plot-time-1.png" alt="Wall-clock time falls sharply as cells are subsampled; the fully-accurate reference is the leftmost point." width="1050" />
-<p class="caption">Wall-clock time falls sharply as cells are subsampled; the fully-accurate reference is the leftmost point.</p>
-</div>
+# Scaling to realistic gene counts
 
+A realistic dataset has ten-thousand-plus genes. Because the whole gene set is
+fit in a single call (dispersion is moderated across all genes together), the
+per-fit cost grows with both the number of genes and the number of cells. The
+study records the fit and inference time as the number of cells per sample grows
+at fixed gene count.
 
-``` r
-ggplot(sweep, aes(re.prop, tstat_cor)) +
-  geom_line(colour = "grey60") +
-  geom_point(aes(colour = factor(re.prop)), size = 3) +
-  scale_x_continuous(trans = "reverse") +
-  coord_cartesian(ylim = c(min(0.9, min(sweep$tstat_cor)), 1)) +
-  labs(x = "re.prop (cell fraction, reversed)",
-       y = "t-stat correlation vs reference", colour = "re.prop") +
-  theme_bw()
+```{r timing, fig.height = 4, fig.cap = "Fit and inference wall-clock time as the number of cells grows, at a realistic gene count. Inference is the blockable, parallelisable stage."}
+tm <- bench("timing.csv")
+if (!is.null(tm) && nrow(tm) > 0) {
+  long <- rbind(
+    data.frame(n_cells = tm$n_cells, stage = "fit", seconds = tm$fit_seconds),
+    data.frame(n_cells = tm$n_cells, stage = "inference",
+               seconds = tm$test_seconds))
+  ggplot(long, aes(n_cells, seconds, colour = stage)) +
+    geom_line(linewidth = 0.8) + geom_point(size = 2) +
+    scale_colour_manual(values = unname(spide_pal$method[c(1, 2)])) +
+    labs(x = "total cells", y = "wall-clock time (s)", colour = NULL,
+         title = sprintf("Scaling at %d genes", tm$n_genes[1]))
+} else {
+  cat("*(Timing summary not found; run the benchmark study in `research/`.)*")
+}
 ```
-
-<div class="figure">
-<img src="spiDE-mixed-benchmark-fig-plot-acc-1.png" alt="Response-niche t-statistics stay almost perfectly correlated with the full-data reference across the whole sampling range." width="1050" />
-<p class="caption">Response-niche t-statistics stay almost perfectly correlated with the full-data reference across the whole sampling range.</p>
-</div>
-
-Accuracy stays high because the coefficients come from the full final fit;
-`re.prop` only moves the shared `tau2`, and `tau2` moves little (below).
-
-# Sampling (RNG) variation at the default `re.prop = 0.1`
-
-Because no seed is set internally, repeated runs subsample different cells. We
-quantify how much that jitters the estimates by repeating the default fit over
-several seeds. Small spread here is the justification for keeping sampling on by
-default.
-
-
-``` r
-seeds <- 1:10
-rng <- lapply(seeds, function(s) {
-  o <- runOne(spe, re.prop = 0.1, re.maxit.psi = 1, seed = s)
-  data.frame(seed = s, tau2_int = o$tau2[["SampleInt"]],
-             tau2_slope = o$tau2[["SampleSlope"]], rank_G1 = o$rank_G1,
-             tstat_cor = cor(as.vector(o$tstat), as.vector(ref$tstat)))
-})
-rng <- do.call(rbind, rng)
-knitr::kable(rng[1:5, ], digits = 4, row.names = FALSE)
-```
-
-
-
-| seed| tau2_int| tau2_slope| rank_G1| tstat_cor|
-|----:|--------:|----------:|-------:|---------:|
-|    1|   0.3883|          0|       1|    0.9996|
-|    2|   0.3838|          0|       1|    0.9996|
-|    3|   0.3822|          0|       1|    0.9996|
-|    4|   0.3777|          0|       1|    0.9996|
-|    5|   0.3796|          0|       1|    0.9996|
-
-
-
-``` r
-
-data.frame(
-  metric = c("tau2 (intercept)", "t-stat cor vs ref"),
-  mean = c(mean(rng$tau2_int), mean(rng$tstat_cor)),
-  sd = c(sd(rng$tau2_int), sd(rng$tstat_cor)),
-  cv = c(sd(rng$tau2_int) / mean(rng$tau2_int), NA)
-) |> knitr::kable(digits = 4)
-```
-
-
-
-|metric            |   mean|     sd|     cv|
-|:-----------------|------:|------:|------:|
-|tau2 (intercept)  | 0.3819| 0.0033| 0.0086|
-|t-stat cor vs ref | 0.9996| 0.0000|     NA|
-
-
-
-
-``` r
-ggplot(rng, aes(x = "re.prop = 0.1", y = tau2_int)) +
-  geom_boxplot(width = 0.3, fill = "grey90") +
-  geom_jitter(width = 0.05, size = 2, colour = "steelblue") +
-  geom_hline(yintercept = ref$tau2[["SampleInt"]], linetype = 2,
-             colour = "firebrick") +
-  labs(x = NULL, y = expression(tau^2 ~ "(SampleInt)")) +
-  theme_bw()
-```
-
-<div class="figure">
-<img src="spiDE-mixed-benchmark-fig-plot-rng-1.png" alt="Across random subsamples the intercept variance component is tightly clustered around the reference (dashed line)." width="900" />
-<p class="caption">Across random subsamples the intercept variance component is tightly clustered around the reference (dashed line).</p>
-</div>
 
 # Summary
 
 * Subsampling cells for the PQL loop (`re.prop`) plus a single inner dispersion
-  iteration (`re.maxit.psi = 1`) cuts the mixed-effects fit time substantially
+  iteration (`re.maxit.psi = 1`) cuts the mixed-effects fit time substantially,
   while the final all-cell fit keeps the coefficients exact.
-* Response-niche t-statistics and the planted-hit ranking are essentially
-  unchanged across `re.prop`, and the shared `tau2` varies little across random
-  subsamples — so `re.prop = 0.1` is a safe default.
+* Response-niche t-statistics stay essentially unchanged across `re.prop`, so the
+  default `re.prop = 0.1` is a safe, fast choice.
 * Set `re.prop = 1` for a fully reproducible (seed-independent) fit, at the cost
-  of speed. Set an external `set.seed()` to make the subsampled fit reproducible.
+  of speed; otherwise set an external `set.seed()` to make a subsampled fit
+  reproducible.
 
+Timing numbers reflect the machine that produced the benchmark tables; regenerate
+them for your own hardware with the study in `research/`.
 
-``` r
+```{r session}
 sessionInfo()
-#> R version 4.6.1 (2026-06-24)
-#> Platform: aarch64-apple-darwin23
-#> Running under: macOS Tahoe 26.5
-#> 
-#> Matrix products: default
-#> BLAS:   /Library/Frameworks/R.framework/Versions/4.6/Resources/lib/libRblas.0.dylib 
-#> LAPACK: /Library/Frameworks/R.framework/Versions/4.6/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.1
-#> 
-#> locale:
-#> [1] C.UTF-8/C.UTF-8/C.UTF-8/C/C.UTF-8/C.UTF-8
-#> 
-#> time zone: Australia/Brisbane
-#> tzcode source: internal
-#> 
-#> attached base packages:
-#> [1] stats     graphics  grDevices utils     datasets  methods   base     
-#> 
-#> other attached packages:
-#> [1] ggplot2_4.0.3  spiDE_0.99.0   testthat_3.3.2
-#> 
-#> loaded via a namespace (and not attached):
-#>   [1] deldir_2.0-4                poolr_1.2-0                
-#>   [3] rlang_1.3.0                 magrittr_2.0.5             
-#>   [5] otel_0.2.0                  matrixStats_1.5.0          
-#>   [7] compiler_4.6.1              spatstat.geom_3.8-1        
-#>   [9] DelayedMatrixStats_1.34.0   callr_3.8.0                
-#>  [11] vctrs_0.7.3                 pkgconfig_2.0.3            
-#>  [13] SpatialExperiment_1.22.0    fastmap_1.2.0              
-#>  [15] magick_2.9.1                XVector_0.52.0             
-#>  [17] ellipsis_0.3.3              labeling_0.4.3             
-#>  [19] sessioninfo_1.2.4           torch_0.17.0               
-#>  [21] purrr_1.2.2                 bit_4.6.0                  
-#>  [23] xfun_0.59                   cachem_1.1.0               
-#>  [25] beachmat_2.28.0             goftest_1.2-3              
-#>  [27] DelayedArray_0.38.2         spatstat.utils_3.2-3       
-#>  [29] BiocParallel_1.46.0         irlba_2.3.7                
-#>  [31] parallel_4.6.1              R6_2.6.1                   
-#>  [33] RColorBrewer_1.1-3          spatstat.data_3.1-9        
-#>  [35] limma_3.68.4                spatstat.univar_3.2-0      
-#>  [37] pkgload_1.5.3               brio_1.1.5                 
-#>  [39] GenomicRanges_1.64.0        Rcpp_1.1.1-1.1             
-#>  [41] Seqinfo_1.2.0               SummarizedExperiment_1.42.0
-#>  [43] knitr_1.51                  tensor_1.5.1               
-#>  [45] usethis_3.2.1               IRanges_2.46.0             
-#>  [47] splines_4.6.1               Matrix_1.7-5               
-#>  [49] tidyselect_1.2.1            rstudioapi_0.19.0          
-#>  [51] abind_1.4-8                 codetools_0.2-20           
-#>  [53] spatstat.random_3.5-0       spatstat.explore_3.8-1     
-#>  [55] processx_3.9.0              pkgbuild_1.4.8             
-#>  [57] lattice_0.22-9              tibble_3.3.1               
-#>  [59] Biobase_2.72.0              withr_3.0.3                
-#>  [61] S7_0.2.2                    evaluate_1.0.5             
-#>  [63] desc_1.4.3                  SpaNorm_1.7.4              
-#>  [65] polyclip_1.10-7             pillar_1.11.1              
-#>  [67] MatrixGenerics_1.24.0       stats4_4.6.1               
-#>  [69] generics_0.1.4              rprojroot_2.1.1            
-#>  [71] mathjaxr_2.0-0              S4Vectors_0.50.1           
-#>  [73] sparseMatrixStats_1.24.0    scales_1.4.0               
-#>  [75] coro_1.1.0                  glue_1.8.1                 
-#>  [77] tools_4.6.1                 ScaledMatrix_1.20.0        
-#>  [79] locfit_1.5-9.12             fs_2.1.0                   
-#>  [81] grid_4.6.1                  devtools_2.5.2             
-#>  [83] edgeR_4.10.1                SingleCellExperiment_1.34.0
-#>  [85] nlme_3.1-169                BiocSingular_1.28.0        
-#>  [87] cli_3.6.6                   rsvd_1.0.5                 
-#>  [89] spatstat.sparse_3.2-0       S4Arrays_1.12.0            
-#>  [91] dplyr_1.2.1                 gtable_0.3.6               
-#>  [93] BiocGenerics_0.58.1         SparseArray_1.12.2         
-#>  [95] rjson_0.2.23                farver_2.1.2               
-#>  [97] memoise_2.0.1               lifecycle_1.0.5            
-#>  [99] statmod_1.5.2               bit64_4.8.2
 ```

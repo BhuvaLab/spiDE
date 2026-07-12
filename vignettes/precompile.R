@@ -1,22 +1,26 @@
-# Precompile the expensive spiDE vignettes.
+# Precompile the one heavy spiDE vignette.
 #
-# These three vignettes run genuinely expensive computation (Monte-Carlo
-# calibration, timed PQL re-fits, bplapply parameter sweeps) that must NOT run on
-# the Bioconductor build farm. We use the standard knitr `.Rmd.orig` precompile
-# pattern: the live source lives in `<name>.Rmd.orig`, which is knit here, once,
-# into a static `<name>.Rmd` with all outputs and figures baked in. The shipped
-# `.Rmd` has no evaluatable chunks, so `R CMD build` renders it in seconds.
+# Only `spiDE-simulation` is precomputed: it draws a large (12,000-gene) dataset
+# live for its "what a realistic dataset looks like" figures, which is too slow
+# for the Bioconductor build farm. We use the standard knitr `.Rmd.orig`
+# precompile pattern: the live source lives in `spiDE-simulation.Rmd.orig`, which
+# is knit here, once, into a static `spiDE-simulation.Rmd` with all outputs and
+# figures baked in. The shipped `.Rmd` has no evaluatable chunks, so
+# `R CMD build` renders it in seconds.
 #
-# Run manually from the package ROOT after editing any *.Rmd.orig, with the dev
-# version of the package loaded so the baked results reflect it:
+# The other vignettes (`spiDE`, `spiDE-model`, `spiDE-cauchy-vs-brown`,
+# `spiDE-mixed-benchmark`) are ordinary live vignettes built at install time --
+# they only load small summary tables or run a quick Monte-Carlo, so they do not
+# need precompiling.
+#
+# Run manually from the package ROOT after editing spiDE-simulation.Rmd.orig,
+# with the dev version of the package loaded so the baked results reflect it:
 #
 #   Rscript -e 'devtools::load_all(); source("vignettes/precompile.R")'
 #
-# Commit the regenerated `<name>.Rmd` files and their `<name>-fig-*.png` images.
+# Commit the regenerated `spiDE-simulation.Rmd` and its `-fig-*.png` images.
 
 vignettes <- c(
-  "spiDE-cauchy-vs-brown",
-  "spiDE-mixed-benchmark",
   "spiDE-simulation"
 )
 

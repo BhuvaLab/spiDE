@@ -1,516 +1,525 @@
 ---
-title: "Simulation study: power and FDR control of the spiDE mixed-effects correction"
+title: "Simulating realistic spatial data and benchmarking spiDE"
 author: "Dharmesh D. Bhuva"
 package: spiDE
 output:
   BiocStyle::html_document:
     toc_float: true
 vignette: >
-  %\VignetteIndexEntry{Simulation study: power and FDR control}
+  %\VignetteIndexEntry{Simulating realistic spatial data and benchmarking spiDE}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
 
 
 
-> **Note (maintainers):** this is a *precomputed* vignette. The results and figures below are baked in from a local run of the full study; the shipped `.Rmd` is not re-executed at build time. Edit `spiDE-simulation.Rmd.orig` and re-run `vignettes/precompile.R` to regenerate. Timings and sweep values are snapshots of the machine that built them.
-
-# Overview
-
-This is a **research/benchmarking vignette**, not user-facing documentation of the package API. It answers a concrete question that comes up when exploring `spiDE`'s mixed-effects correction (`random = "intercept"` / `"slope"`, see the companion vignette *The spiDE model: neighbourhood-dependent DE and mixed-effects inference*): if I simulate more samples, or more cells per sample, why doesn't power obviously go up?
-
-The short answer, demonstrated quantitatively below: statistical power under the mixed-effects correction is driven almost entirely by the number of **samples** (patients), not the number of **cells**. That is not a bug — it is the price of correcting cell-level pseudo-replication. Cells within a sample share the same response label, so they cannot contribute independent evidence about a between-sample contrast; only more samples can. The bundled toy dataset (`.toySPE()` / `data(toySpiDE)`) obscures this because (a) it reseeds the *entire* dataset when you change `n_samples`/`n_per`, so effect size is confounded with sample size, and (b) it only plants one true gene among \~20, so the gene-level FDR gate swallows the signal. Here we build a **fair** simulation harness that isolates the two questions: does the null stay calibrated, and does power scale correctly with each knob.
-
-All code needed to reproduce this study is self-contained in this file (no internal `spiDE:::` helpers are used) so it can be lifted out and run independently of the package if desired.
-
 
 ``` r
 library(spiDE)
 library(SpatialExperiment)
-library(BiocParallel)
 library(ggplot2)
-
-# keep the default vignette build light; bump these for a real study (see the
-# final section for suggested "full" settings and expected runtime)
-RUN_FULL <- TRUE
-B <- if (RUN_FULL) 40 else 6              # replicate seeds per design point
-NPAR <- if (RUN_FULL) 10 else 1           # parallel workers (cores available)
-BPPARAM <- if (NPAR > 1) MulticoreParam(NPAR, RNGseed = 1) else SerialParam()
-set.seed(1)  # fitSpiDE is stochastic (fitNB subsamples cells for dispersion)
+library(patchwork)
+source(system.file("spide_palette.R", package = "spiDE"))
 ```
 
-`MulticoreParam` parallelises by forking. SpaNorm's GPU path (used by `fitSpiDE()` when `backend = "auto"`, the default) initialises `torch`'s Metal/MPS runtime, and that runtime is **not fork-safe** — a forked worker crashes with `+[MPSGraphObject initialize] ... fork() ... Crashing instead`. All fits below therefore pass `backend = "cpu"`, which keeps SpaNorm off the GPU so the forked workers are safe. (The models here are small; the CPU path is the right choice anyway. On a machine with a usable GPU, keep the GPU by parallelising with the non-forking `SnowParam(NPAR)` instead.)
+# Introduction
 
-# Data generators
+`spiDE` looks for **neighbourhood-dependent differential expression**: within an
+index cell type, it asks whether a gene's response to an experimental condition
+depends on the local density of surrounding cell types (the *niche*). Evaluating
+a method like this honestly requires simulated data whose statistical structure
+matches real spatial transcriptomics — otherwise a benchmark can flatter (or
+unfairly penalise) the method.
 
-Both generators plant a **patient-level random intercept** (`sd_patient`) on top of the cell-type baseline, so — unlike `.toySPE()` — every simulated dataset has genuine between-sample clustering, the actual source of pseudo-replication. `sim_null()` has no response effect at all (used for Type-I error / calibration); `sim_alt()` additionally plants a known, gene-indexed A-index / B-niche response effect in a specified fraction of genes (used for power and FDR).
+This vignette has two parts. First we **look at a simulated dataset** and check
+that it reproduces the hallmarks of real spatial data: very low, gene-specific
+counts and a mean–variance relationship in which lowly expressed genes are the
+most overdispersed. Second we summarise a **large benchmark study** of the spiDE
+model — its false-positive control, its statistical power, and its robustness to
+the spatial arrangement of cells.
+
+The benchmark figures below are read from summary tables shipped with the
+package (`inst/extdata/benchmark/`). They are produced by a self-contained
+simulation study designed to run on a compute cluster; the code, and
+instructions for regenerating the tables at full scale, live in the package's
+`research/` directory.
+
+# What a realistic spatial dataset looks like
+
+Real spatial transcriptomics assays (imaging platforms such as Xenium and CosMx,
+or sequencing platforms at single-cell resolution) share three features that a
+naïve simulation misses:
+
+1. **many genes** — a panel or transcriptome of ten thousand or more;
+2. **very low counts** — most gene–cell measurements are 0, 1, 2 or occasionally
+   3, with a small number of highly expressed genes;
+3. **a mean–variance trend** — overdispersion is not constant; lowly expressed
+   genes are relatively far more variable than highly expressed ones.
+
+The `spiDE` simulator reproduces all three with a negative-binomial model whose
+per-gene mean is drawn from a Gamma distribution and whose dispersion follows the
+[splatter](https://bioconductor.org/packages/splatter/)-style trend
+`bcv = bcv.common + bcv.disp / sqrt(mean)` (so the NB size, `1 / bcv²`, *rises*
+with abundance). We draw one large dataset to inspect these properties.
 
 
 ``` r
-.simulate_spe <- function(S, n_per, n_genes, field, sd_patient, seed,
-                          nonnull = integer(0), beta = 0, sd_slope = 0) {
-  set.seed(seed)
-  cts <- c("A", "B", "C")
-  gn <- sprintf("G%d", seq_len(n_genes))
-  sids <- sprintf("S%d", seq_len(S))
-  cond <- rep(c("Responder", "Non-responder"), length.out = S)
-  names(cond) <- sids
+# a 12,000-gene dataset with a spatial niche gradient and one planted signal
+n_genes <- 12000L
+field   <- 500
+set.seed(1)
 
-  cells <- lapply(sids, function(sid) {
-    x <- runif(n_per, 0, field)
-    y <- runif(n_per, 0, field)
-    ct <- ifelse(x > 0.6 * field & runif(n_per) < 0.7, "B",
-                sample(c("A", "C"), n_per, replace = TRUE))
-    data.frame(sample_id = sid, condition = cond[[sid]],
-              x = x, y = y, cell_type = ct, stringsAsFactors = FALSE)
-  })
-  cd <- do.call(rbind, cells)
-  n <- nrow(cd)
-  cd$cell_id <- sprintf("c%d", seq_len(n))
-
-  # per-cell-type baseline log-mean
-  base <- matrix(rnorm(n_genes * length(cts), 1.5, 0.6), n_genes,
-                 dimnames = list(gn, cts))
-  lmu <- base[, cd$cell_type, drop = FALSE]
-
-  # per-(gene, sample) random intercept: real clustering, no response effect
-  u <- matrix(rnorm(n_genes * S, 0, sd_patient), n_genes,
-             dimnames = list(gn, sids))
-  lmu <- lmu + u[, cd$sample_id, drop = FALSE]
-
-  # planted A-index / B-niche response effect in the `nonnull` genes; x/field
-  # is a proxy for local B-niche density (B cells sit at high x)
-  if (length(nonnull) > 0 && beta != 0) {
-    is_A <- cd$cell_type == "A"
-    is_resp <- cd$condition == "Responder"
-    slope_shift <- if (sd_slope > 0) {
-      # per-sample random slope noise, shared across the nonnull genes'
-      # per-sample deviation but independent across samples
-      v <- setNames(rnorm(S, 0, sd_slope), sids)
-      v[cd$sample_id]
-    } else 0
-    eff <- (beta + slope_shift) * is_A * is_resp * (cd$x / field)
-    for (g in nonnull) lmu[g, ] <- lmu[g, ] + eff
+sim_showcase <- function(n_per, condition) {
+  x <- runif(n_per, 0, field)
+  y <- runif(n_per, 0, field)
+  # B cells enrich at high x -> a left-to-right niche gradient
+  ct <- ifelse(x > 0.6 * field & runif(n_per) < 0.7, "B",
+               sample(c("A", "C"), n_per, replace = TRUE))
+  lib <- rlnorm(n_per, -0.02, 0.2)
+  eff <- matrix(0, n_genes, n_per)
+  if (condition == "Responder") {                 # plant G1 in A cells vs x
+    eff[1, ] <- 2.5 * (ct == "A") * (x / field)
   }
-
-  mu <- exp(lmu)
-  counts <- matrix(rnbinom(length(mu), mu = as.vector(mu), size = 5), n_genes,
-                   dimnames = list(gn, cd$cell_id))
-  cd$Area <- exp(rnorm(n, sd = 0.2))
-  cd$nCount <- colSums(counts)
-
-  SpatialExperiment(assays = list(counts = counts),
-                    colData = S4Vectors::DataFrame(cd),
-                    spatialCoords = as.matrix(cd[, c("x", "y")]))
+  Y <- spiDE:::.simCounts(gp, ct, log_effect = eff, lib.size = lib)
+  list(Y = Y, x = x, y = y, ct = ct, condition = condition)
 }
 
-sim_null <- function(S = 10, n_per = 90, n_genes = 30, field = 500,
-                     sd_patient = 0.7, seed = 1) {
-  .simulate_spe(S, n_per, n_genes, field, sd_patient, seed)
-}
-
-sim_alt <- function(S = 10, n_per = 90, n_genes = 150, field = 500,
-                    prop_nonnull = 0.15, beta = 2, sd_patient = 0.7,
-                    sd_slope = 0, seed = 1) {
-  n_nonnull <- max(1, round(prop_nonnull * n_genes))
-  nonnull <- seq_len(n_nonnull) # G1..Gk are the true positives, by construction
-  spe <- .simulate_spe(S, n_per, n_genes, field, sd_patient, seed,
-                       nonnull = nonnull, beta = beta, sd_slope = sd_slope)
-  list(spe = spe, truth = seq_len(n_genes) %in% nonnull, nonnull_genes = nonnull)
-}
+gene_names <- sprintf("G%d", seq_len(n_genes))
+# total.count sets an imaging-ST-like sequencing depth (~1500-2000 counts/cell)
+gp <- spiDE:::.simGeneParams(gene_names, boost = "G1", boost.gmean = 10,
+                             total.count = 1500)
+resp    <- sim_showcase(3000, "Responder")
+nonresp <- sim_showcase(3000, "Non-responder")
+Y <- cbind(resp$Y, nonresp$Y)
 ```
 
-# What a simulated dataset looks like
-
-Before running any fits, it helps to *see* the two structural features the study relies on: the **spatial niche gradient** (B cells cluster at high `x`, so `x/field` is a proxy for local B-density) and the **planted signal** (gene `G1` is up-regulated in `A` (index) cells, in *Responder* samples, in proportion to that B-niche gradient). We generate one deliberately large dataset purely for visualisation.
+## Counts are low and sparse
 
 
 ``` r
-demo <- sim_alt(S = 6, n_per = 500, beta = 2, seed = 1)
-vd <- as.data.frame(colData(demo$spe))
-xy <- spatialCoords(demo$spe)
-vd$x <- xy[, 1]
-vd$y <- xy[, 2]
-# G1 is the first planted true-positive gene (nonnull_genes == G1..Gk)
-vd$G1 <- log1p(as.numeric(SummarizedExperiment::assay(demo$spe, "counts")["G1", ]))
-vd$is_A <- ifelse(vd$cell_type == "A", "A (index)", "other cell types")
-```
+ct_tab <- table(factor(pmin(as.vector(Y), 6L), levels = 0:6))
+cdf <- data.frame(count = names(ct_tab),
+                  frac = as.numeric(ct_tab) / sum(ct_tab))
+cdf$count <- factor(cdf$count, levels = 0:6,
+                    labels = c(0:5, "6+"))
+zero_pct <- round(100 * mean(Y == 0))
+lib_med  <- round(median(colSums(Y)))
 
-## Cell-type layout in an example sample
-
-Each cell is placed uniformly in a square field, but `B` cells are enriched at high `x` (`x > 0.6 * field`). This is the spatial gradient the niche density is built from — the effective B-niche estimated by `buildNiches()` increases from left to right.
-
-
-``` r
-ggplot(subset(vd, sample_id == "S1"), aes(x, y, colour = cell_type)) +
-  geom_point(size = 1) +
-  coord_equal() +
-  labs(title = "Cell-type layout (sample S1)", colour = "cell type") +
-  theme_bw()
+ggplot(cdf, aes(count, frac)) +
+  geom_col(fill = spide_pal$accent, width = 0.75) +
+  geom_text(aes(label = scales::percent(frac, accuracy = 1)), vjust = -0.4,
+            size = 3) +
+  scale_y_continuous(labels = scales::percent, expand = expansion(c(0, 0.1))) +
+  labs(x = "count value", y = "fraction of gene-cell measurements",
+       title = sprintf("Counts are dominated by zeros (%d%% zero)", zero_pct))
 ```
 
 <div class="figure">
-<img src="spiDE-simulation-fig-viz-celltypes-1.png" alt="Spatial layout of the three cell types in one example sample (S1). B cells concentrate at high x; A and C cells are spread uniformly. The left-to-right B gradient is what the niche-density covariate captures." width="825" />
-<p class="caption">Spatial layout of the three cell types in one example sample (S1). B cells concentrate at high x; A and C cells are spread uniformly. The left-to-right B gradient is what the niche-density covariate captures.</p>
+<img src="spiDE-simulation-fig-showcase-counts-1.png" alt="Distribution of individual gene-cell counts. The overwhelming majority are 0, 1 or 2, as in real imaging-based spatial data." width="1050" />
+<p class="caption">Distribution of individual gene-cell counts. The overwhelming majority are 0, 1 or 2, as in real imaging-based spatial data.</p>
 </div>
 
-## The planted signal in an example gene
+Aggregated across genes, each cell carries a realistic sequencing depth — here a
+median of about 1,680 total counts per cell — even
+though almost every individual gene–cell measurement is zero or one.
 
-The effect is a three-way interaction: expression of `G1` is lifted only where a cell is **type A**, **in a Responder sample**, and **at high B-niche density (high x)**. Splitting the spatial map by cell type (rows) and by an example Responder / Non-responder sample (columns) isolates it — only the top-left panel (A cells, Responder) shows a left-to-right expression gradient; every other panel is flat.
+## Overdispersion decreases with abundance
+
+For each gene we estimate its mean expression and its biological coefficient of
+variation (BCV) from the counts. Plotting BCV against mean abundance recovers the
+characteristic **downward trend**: rare genes are the most overdispersed, and the
+scatter follows the trend the simulator was built from.
 
 
 ``` r
-ggplot(subset(vd, sample_id %in% c("S1", "S2")), aes(x, y, colour = G1)) +
-  geom_point(size = 1.3) +
-  scale_colour_viridis_c(option = "magma") +
-  facet_grid(is_A ~ paste0(sample_id, " (", condition, ")")) +
-  coord_equal() +
-  labs(title = "Planted A-index / B-niche response signal (gene G1)",
-       colour = "log1p(G1)") +
-  theme_bw()
+gmean <- rowMeans(Y)
+gvar  <- rowSums((Y - gmean)^2) / (ncol(Y) - 1)
+# NB biological coefficient of variation, guarding the Poisson floor
+bcv <- sqrt(pmax(gvar - gmean, 0) / gmean^2)
+keep <- gmean > 0.02 & is.finite(bcv) & bcv > 0
+trend <- data.frame(m = 10^seq(log10(0.05), log10(max(gmean)), length = 100))
+trend$bcv <- 0.3 + 1 / sqrt(trend$m)          # bcv.common + bcv.disp / sqrt(mean)
+
+ggplot(data.frame(gmean = gmean[keep], bcv = bcv[keep]), aes(gmean, bcv)) +
+  geom_point(alpha = 0.15, size = 0.5, colour = spide_pal$accent) +
+  geom_line(data = trend, aes(m, bcv), colour = spide_pal$combine[["Brown"]],
+            linewidth = 1) +
+  scale_x_log10() + scale_y_log10() +
+  labs(x = "mean expression (log scale)", y = "biological CV (log scale)",
+       title = "Lowly expressed genes are the most overdispersed")
 ```
 
 <div class="figure">
-<img src="spiDE-simulation-fig-viz-signal-1.png" alt="Spatial distribution of G1 expression in an example Responder (S1) and Non-responder (S2) sample, split by whether the cell is the index type A. The high-x expression gradient appears only for A cells in the responder -- exactly the celltype:condition:niche effect spiDE tests for." width="1125" />
-<p class="caption">Spatial distribution of G1 expression in an example Responder (S1) and Non-responder (S2) sample, split by whether the cell is the index type A. The high-x expression gradient appears only for A cells in the responder -- exactly the celltype:condition:niche effect spiDE tests for.</p>
+<img src="spiDE-simulation-fig-showcase-bcv-1.png" alt="Empirical mean-variance trend. Each point is a gene; the biological coefficient of variation falls as mean expression rises. The line is the model's true trend." width="1050" />
+<p class="caption">Empirical mean-variance trend. Each point is a gene; the biological coefficient of variation falls as mean expression rises. The line is the model's true trend.</p>
 </div>
 
-# Shared driver
+## Genes and cell types differ in expression
 
-For a given simulated dataset we fit all three `random` modes at a single bandwidth and pull out two levels of evidence:
-
--   **raw Wald p-values** on the `ResponseNiche` (A-index x B-niche) coefficient, gate-free — the cleanest signal for calibration/power curves;
--   **end-to-end discoveries** from `results()`, gated on the reported FDR q-values — what a user actually sees.
-
-Two efficiency ideas make the sweeps below cheap enough to run at scale, and are worth stating explicitly because they shape all of the code:
-
-1.  **Fit each dataset once, derive every metric from it.** `buildNiches()` is method-independent, so it is computed a single time per dataset and shared across the three `random` modes. And `testSpiDE()` called at `fdr = 1` returns the *full* `(gene, index, niche)` table with its `fdr.gene`/`fdr.index`/`fdr.niche` q-values; because the niche-level Benjamini–Hochberg step is computed *within* each `gene × index` group, gating those three columns at any target `t` reproduces `testSpiDE(fdr = t)` exactly. So one fit yields the raw-p **power**, the realized **FDP**, the **recall (TPR)** at every threshold, and any other end-to-end metric — no model is ever re-fit to change a threshold. (Parts B and C in earlier versions of this vignette fit two nearly identical sets of `sim_alt()` models; they are now a single set of fits.)
-2.  **Parallelise over datasets, not over the grid.** Every metric is a mean over `B` independent simulated datasets at each design point. We therefore flatten the whole study into one long list of *(design point, replicate)* jobs and hand that to `bplapply`, so all 10 workers stay busy and the wildly uneven per-job cost (a 30-sample / 640-cell fit dwarfs a 4-sample one) load-balances. The old code parallelised over the ~5 grid points only, leaving most cores idle.
+Gene means span several orders of magnitude, and each cell type has its own
+expression profile — the biological structure `spiDE` conditions on.
 
 
 ``` r
-sigma_fixed <- 50
-methods <- c(fixed = "none", intercept = "intercept", slope = "slope")
+p_dist <- ggplot(data.frame(gmean = gmean[gmean > 0]), aes(gmean)) +
+  geom_histogram(bins = 50, fill = spide_pal$accent) +
+  scale_x_log10() +
+  labs(x = "per-gene mean (log scale)", y = "number of genes",
+       title = "Gene means vary widely")
 
-# raw two-sided Wald p-value for the A-index x B-niche ResponseNiche coefficient
-.raw_AB_p <- function(fit1) {
-  cn <- colnames(fit1@t_stat)
-  col <- which(grepl("CellTypeA", cn) & grepl("B$", cn) & grepl("Responder", cn))
-  stopifnot(length(col) == 1)
-  df <- if (is.null(fit1@df)) Inf else fit1@df
-  2 * stats::pt(-abs(fit1@t_stat[, col]), df)
-}
-
-# Fit ONE dataset once per `random` mode and return everything downstream needs.
-# buildNiches is shared across modes; testSpiDE is called at fdr = 1 so the full
-# q-value table can be re-gated at any target (see note above). backend = "cpu"
-# keeps SpaNorm off the fork-unsafe GPU inside the parallel workers.
-.fit_all <- function(spe, mods = methods) {
-  spe <- buildNiches(spe, sigma = sigma_fixed)
-  lapply(mods, function(m) {
-    fit <- fitSpiDE(spe, "condition", sigma = sigma_fixed, random = m,
-                    backend = "cpu", verbose = FALSE, re.prop = 0.1)
-    res <- testSpiDE(fit, spe = spe, fdr = 1)
-    tab <- results(res)
-    list(raw_p = .raw_AB_p(fits(res)[[1]]),
-         ab = tab[tab$ct_index == "A" & tab$ct_niche == "B", , drop = FALSE])
-  })
-}
-
-# end-to-end A/B discoveries at FDR target t, re-gated from a single fdr = 1 table
-.discoveries <- function(ab, t) {
-  unique(ab$gene[ab$fdr.gene <= t & ab$fdr.index <= t & ab$fdr.niche <= t])
-}
-
-# Run a data.frame of jobs (one row = one simulated dataset) across all workers.
-run_jobs <- function(grid, fun) {
-  jl <- split(grid, seq_len(nrow(grid)))
-  do.call(rbind, bplapply(jl, function(j) do.call(fun, as.list(j)),
-                          BPPARAM = BPPARAM))
-}
-```
-
-# Part A — calibration under the null
-
-No response effect is planted (`sim_null()`); every response test should be null, so p-values should be $\mathrm{Unif}(0,1)$ and the rejection rate at $\alpha = 0.05$ should be $\approx 0.05$ for a correctly calibrated method.
-
-
-``` r
-S_grid_null <- if (RUN_FULL) c(4, 6, 10, 16, 24) else c(6, 16)
-
-jobA <- function(S, b) {
-  fa <- .fit_all(sim_null(S = S, seed = 1000 * S + b))
-  data.frame(S = S, method = names(fa),
-             reject_rate = vapply(fa, function(x) mean(x$raw_p < 0.05), numeric(1)),
-             row.names = NULL)
-}
-partA_raw <- run_jobs(expand.grid(S = S_grid_null, b = seq_len(B)), jobA)
-partA <- aggregate(reject_rate ~ S + method, partA_raw, mean)
-partA
-#>     S    method reject_rate
-#> 1   4     fixed  0.40750000
-#> 2   6     fixed  0.42083333
-#> 3  10     fixed  0.39166667
-#> 4  16     fixed  0.38166667
-#> 5  24     fixed  0.33500000
-#> 6   4 intercept  0.02833333
-#> 7   6 intercept  0.05500000
-#> 8  10 intercept  0.13083333
-#> 9  16 intercept  0.11333333
-#> 10 24 intercept  0.10333333
-#> 11  4     slope  0.02416667
-#> 12  6     slope  0.08333333
-#> 13 10     slope  0.16000000
-#> 14 16     slope  0.11916667
-#> 15 24     slope  0.13416667
-```
-
-
-``` r
-ggplot(partA, aes(S, reject_rate, colour = method)) +
-  geom_hline(yintercept = 0.05, linetype = "dashed", colour = "grey40") +
-  geom_line() + geom_point(size = 2) +
+ctmean <- data.frame(
+  cell_type = c(resp$ct, nonresp$ct),
+  total = colSums(Y))
+p_ct <- ggplot(ctmean, aes(cell_type, total, fill = cell_type)) +
+  geom_boxplot(outlier.size = 0.3, alpha = 0.9) +
+  scale_fill_spide("celltype") +
   scale_y_log10() +
-  labs(y = "P(raw p < 0.05 | null)", title = "Null calibration vs number of samples") +
-  theme_bw()
+  labs(x = "cell type", y = "total counts per cell (log scale)",
+       title = "Cell types differ") +
+  theme(legend.position = "none")
+
+p_dist + p_ct
 ```
 
 <div class="figure">
-<img src="spiDE-simulation-fig-partA-plot-1.png" alt="Type-I error (rejection rate at alpha=0.05) under the null, by number of samples S. Dashed line = nominal 0.05. The fixed-effects fit is inflated regardless of S; the mixed-effects fits are close to nominal and improve as S grows." width="900" />
-<p class="caption">Type-I error (rejection rate at alpha=0.05) under the null, by number of samples S. Dashed line = nominal 0.05. The fixed-effects fit is inflated regardless of S; the mixed-effects fits are close to nominal and improve as S grows.</p>
+<img src="spiDE-simulation-fig-showcase-genes-1.png" alt="Left: the distribution of per-gene mean expression is heavy-tailed, most genes very low. Right: mean expression differs systematically between cell types." width="1050" />
+<p class="caption">Left: the distribution of per-gene mean expression is heavy-tailed, most genes very low. Right: mean expression differs systematically between cell types.</p>
 </div>
 
-A QQ-plot makes the same point at the level of the full p-value distribution rather than a single threshold. Two subtleties matter for reading it correctly, and a *single* simulated dataset gets both wrong:
+## The spatial niche and the planted signal
 
--   The variance components (`tau2`) are **shared across genes and estimated from only `S` samples**, so all `n_genes` response-niche p-values in one dataset ride on the *same* `tau2` estimate. One unlucky variance-component draw tilts the entire curve — the departure is coherent, not gene-by-gene noise. This is most pronounced for `random = "slope"`, whose extra per-sample slope variance is the least stable component. So we **pool over all `B` datasets**.
--   `fitSpiDE()` is **not deterministic by default**: `fitNB` subsamples cells for the dispersion estimate using the RNG, so the same data + model can give visibly different p-values run to run. We therefore `set.seed()` before every fit (identically across the three methods, so they see the same draw).
+The simulator places `B` cells so their density rises from left to right; this
+gradient is what `buildNiches()` turns into a niche covariate. The planted
+effect is a three-way interaction — gene `G1` is up-regulated **only** in the
+index cell type `A`, **only** in Responder samples, and **in proportion to the
+local `B` density**. It is visible as a left-to-right expression gradient that
+appears in exactly one panel below.
 
 
 ``` r
-qq_raw <- run_jobs(
-  expand.grid(b = seq_len(B), method = names(methods), stringsAsFactors = FALSE),
-  function(b, method) {
-    spe <- buildNiches(sim_null(S = 10, seed = 7000 + b), sigma = sigma_fixed)
-    set.seed(b) # identical draw across methods, so they see the same subsample
-    fit <- fitSpiDE(spe, "condition", sigma = sigma_fixed,
-                    random = methods[[method]], backend = "cpu",
-                    verbose = FALSE, re.prop = 0.1)
-    res <- testSpiDE(fit, spe = spe, fdr = 1)
-    data.frame(method = method, p = .raw_AB_p(fits(res)[[1]]), row.names = NULL)
-  })
-qq_df <- do.call(rbind, lapply(names(methods), function(m) {
-  p <- sort(qq_raw$p[qq_raw$method == m])
-  data.frame(method = m, expected = -log10(ppoints(length(p))),
-             observed = -log10(p))
-}))
-ggplot(qq_df, aes(expected, observed, colour = method)) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey40") +
-  geom_point(size = 1, alpha = 0.5) +
-  labs(x = "expected -log10(p)", y = "observed -log10(p)") +
-  theme_bw()
+layout_df <- data.frame(x = resp$x, y = resp$y, cell_type = resp$ct)
+p_layout <- ggplot(layout_df, aes(x, y, colour = cell_type)) +
+  geom_point(size = 0.6, alpha = 0.8) +
+  scale_colour_spide("celltype") +
+  coord_equal() +
+  guides(colour = guide_legend(override.aes = list(size = 2, alpha = 1))) +
+  labs(title = "Cell-type layout (Responder)")
+
+g1 <- rbind(
+  data.frame(x = resp$x, y = resp$y, ct = resp$ct,
+             G1 = log1p(resp$Y[1, ]), condition = "Responder"),
+  data.frame(x = nonresp$x, y = nonresp$y, ct = nonresp$ct,
+             G1 = log1p(nonresp$Y[1, ]), condition = "Non-responder"))
+p_signal <- ggplot(subset(g1, ct == "A"), aes(x, y, colour = G1)) +
+  geom_point(size = 0.7) +
+  scale_colour_viridis_c(option = "magma") +
+  facet_wrap(~ condition) +
+  coord_equal() +
+  labs(title = "G1 in A cells", colour = "log1p(G1)")
+
+p_layout + p_signal + patchwork::plot_layout(widths = c(1, 1.6))
 ```
 
 <div class="figure">
-<img src="spiDE-simulation-fig-partA-qq-1.png" alt="QQ-plot of null response-niche p-values at S = 10, pooled over all B datasets with the fit RNG fixed. The fixed-effects fit is badly anti-conservative; the mixed-effects fits are far closer to the uniform (dashed) reference, though both remain mildly anti-conservative at this small S (the residual tail shrinks as S grows, cf. Part A)." width="900" />
-<p class="caption">QQ-plot of null response-niche p-values at S = 10, pooled over all B datasets with the fit RNG fixed. The fixed-effects fit is badly anti-conservative; the mixed-effects fits are far closer to the uniform (dashed) reference, though both remain mildly anti-conservative at this small S (the residual tail shrinks as S grows, cf. Part A).</p>
+<img src="spiDE-simulation-fig-showcase-spatial-1.png" alt="Left: cell-type layout in the Responder sample; B cells concentrate at high x. Right: G1 expression in A cells only. The high-x gradient appears in the Responder but not the Non-responder -- the celltype:condition:niche effect spiDE tests for." width="1200" />
+<p class="caption">Left: cell-type layout in the Responder sample; B cells concentrate at high x. Right: G1 expression in A cells only. The high-x gradient appears in the Responder but not the Non-responder -- the celltype:condition:niche effect spiDE tests for.</p>
 </div>
 
-Two practical takeaways from this null study:
+# Benchmarking the spiDE model
 
--   **Reproducibility, not just averaging.** Because `fitNB` subsamples cells for the dispersion estimate from the RNG, the same data and model can give materially different response-niche p-values (and `tau2` estimates) from run to run. Set a seed before fitting — as done above and in the setup chunk — if you need reproducible variance components. (Raising `fitNB`'s `maxn.psi` to cover all cells removes the subsampling entirely and makes the fit deterministic, at some cost.)
--   **`random = "slope"` is the less stable model at small `S`.** Its extra per-sample slope variance is collinear with the tested fixed effect and is estimated from only `S` samples, so it is heavy-tailed and, per dataset, tends to be a little more anti-conservative than `"intercept"` (visible as the slope curve sitting slightly above intercept). Both converge to nominal as `S` grows (Part A); flooring or clamping `tau2` does *not* fix the small-`S` gap. Prefer `"intercept"` when you have few samples and no reason to expect the niche-slope itself to vary between patients.
-
-# Parts B & C — power, FDR and recall from one set of fits
-
-Now we plant a real effect (`sim_alt()`, `beta = 2`, 15% of genes true) and answer the power *and* the FDR-control questions **from the same fits**. We define a set of design points — an `S`-sweep at fixed cells/sample, a cells/sample-sweep at fixed `S`, and a reference point used for the FDR-threshold curves — de-duplicated so a shared point is fit only once. Each *(design point, replicate)* dataset is fit once per method (via `.fit_all()`), and from that single fit we read off the raw-p power and the whole realized-FDP / recall curve over `fdr_grid` (via `.discoveries()`).
+The remainder of this vignette summarises a benchmark study that fits `spiDE` to
+many such datasets. The full study (see `research/`) sweeps the number of
+patient samples, the number of cells per sample, the effect size and the spatial
+layout, and repeats each design point over many random replicates. Here we load
+its summary tables.
 
 
 ``` r
-S_grid   <- if (RUN_FULL) c(4, 8, 12, 20, 30) else c(6, 12, 24)
-npc_grid <- if (RUN_FULL) c(40, 80, 160, 320, 640) else c(80, 200, 400)
-fdr_grid <- if (RUN_FULL) c(0.01, 0.05, 0.1, 0.2, 0.3) else c(0.05, 0.2)
-S_ref    <- if (RUN_FULL) 16 else 12   # reference point for the FDR curves
-S_fixed  <- 10                         # held fixed while sweeping cells/sample
-npc_fixed <- 90                        # held fixed while sweeping samples
-
-# design points, de-duplicated so a point shared by two sweeps is fit only once
-design <- unique(rbind(
-  data.frame(S = S_grid,  n_per = npc_fixed),
-  data.frame(S = S_fixed, n_per = npc_grid),
-  data.frame(S = S_ref,   n_per = npc_fixed)
-))
-gridBC <- do.call(rbind, lapply(seq_len(nrow(design)), function(i)
-  data.frame(S = design$S[i], n_per = design$n_per[i], b = seq_len(B))))
-
-jobBC <- function(S, n_per, b) {
-  sim <- sim_alt(S = S, n_per = n_per, n_genes = 150, prop_nonnull = 0.15,
-                 beta = 2, seed = S * 1e6 + n_per * 1e3 + b)
-  truth <- sprintf("G%d", sim$nonnull_genes)
-  fa <- .fit_all(sim$spe)
-  do.call(rbind, lapply(names(fa), function(m) {
-    x <- fa[[m]]
-    per_fdr <- do.call(rbind, lapply(fdr_grid, function(t) {
-      hit <- .discoveries(x$ab, t)
-      data.frame(fdr = t,
-                 fdp = if (length(hit)) mean(!(hit %in% truth)) else 0,
-                 tpr = mean(truth %in% hit))
-    }))
-    data.frame(S = S, n_per = n_per, b = b, method = m,
-               power_raw = mean(x$raw_p[sim$nonnull_genes] < 0.05),
-               per_fdr, row.names = NULL)
-  }))
+bench_dir <- system.file("extdata", "benchmark", package = "spiDE")
+bench <- function(f) {
+  path <- file.path(bench_dir, f)
+  if (!file.exists(path)) return(NULL)
+  if (grepl("\\.rds$", f)) readRDS(path) else
+    utils::read.csv(path, check.names = FALSE)
 }
-
-simBC <- run_jobs(gridBC, jobBC)
-
-# power_raw is constant across the fdr rows of a fit; one row per fit for it
-fitrows <- subset(simBC, fdr == fdr_grid[[1]])
-powerS <- aggregate(power_raw ~ S + method,
-                    subset(fitrows, n_per == npc_fixed & S %in% S_grid), mean)
-powerN <- aggregate(power_raw ~ n_per + method,
-                    subset(fitrows, S == S_fixed & n_per %in% npc_grid), mean)
 ```
+
+`spiDE` offers three inference modes, compared throughout:
+
+* **fixed** (`random = "none"`) — treats every cell as independent;
+* **intercept** (`random = "intercept"`) — a per-patient random intercept;
+* **slope** (`random = "slope"`) — additionally random per-patient niche slopes.
+
+The mixed-effects modes exist because a patient contributes many cells but only
+one condition label, so cells are *pseudo-replicates*: treating them as
+independent overstates the evidence for a condition effect. The benchmark
+quantifies the consequences.
+
+## False-positive control under the null
+
+When no effect is planted, a well-calibrated test rejects the null at rate
+$\alpha$. The figure shows the realised type-I error at $\alpha = 0.05$ as the
+number of patient samples grows, for each mode and two spatial layouts.
+
+
+``` r
+t1 <- bench("null_type1.csv")
+if (!is.null(t1)) {
+  t1$method <- factor(t1$method, levels = names(spide_pal$method))
+  ggplot(t1, aes(S, type1, colour = method)) +
+    geom_hline(yintercept = 0.05, linetype = 2, colour = spide_pal$ref) +
+    geom_line(linewidth = 0.8) + geom_point(size = 2) +
+    facet_wrap(~ layout) +
+    scale_colour_spide("method") +
+    labs(x = "number of patient samples (S)",
+         y = "P(reject | null) at alpha = 0.05",
+         title = "Null calibration versus sample size")
+}
+```
+
+<div class="figure">
+<img src="spiDE-simulation-fig-bench-type1-1.png" alt="Type-I error at alpha = 0.05 under the null. The dashed line is the nominal rate. The mixed-effects modes track it as samples accrue; the fixed-effects mode does not correct for pseudo-replication." width="1050" />
+<p class="caption">Type-I error at alpha = 0.05 under the null. The dashed line is the nominal rate. The mixed-effects modes track it as samples accrue; the fixed-effects mode does not correct for pseudo-replication.</p>
+</div>
+
+A p-value QQ plot makes the same point across the whole distribution rather than
+at a single threshold: calibrated p-values lie on the diagonal.
+
+
+``` r
+pv <- bench("null_pvalues.rds")
+if (!is.null(pv)) {
+  Smax <- max(pv$S)
+  pv <- pv[pv$S == Smax & pv$layout == "gradient", ]
+  qq <- do.call(rbind, lapply(split(pv$p, pv$method), function(p) {
+    p <- sort(p[is.finite(p)])
+    data.frame(method = NA, expected = -log10(ppoints(length(p))),
+               observed = -log10(pmax(p, 1e-8)))
+  }))
+  qq$method <- rep(names(split(pv$p, pv$method)),
+                   times = vapply(split(pv$p, pv$method),
+                                  function(p) length(p[is.finite(p)]), 1L))
+  qq$method <- factor(qq$method, levels = names(spide_pal$method))
+  ggplot(qq, aes(expected, observed, colour = method)) +
+    geom_abline(slope = 1, intercept = 0, linetype = 2, colour = spide_pal$ref) +
+    geom_line(linewidth = 0.8) +
+    scale_colour_spide("method") +
+    labs(x = expression(-log[10]("expected p")),
+         y = expression(-log[10]("observed p")),
+         title = sprintf("Null p-value calibration (S = %d)", Smax))
+}
+```
+
+<div class="figure">
+<img src="spiDE-simulation-fig-bench-qq-1.png" alt="QQ plot of null response-niche p-values pooled over replicates. Points on the diagonal are calibrated; points above it are anti-conservative (too many small p-values)." width="1050" />
+<p class="caption">QQ plot of null response-niche p-values pooled over replicates. Points on the diagonal are calibrated; points above it are anti-conservative (too many small p-values).</p>
+</div>
 
 ## Power: samples buy it, cells do not
 
-Power is the fraction of the true genes recovered as raw-p `< 0.05`. The two panels are the whole answer to the motivating question: power climbs with `S` but is flat (only weakly increasing, via the dispersion estimate) with `n_per`.
+With a real effect planted, we measure **power** — the fraction of truly
+responding genes detected. The two panels are the central result: power climbs
+with the number of patient **samples** but is essentially flat in the number of
+**cells per sample**. Because the condition label is shared by all cells of a
+patient, extra cells are pseudo-replicates that cannot add independent evidence
+about a between-patient contrast; only more patients can.
 
 
 ``` r
-ggplot(powerS, aes(S, power_raw, colour = method)) +
-  geom_line() + geom_point(size = 2) + ylim(0, 1) +
-  labs(x = "number of samples (S)", y = "power (P(raw p < 0.05 | true effect))") +
-  theme_bw()
-```
-
-<div class="figure">
-<img src="spiDE-simulation-fig-partBC-plot-S-1.png" alt="Power to detect the planted A-index/B-niche effect vs number of samples, at fixed cells/sample. Power rises for the mixed-effects methods as S grows." width="900" />
-<p class="caption">Power to detect the planted A-index/B-niche effect vs number of samples, at fixed cells/sample. Power rises for the mixed-effects methods as S grows.</p>
-</div>
-
-
-``` r
-ggplot(powerN, aes(n_per, power_raw, colour = method)) +
-  geom_line() + geom_point(size = 2) + ylim(0, 1) +
-  labs(x = "cells per sample", y = "power (P(raw p < 0.05 | true effect))") +
-  theme_bw()
-```
-
-<div class="figure">
-<img src="spiDE-simulation-fig-partBC-plot-npc-1.png" alt="Power vs cells per sample, at fixed S. Under the mixed-effects correction power is essentially flat in cell count -- extra within-sample cells cannot substitute for extra samples, because the response label is constant within a sample." width="900" />
-<p class="caption">Power vs cells per sample, at fixed S. Under the mixed-effects correction power is essentially flat in cell count -- extra within-sample cells cannot substitute for extra samples, because the response label is constant within a sample.</p>
-</div>
-
-The fixed-effects curve looks "more powerful" in both panels, but Part A already showed its apparent power is inflated by the same anti-conservative bias that broke its null calibration — comparing raw power across methods is only meaningful once Type-I error is matched, which the realized-FDR curves below do properly.
-
-## FDR and recall vs the nominal threshold
-
-At the reference design point we plot, from the very same fits, whether the *realized* false discovery proportion (FDP) tracks the nominal threshold and how many true positives are recovered (TPR) at each.
-
-
-``` r
-ref <- subset(simBC, S == S_ref & n_per == npc_fixed)
-fdp_curve <- aggregate(fdp ~ fdr + method, ref, mean)
-tpr_curve <- aggregate(tpr ~ fdr + method, ref, mean)
-```
-
-
-``` r
-p1 <- ggplot(fdp_curve, aes(fdr, fdp, colour = method)) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey40") +
-  geom_line() + geom_point(size = 2) +
-  labs(x = "nominal FDR", y = "realized FDP") + theme_bw()
-p2 <- ggplot(tpr_curve, aes(fdr, tpr, colour = method)) +
-  geom_line() + geom_point(size = 2) + ylim(0, 1) +
-  labs(x = "nominal FDR", y = "TPR (recall)") + theme_bw()
-p1
-```
-
-<div class="figure">
-<img src="spiDE-simulation-fig-partBC-plot-fdr-1.png" alt="Realized false discovery proportion (top) and true-positive rate (bottom) vs the nominal FDR threshold, at the reference design point. The dashed diagonal in the top panel is the y=x reference: points below it mean FDR is controlled; above it means it is exceeded." width="900" />
-<p class="caption">Realized false discovery proportion (top) and true-positive rate (bottom) vs the nominal FDR threshold, at the reference design point. The dashed diagonal in the top panel is the y=x reference: points below it mean FDR is controlled; above it means it is exceeded.</p>
-</div>
-
-``` r
-p2
-```
-
-<div class="figure">
-<img src="spiDE-simulation-fig-partBC-plot-fdr-2.png" alt="Realized false discovery proportion (top) and true-positive rate (bottom) vs the nominal FDR threshold, at the reference design point. The dashed diagonal in the top panel is the y=x reference: points below it mean FDR is controlled; above it means it is exceeded." width="900" />
-<p class="caption">Realized false discovery proportion (top) and true-positive rate (bottom) vs the nominal FDR threshold, at the reference design point. The dashed diagonal in the top panel is the y=x reference: points below it mean FDR is controlled; above it means it is exceeded.</p>
-</div>
-
-## A metric that comes for free: end-to-end recall vs samples
-
-Because every fit already carries its full q-value table, we can read off metrics the original two-part split could not without yet more fits — for instance the **end-to-end** discovery recall (TPR at a fixed `fdr = 0.05`, i.e. what a user actually gets after gene→index→niche gating) as a function of `S`, alongside the gate-free raw-p power. The gap between them is the price of the hierarchical FDR gate.
-
-
-``` r
-e2e <- aggregate(tpr ~ S + method,
-                 subset(simBC, n_per == npc_fixed & S %in% S_grid & fdr == 0.05), mean)
-ggplot(subset(powerS, method != "fixed"), aes(S, power_raw, colour = method)) +
-  geom_line(linetype = "dashed") +
-  geom_line(data = subset(e2e, method != "fixed"), aes(S, tpr)) +
-  geom_point(data = subset(e2e, method != "fixed"), aes(S, tpr), size = 2) +
-  ylim(0, 1) +
-  labs(x = "number of samples (S)",
-       y = "recall — raw-p (dashed) vs end-to-end at FDR 0.05 (solid)") +
-  theme_bw()
-```
-
-<div class="figure">
-<img src="spiDE-simulation-fig-partBC-plot-e2e-1.png" alt="Raw-p power (dashed) vs end-to-end discovery recall at FDR = 0.05 (solid) as samples grow, for the mixed-effects fits. Both come from the same set of fits; the gap is the cost of the gene-level FDR gate." width="900" />
-<p class="caption">Raw-p power (dashed) vs end-to-end discovery recall at FDR = 0.05 (solid) as samples grow, for the mixed-effects fits. Both come from the same set of fits; the gap is the cost of the gene-level FDR gate.</p>
-</div>
-
-# Part D — intercept vs slope: the few-responders trade-off
-
-The model vignette notes a trade-off: `random = "slope"` gives the fullest protection against pseudo-replication, but with few samples the random slope can absorb a genuine effect, because both describe between-sample variation in the same niche-dependent slope. We reproduce that here by shrinking `S` at fixed effect size and comparing `"intercept"` vs `"slope"`.
-
-
-``` r
-S_small_grid <- if (RUN_FULL) c(4, 6, 8, 12) else c(4, 8)
-
-jobD <- function(S, b) {
-  sim <- sim_alt(S = S, n_genes = 60, prop_nonnull = 0.15, beta = 2.5,
-                 sd_slope = 0.4, seed = 4000 * S + b)
-  fa <- .fit_all(sim$spe, mods = c(intercept = "intercept", slope = "slope"))
-  data.frame(S = S, method = names(fa),
-             power = vapply(fa, function(x)
-               mean(x$raw_p[sim$nonnull_genes] < 0.05), numeric(1)),
-             row.names = NULL)
+pp <- bench("power_points.csv")
+if (!is.null(pp)) {
+  pp$method <- factor(pp$method, levels = names(spide_pal$method))
+  p_s <- ggplot(subset(pp, sweep == "samples"),
+                aes(S, power_raw, colour = method)) +
+    geom_line(linewidth = 0.8) + geom_point(size = 2) + ylim(0, 1) +
+    scale_colour_spide("method") +
+    labs(x = "patient samples (S)", y = "power", title = "Power vs samples")
+  p_n <- ggplot(subset(pp, sweep == "cells"),
+                aes(n_per, power_raw, colour = method)) +
+    geom_line(linewidth = 0.8) + geom_point(size = 2) + ylim(0, 1) +
+    scale_colour_spide("method") +
+    labs(x = "cells per sample", y = NULL, title = "Power vs cells")
+  p_s + p_n + patchwork::plot_layout(guides = "collect") &
+    theme(legend.position = "bottom")
 }
-partD_raw <- run_jobs(expand.grid(S = S_small_grid, b = seq_len(B)), jobD)
-partD <- aggregate(power ~ S + method, partD_raw, mean)
+```
+
+<div class="figure">
+<img src="spiDE-simulation-fig-bench-power-1.png" alt="Power to detect the planted niche effect. Left: rising with the number of patient samples. Right: flat in cells per sample under the mixed-effects correction." width="1050" />
+<p class="caption">Power to detect the planted niche effect. Left: rising with the number of patient samples. Right: flat in cells per sample under the mixed-effects correction.</p>
+</div>
+
+The fixed-effects mode looks the most powerful here, but that apparent power is
+inflated by the same anti-conservatism that broke its null calibration above — a
+power comparison is only fair once false-positive rates are matched, which the
+next figure does.
+
+## False discovery rate is controlled
+
+At a reference design point we check that the **realised** false discovery
+proportion (FDP) stays at or below the nominal FDR threshold, and how many true
+positives are recovered (the true-positive rate, TPR) at each threshold.
+
+
+``` r
+pf <- bench("power_fdr.csv")
+if (!is.null(pf)) {
+  ref <- subset(pf, sweep == "samples")
+  ref <- aggregate(cbind(fdp, tpr) ~ fdr + method, ref, mean)
+  ref$method <- factor(ref$method, levels = names(spide_pal$method))
+  p_fdp <- ggplot(ref, aes(fdr, fdp, colour = method)) +
+    geom_abline(slope = 1, intercept = 0, linetype = 2, colour = spide_pal$ref) +
+    geom_line(linewidth = 0.8) + geom_point(size = 2) +
+    scale_colour_spide("method") +
+    labs(x = "nominal FDR", y = "realised FDP", title = "FDR control")
+  p_tpr <- ggplot(ref, aes(fdr, tpr, colour = method)) +
+    geom_line(linewidth = 0.8) + geom_point(size = 2) + ylim(0, 1) +
+    scale_colour_spide("method") +
+    labs(x = "nominal FDR", y = "TPR (recall)", title = "Recall")
+  p_fdp + p_tpr + patchwork::plot_layout(guides = "collect") &
+    theme(legend.position = "bottom")
+}
+```
+
+<div class="figure">
+<img src="spiDE-simulation-fig-bench-fdr-1.png" alt="Left: realised FDP versus the nominal FDR threshold; points on or below the dashed y = x line mean FDR is controlled. Right: true-positive rate (recall) at each threshold." width="1050" />
+<p class="caption">Left: realised FDP versus the nominal FDR threshold; points on or below the dashed y = x line mean FDR is controlled. Right: true-positive rate (recall) at each threshold.</p>
+</div>
+
+## Robustness to the spatial arrangement of cells
+
+Real niches are not always smooth gradients. The study repeats the power
+experiment under four spatial layouts: a **gradient**, patchy **clustered**
+hotspots, a **random** arrangement with no spatial structure (a negative
+control, where the niche effect should vanish), and a **multiniche** setting with
+a second, competing structured cell type.
+
+The four layouts differ in *where the niche cell type sits*, and therefore in the
+shape of the planted signal. To make the simulation background concrete, we draw
+one sample of each layout — just as in *The spatial niche and the planted signal*
+above — and show two views: where each cell type sits, and the resulting planted
+signal in the index cell type.
+
+
+``` r
+layouts <- c("gradient", "clustered", "random", "multiniche")
+
+# one sample per layout: cell positions, cell types, and the planted signal
+# (the niche-dependent effect on index cell A), mirroring the simulator
+layout_demo <- function(layout, n = 900, field = 500, seed = 1) {
+  set.seed(seed)
+  x <- runif(n, 0, field)
+  y <- runif(n, 0, field)
+  bw <- 0.12 * field
+  bumps <- function() {
+    cen <- cbind(runif(4, 0, field), runif(4, 0, field))
+    p <- rowSums(vapply(seq_len(nrow(cen)), function(k)
+      exp(-((x - cen[k, 1])^2 + (y - cen[k, 2])^2) / (2 * bw^2)), numeric(n)))
+    p / max(p)
+  }
+  pot <- switch(layout, gradient = x / field, random = rep(0.5, n),
+                clustered = bumps(), multiniche = bumps())
+  # niche (B) cells enrich where the potential is high; A and C fill the rest
+  ct <- ifelse(runif(n) < pmin(0.85, 0.1 + 0.75 * pot), "B",
+               sample(c("A", "C"), n, replace = TRUE))
+  if (layout == "multiniche") {           # a second, competing structured niche
+    swap <- ct == "C" & runif(n) < pmin(0.8, 0.1 + 0.7 * bumps())
+    ct[swap] <- "D"
+  }
+  # planted effect lives in the index (A) cells, scaled by the niche potential
+  data.frame(x = x, y = y, cell_type = ct, layout = layout,
+             signal = ifelse(ct == "A", 2.5 * pot, NA_real_))
+}
+# a different seed per layout (so placements differ), keeping n at its default
+demo <- do.call(rbind, Map(function(l, s) layout_demo(l, seed = s),
+                           layouts, seq_along(layouts)))
+demo$layout <- factor(demo$layout, levels = names(spide_pal$layout))
 ```
 
 
 ``` r
-ggplot(partD, aes(S, power, colour = method)) +
-  geom_line() + geom_point(size = 2) + ylim(0, 1) +
-  labs(x = "number of samples (S)", y = "power") + theme_bw()
+ggplot(demo, aes(x, y, colour = cell_type)) +
+  geom_point(size = 0.6, alpha = 0.85) +
+  facet_wrap(~ layout, nrow = 1) +
+  scale_colour_spide("celltype", name = "cell type") +
+  coord_equal() +
+  guides(colour = guide_legend(override.aes = list(size = 2.5, alpha = 1))) +
+  labs(title = "Cell-type layout by spatial scenario")
 ```
 
 <div class="figure">
-<img src="spiDE-simulation-fig-partD-plot-1.png" alt="Power of random='intercept' vs random='slope' as the number of samples shrinks, with genuine per-sample slope heterogeneity present. With few samples, the random slope can absorb part of the true effect, making 'intercept' the more powerful (if less fully protective) default; the gap narrows as S grows." width="900" />
-<p class="caption">Power of random='intercept' vs random='slope' as the number of samples shrinks, with genuine per-sample slope heterogeneity present. With few samples, the random slope can absorb part of the true effect, making 'intercept' the more powerful (if less fully protective) default; the gap narrows as S grows.</p>
+<img src="spiDE-simulation-fig-layout-cells-1.png" alt="Cell-type layout for one sample of each spatial scenario. The niche cell type B is a smooth gradient, patchy hotspots, spatially unstructured, or accompanied by a second structured niche D, respectively." width="1350" />
+<p class="caption">Cell-type layout for one sample of each spatial scenario. The niche cell type B is a smooth gradient, patchy hotspots, spatially unstructured, or accompanied by a second structured niche D, respectively.</p>
 </div>
 
-# Discussion
 
-Putting the pieces together answers the original question -- "I increased samples and cells and power didn't move":
+``` r
+ggplot(subset(demo, cell_type == "A"), aes(x, y, colour = signal)) +
+  geom_point(size = 0.9) +
+  facet_wrap(~ layout, nrow = 1) +
+  scale_colour_viridis_c(option = "magma", name = "planted effect") +
+  coord_equal() +
+  labs(title = "Planted signal in index (A) cells")
+```
 
-1.  **Cells cannot buy power under the mixed-effects correction, by design** (Parts B&C, power-vs-cells panel). The response label is constant within a sample, so extra cells are pseudo-replicates; the Wald test for the response-niche effect is evaluated in the between-sample stratum (`df = S - 2`, and standard errors that floor at the between-sample variance scale), matching the between-sample degrees of freedom documented in the model vignette.
-2.  **Samples do buy power** (Parts B&C, power-vs-samples panel), and this study isolates that cleanly because `beta`/`sd_patient`/seeds are held structurally fixed across the sweep -- something the bundled toy generator does not do, since it draws its entire dataset (coordinates, cell types, baselines, noise) from one `set.seed()` call that depends on `n_samples`/`n_per` themselves.
-3.  **The fixed-effects fit's apparent extra "power" is not real power** -- Part A shows it is badly anti-conservative under the null regardless of sample size, so any power comparison against it is unfair until Type-I error is matched; the realized-FDR curves in Parts B&C make the honest comparison and show the mixed-effects fits controlling FDR near the nominal level while the fixed-effects fit overshoots.
-4.  **Gene-level gating can hide a real, well-powered niche-level hit.** In the original toy example the gene-level FDR was pinned near 1 (Brown-combining one strong interaction with several null ones, then BH over only \~20 genes) even when the niche-level test (`fdr.niche`) was already strongly significant. This study reports power/FDR at the niche level throughout to avoid that dilution; the FDR curves confirm the same gating still yields controlled FDR when there are enough true positives to estimate it, and the end-to-end recall panel shows what the gate costs.
-5.  **With very few samples, `random = "slope"` can cost power relative to `"intercept"`** (Part D), because a real per-sample slope effect is statistically hard to distinguish from slope noise when there are only a handful of patients to average over.
+<div class="figure">
+<img src="spiDE-simulation-fig-layout-signal-1.png" alt="The planted signal in the index cell type (A) for each layout: the niche-dependent effect follows the local density of niche cells. It is a gradient, hotspots, and flat noise (the random negative control) respectively." width="1350" />
+<p class="caption">The planted signal in the index cell type (A) for each layout: the niche-dependent effect follows the local density of niche cells. It is a gradient, hotspots, and flat noise (the random negative control) respectively.</p>
+</div>
 
-## Scaling up this study
+The bars below turn this into numbers: recall at 5% FDR and the *niche
+specificity* — how often the true niche cell type is identified as the strongest
+association for a responding gene.
 
-This vignette is shipped precomputed from a `RUN_FULL <- TRUE` run (finer grids, `B = 40` replicate seeds, `NPAR` workers); set `RUN_FULL <- FALSE` at the top for a quick local render. Runtime scales with the total number of fits, which the study minimises by fitting each dataset once and deriving every metric (power, FDP, recall) from that fit, and which the `bplapply`-over-datasets layout spreads evenly across cores — so it is dominated by the largest `S/n_per` fits in Parts B&C. All simulation parameters (`sd_patient`, `beta`, `sd_slope`, `n_genes`, `prop_nonnull`) are exposed as generator arguments and can be swept further to probe other regimes (e.g. weaker effects, higher between-sample noise).
 
-# Session info
+``` r
+sp <- bench("spatial.csv")
+if (!is.null(sp)) {
+  long <- rbind(
+    data.frame(layout = sp$layout, metric = "recall @ 5% FDR",
+               value = sp$recall_05),
+    data.frame(layout = sp$layout, metric = "niche specificity",
+               value = sp$niche_specificity))
+  long$layout <- factor(long$layout, levels = names(spide_pal$layout))
+  ggplot(long, aes(layout, value, fill = layout)) +
+    geom_col(width = 0.7) +
+    facet_wrap(~ metric) +
+    scale_fill_spide("layout") +
+    ylim(0, 1) +
+    labs(x = NULL, y = NULL, title = "Robustness across niche layouts") +
+    theme(legend.position = "none",
+          axis.text.x = element_text(angle = 30, hjust = 1))
+}
+```
+
+<div class="figure">
+<img src="spiDE-simulation-fig-bench-spatial-1.png" alt="Recall and niche specificity across spatial layouts. The niche effect is recovered under structured layouts (gradient, clustered, multiniche) and correctly collapses under the random negative control." width="1050" />
+<p class="caption">Recall and niche specificity across spatial layouts. The niche effect is recovered under structured layouts (gradient, clustered, multiniche) and correctly collapses under the random negative control.</p>
+</div>
+
+# Summary and reproducing this study
+
+* The `spiDE` simulator reproduces the defining features of real spatial data:
+  ten-thousand-plus genes, counts dominated by zeros and ones, gene-specific
+  means and a downward mean–variance trend.
+* Under this realistic model the **mixed-effects modes control the false-positive
+  rate** where the fixed-effects mode does not, and they **control FDR** at the
+  nominal level.
+* **Statistical power is driven by the number of patient samples**, not the
+  number of cells per sample — a direct consequence of correcting cell-level
+  pseudo-replication.
+* The niche effect is **recovered across spatial layouts** and correctly
+  vanishes under a spatially random negative control.
+
+The companion vignettes drill into two components: *Combining correlated niche
+p-values* (the within-gene p-value combiner) and *Speeding up the mixed-effects
+fit* (the PQL subsampling trade-off).
+
+The complete study — the simulator, the scenario definitions, and SLURM scripts
+for a compute cluster — is in the package's `research/` directory. To regenerate
+the summary tables used above at full scale, run the study (see
+`research/README.md`), then `Rscript research/R/install_results.R` and re-run
+`vignettes/precompile.R`.
 
 
 ``` r
@@ -534,58 +543,39 @@ sessionInfo()
 #> [8] base     
 #> 
 #> other attached packages:
-#>  [1] BiocParallel_1.46.0         SpatialExperiment_1.22.0   
-#>  [3] SingleCellExperiment_1.34.0 SummarizedExperiment_1.42.0
-#>  [5] Biobase_2.72.0              GenomicRanges_1.64.0       
-#>  [7] Seqinfo_1.2.0               IRanges_2.46.0             
-#>  [9] S4Vectors_0.50.1            BiocGenerics_0.58.1        
-#> [11] generics_0.1.4              MatrixGenerics_1.24.0      
-#> [13] matrixStats_1.5.0           ggplot2_4.0.3              
-#> [15] spiDE_0.99.0                testthat_3.3.2             
+#>  [1] patchwork_1.3.2             ggplot2_4.0.3              
+#>  [3] SpatialExperiment_1.22.0    SingleCellExperiment_1.34.0
+#>  [5] SummarizedExperiment_1.42.0 Biobase_2.72.0             
+#>  [7] GenomicRanges_1.64.0        Seqinfo_1.2.0              
+#>  [9] IRanges_2.46.0              S4Vectors_0.50.1           
+#> [11] BiocGenerics_0.58.1         generics_0.1.4             
+#> [13] MatrixGenerics_1.24.0       matrixStats_1.5.0          
+#> [15] spiDE_0.99.2                testthat_3.3.2             
 #> 
 #> loaded via a namespace (and not attached):
-#>  [1] deldir_2.0-4              poolr_1.2-0              
-#>  [3] rlang_1.3.0               magrittr_2.0.5           
-#>  [5] otel_0.2.0                compiler_4.6.1           
-#>  [7] spatstat.geom_3.8-1       DelayedMatrixStats_1.34.0
-#>  [9] callr_3.8.0               vctrs_0.7.3              
-#> [11] pkgconfig_2.0.3           fastmap_1.2.0            
-#> [13] magick_2.9.1              XVector_0.52.0           
-#> [15] ellipsis_0.3.3            labeling_0.4.3           
-#> [17] sessioninfo_1.2.4         torch_0.17.0             
-#> [19] purrr_1.2.2               bit_4.6.0                
-#> [21] xfun_0.59                 cachem_1.1.0             
-#> [23] beachmat_2.28.0           goftest_1.2-3            
-#> [25] DelayedArray_0.38.2       spatstat.utils_3.2-3     
-#> [27] irlba_2.3.7               parallel_4.6.1           
-#> [29] R6_2.6.1                  RColorBrewer_1.1-3       
-#> [31] spatstat.data_3.1-9       limma_3.68.4             
-#> [33] spatstat.univar_3.2-0     pkgload_1.5.3            
-#> [35] brio_1.1.5                Rcpp_1.1.1-1.1           
-#> [37] knitr_1.51                tensor_1.5.1             
-#> [39] usethis_3.2.1             splines_4.6.1            
-#> [41] Matrix_1.7-5              tidyselect_1.2.1         
-#> [43] rstudioapi_0.19.0         abind_1.4-8              
-#> [45] codetools_0.2-20          spatstat.random_3.5-0    
-#> [47] spatstat.explore_3.8-1    processx_3.9.0           
-#> [49] pkgbuild_1.4.8            lattice_0.22-9           
-#> [51] tibble_3.3.1              withr_3.0.3              
-#> [53] S7_0.2.2                  evaluate_1.0.5           
-#> [55] desc_1.4.3                SpaNorm_1.7.4            
-#> [57] polyclip_1.10-7           pillar_1.11.1            
-#> [59] rprojroot_2.1.1           mathjaxr_2.0-0           
-#> [61] sparseMatrixStats_1.24.0  scales_1.4.0             
-#> [63] coro_1.1.0                glue_1.8.1               
-#> [65] tools_4.6.1               ScaledMatrix_1.20.0      
-#> [67] locfit_1.5-9.12           fs_2.1.0                 
-#> [69] grid_4.6.1                devtools_2.5.2           
-#> [71] edgeR_4.10.1              nlme_3.1-169             
-#> [73] BiocSingular_1.28.0       cli_3.6.6                
-#> [75] rsvd_1.0.5                spatstat.sparse_3.2-0    
-#> [77] viridisLite_0.4.3         S4Arrays_1.12.0          
-#> [79] dplyr_1.2.1               gtable_0.3.6             
-#> [81] SparseArray_1.12.2        rjson_0.2.23             
-#> [83] farver_2.1.2              memoise_2.0.1            
-#> [85] lifecycle_1.0.5           statmod_1.5.2            
-#> [87] bit64_4.8.2
+#>  [1] tidyselect_1.2.1       viridisLite_0.4.3      dplyr_1.2.1           
+#>  [4] farver_2.1.2           S7_0.2.2               fastmap_1.2.0         
+#>  [7] spatstat.geom_3.8-1    spatstat.explore_3.8-1 rsvd_1.0.5            
+#> [10] lifecycle_1.0.5        ellipsis_0.3.3         spatstat.data_3.1-9   
+#> [13] magrittr_2.0.5         compiler_4.6.1         rlang_1.3.0           
+#> [16] tools_4.6.1            knitr_1.51             labeling_0.4.3        
+#> [19] S4Arrays_1.12.0        pkgbuild_1.4.8         DelayedArray_0.38.2   
+#> [22] RColorBrewer_1.1-3     pkgload_1.5.3          abind_1.4-8           
+#> [25] BiocParallel_1.46.0    withr_3.0.3            purrr_1.2.2           
+#> [28] desc_1.4.3             grid_4.6.1             polyclip_1.10-7       
+#> [31] beachmat_2.28.0        scales_1.4.0           spatstat.utils_3.2-3  
+#> [34] cli_3.6.6              otel_0.2.0             rstudioapi_0.19.0     
+#> [37] rjson_0.2.23           sessioninfo_1.2.4      cachem_1.1.0          
+#> [40] parallel_4.6.1         XVector_0.52.0         vctrs_0.7.3           
+#> [43] devtools_2.5.2         Matrix_1.7-5           BiocSingular_1.28.0   
+#> [46] irlba_2.3.7            SpaNorm_1.7.4          tensor_1.5.1          
+#> [49] magick_2.9.1           spatstat.univar_3.2-0  goftest_1.2-3         
+#> [52] glue_1.8.1             spatstat.random_3.5-0  codetools_0.2-20      
+#> [55] gtable_0.3.6           deldir_2.0-4           ScaledMatrix_1.20.0   
+#> [58] tibble_3.3.1           pillar_1.11.1          brio_1.1.5            
+#> [61] R6_2.6.1               rprojroot_2.1.1        evaluate_1.0.5        
+#> [64] lattice_0.22-9         memoise_2.0.1          Rcpp_1.1.1-1.1        
+#> [67] SparseArray_1.12.2     nlme_3.1-169           spatstat.sparse_3.2-0 
+#> [70] xfun_0.59              fs_2.1.0               usethis_3.2.1         
+#> [73] pkgconfig_2.0.3
 ```

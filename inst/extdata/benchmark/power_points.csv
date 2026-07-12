@@ -1,0 +1,16 @@
+"sweep","S","n_per","beta","method","power_raw"
+"effect",12,300,1.5,"fixed",0.4
+"cells",12,120,2,"fixed",0.525
+"samples",4,300,2,"fixed",0.425
+"samples",8,300,2,"fixed",0.5
+"cells",12,300,2,"fixed",0.4
+"effect",12,300,1.5,"intercept",0.5
+"cells",12,120,2,"intercept",0.4
+"samples",4,300,2,"intercept",0.25
+"samples",8,300,2,"intercept",0.325
+"cells",12,300,2,"intercept",0.525
+"effect",12,300,1.5,"slope",0.55
+"cells",12,120,2,"slope",0.425
+"samples",4,300,2,"slope",0.25
+"samples",8,300,2,"slope",0.35
+"cells",12,300,2,"slope",0.55
