@@ -44,7 +44,7 @@ three knobs that trade a little `tau2` accuracy for a large speed-up:
 
 | argument       | default | effect |
 |----------------|---------|--------|
-| `re.prop`      | `0.1`   | fraction of cells sampled per cell type within each sample for the PQL loop |
+| `re.prop`      | `0.2`   | fraction of cells sampled per cell type within each sample for the PQL loop |
 | `re.maxit.psi` | `1`     | dispersion iterations inside each PQL step |
 | `re.min.cells` | `100`   | per-stratum floor for `re.prop` |
 
@@ -58,11 +58,11 @@ the benchmark study in the package's `research/` directory.
 
 The study fits the same realistic dataset at several values of `re.prop`, timing
 each fit and correlating its response-niche t-statistics against the fully
-accurate reference (`re.prop = 1`, all cells). Two figures tell the whole story:
-subsampling makes the fit much faster while the t-statistics it feeds into
-inference stay essentially unchanged.
+accurate reference (`re.prop = 1`, all cells). Two figures tell the story:
+subsampling makes the fit markedly faster while the t-statistics it feeds into
+inference stay highly correlated with the full-data fit.
 
-```{r pql, fig.height = 4, fig.cap = "Left: mixed-effects fit time falls sharply as the PQL cell fraction shrinks. Right: response-niche t-statistics remain almost perfectly correlated with the full-data reference across the whole sampling range."}
+```{r pql, fig.height = 4, fig.cap = "Left: the mixed-effects fit is markedly faster once cells are subsampled for the PQL loop (about 1.8x versus the all-cell fit), after which it plateaus. Right: response-niche t-statistics stay highly correlated with the full-data reference (~0.96) across the sampling range."}
 timing <- bench("pql_timing.csv")
 acc <- bench("pql_accuracy.csv")
 
@@ -92,10 +92,13 @@ if (!is.null(timing)) {
 }
 ```
 
-Accuracy is retained because the coefficients come from the full final fit;
-`re.prop` only moves the shared `tau2`, and `tau2` itself moves little. The
-default `re.prop = 0.1` therefore delivers most of the speed-up at negligible
-cost to the inference.
+Accuracy is largely retained because the coefficients come from the full final
+fit; `re.prop` only moves the shared `tau2`. The subsample does modestly
+underestimate `tau2` (here about 0.19 versus 0.25 at full data), and this feeds
+through to a small drop in the t-statistic correlation — to roughly 0.96 rather
+than 1. The default `re.prop = 0.2` therefore delivers the bulk of the speed-up
+at a small, well-characterised cost to the inference; use `re.prop = 1` when
+exact reproducibility matters more than speed.
 
 ```{r tau2-table, echo = FALSE}
 if (!is.null(timing)) {
@@ -127,7 +130,8 @@ if (!is.null(tm) && nrow(tm) > 0) {
     geom_line(linewidth = 0.8) + geom_point(size = 2) +
     scale_colour_manual(values = unname(spide_pal$method[c(1, 2)])) +
     labs(x = "total cells", y = "wall-clock time (s)", colour = NULL,
-         title = sprintf("Scaling at %d genes", tm$n_genes[1]))
+         title = sprintf("Scaling at ~%s genes",
+                         format(round(mean(tm$n_genes), -2), big.mark = ",")))
 } else {
   cat("*(Timing summary not found; run the benchmark study in `research/`.)*")
 }
@@ -136,10 +140,11 @@ if (!is.null(tm) && nrow(tm) > 0) {
 # Summary
 
 * Subsampling cells for the PQL loop (`re.prop`) plus a single inner dispersion
-  iteration (`re.maxit.psi = 1`) cuts the mixed-effects fit time substantially,
+  iteration (`re.maxit.psi = 1`) cuts the mixed-effects fit time by roughly 1.8x,
   while the final all-cell fit keeps the coefficients exact.
-* Response-niche t-statistics stay essentially unchanged across `re.prop`, so the
-  default `re.prop = 0.1` is a safe, fast choice.
+* Response-niche t-statistics stay highly correlated (~0.96) with the full-data
+  fit across `re.prop`, so the default `re.prop = 0.2` is a fast choice at a
+  small, well-characterised accuracy cost.
 * Set `re.prop = 1` for a fully reproducible (seed-independent) fit, at the cost
   of speed; otherwise set an external `set.seed()` to make a subsampled fit
   reproducible.

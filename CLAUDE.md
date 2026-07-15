@@ -143,10 +143,10 @@ stratified cell subsample (`re.prop`, sampled per cell type × sample with a
 `re.min.cells` floor) with a single dispersion iteration (`re.maxit.psi`), then a
 **final fit on all cells with full dispersion** supplies the coefficients/`psi`
 inference uses — so subsampling only perturbs the shared `tau2`, not the per-gene
-effects. Defaults (`re.prop=0.1`, `re.maxit.psi=1L`) give ~2.7× on CPU with the
-response-niche t-stats correlated ~0.9996 vs the full fit (see
-`vignettes/spiDE-mixed-benchmark.Rmd`); `re.prop=1` restores the reproducible,
-all-cell path. No seed is set internally (set one externally).
+effects. Defaults (`re.prop=0.2`, `re.maxit.psi=1L`) speed up the mixed fit on
+CPU while keeping the response-niche t-stats highly correlated with the full fit
+(see `vignettes/spiDE-mixed-benchmark.Rmd`); `re.prop=1` restores the
+reproducible, all-cell path. No seed is set internally (set one externally).
 `.blockedInference()` (`R/inference.R`) then uses
 the **full** penalised covariance `(X'WX + Λ)⁻¹`, the working **Pearson** dispersion (not the NB
 `psi`), and a **between-patient** reference df (`S − 2`, stored in `SpiDEFit@df`) — the three together

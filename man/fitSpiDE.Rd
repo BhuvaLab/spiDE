@@ -25,7 +25,7 @@ fitSpiDE(spe, condition, ...)
   re.maxit = 10L,
   re.tol = 0.001,
   tau2.init = 1,
-  re.prop = 0.1,
+  re.prop = 0.2,
   re.maxit.psi = 1L,
   re.min.cells = 100L,
   BPPARAM = BiocParallel::SerialParam(),

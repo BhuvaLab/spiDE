@@ -198,6 +198,17 @@ cat("*(The full-pipeline summary table was not found; run the benchmark study",
     "in `research/` and `install_results.R` to populate it.)*\n")
 ```
 
+In the full pipeline the two combiners diverge sharply, and in Cauchy's favour.
+Cauchy recovers far more of the planted genes at every threshold — recall around
+0.30 at a nominal 20 % FDR against roughly 0.02 for Brown — while Brown makes few
+discoveries and a large fraction of them are false, its realised FDP sitting near
+0.4 regardless of the threshold. Cauchy's own FDP does exceed the nominal level
+at the *strictest* thresholds, where only a handful of genes are called and the
+proportion is dominated by one or two false positives, but it falls below the
+line as more true genes accumulate. Both combiners inherit their absolute FDP
+level from the underlying mixed-effects fit; this comparison holds that fit fixed
+and isolates the combination step, and on that axis Cauchy is clearly preferable.
+
 # Summary
 
 On both the controlled experiment and the full pipeline, **Cauchy combination

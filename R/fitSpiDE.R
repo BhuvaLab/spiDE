@@ -168,7 +168,7 @@
                              cell_type, winsor, lambda.a, backend, name,
                              verbose, sample_id = "sample_id", random = "none",
                              re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
-                             re.prop = 0.1, re.maxit.psi = 1L,
+                             re.prop = 0.2, re.maxit.psi = 1L,
                              re.min.cells = 100L, ...) {
   des <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
                            cell_type, name, sample_id, random)
@@ -314,7 +314,7 @@ setMethod(
                         winsor = 4, lambda.a = 0,
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
-                        re.prop = 0.1, re.maxit.psi = 1L, re.min.cells = 100L,
+                        re.prop = 0.2, re.maxit.psi = 1L, re.min.cells = 100L,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
     random <- match.arg(random)

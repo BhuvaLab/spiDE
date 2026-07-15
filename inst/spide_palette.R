@@ -15,6 +15,13 @@ spide_pal <- list(
   # spatial niche layouts (Dark2)
   layout = c(gradient = "#1B9E77", clustered = "#D95F02",
              random = "#7570B3", multiniche = "#E7298A"),
+  # gene categories in the simulation
+  category = c("cell-type marker" = "#E7298A", housekeeping = "#66A61E",
+               background = "#A6761D"),
+  # planted differential-expression status
+  de = c(DE = "#D95F02", "non-DE" = "grey70"),
+  # experimental condition
+  condition = c(Responder = "#1B9E77", "Non-responder" = "#7570B3"),
   accent = "#1B9E77",   # single-series highlight
   ref = "grey55"        # reference lines (diagonal / nominal level)
 )
