@@ -12,9 +12,9 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
-knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
-                      fig.height = 4.5, dpi = 150, fig.retina = 2,
-                      message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = FALSE, collapse = TRUE, comment = "#>",
+                      fig.width = 7, fig.height = 4.5, dpi = 150,
+                      fig.retina = 2, message = FALSE, warning = FALSE)
 ```
 
 ```{r libs}
