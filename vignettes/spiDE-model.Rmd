@@ -41,21 +41,21 @@ Let $Y_{c,g}$ be the (SpaNorm-normalised) expression of gene $g \in \{1,\dots,G\
 
 ## Effective niche
 
-For each cell we summarise its local neighbourhood by a kernel-smoothed intensity of every surrounding cell type. With a Gaussian kernel $K_\sigma$ of bandwidth $\sigma$, the intensity of type $t'$ around cell $c$ (within its own sample $s$) is
+Every quantity in this section is computed **within one sample at a time, entirely independently of every other sample**. Let $\mathcal C_s = \{c' : s_{c'} = s\}$ denote the cells belonging to sample $s$. For each cell $c \in \mathcal C_s$ we summarise its local neighbourhood by a kernel-smoothed intensity of every surrounding cell type, computed **from $\mathcal C_s$ alone**. With a Gaussian kernel $K_\sigma$ of bandwidth $\sigma$, the intensity of type $t'$ around cell $c$ is
 
 $$
-\Lambda_{c,t',s}(\sigma) \;=\; e(c) \sum_{c'=1}^{C}
+\Lambda_{c,t',s}(\sigma) \;=\; e_s(c) \!\!\sum_{c' \,\in\, \mathcal C_s}\!\!
   K_\sigma\!\left(d_{c,c'}\right)\,
-  \mathbb{1}(t_{c'} = t')\,\mathbb{1}(s_{c'} = s),
+  \mathbb{1}(t_{c'} = t'),
 $$
 
-where $d_{c,c'}$ is the distance between cells and $e(c)$ is Diggle's edge correction. The expected log-count of type $t'$ in a disc of radius $\sigma$ is
+where the sum runs **only over cells of the same sample** $s$, $d_{c,c'}$ is the (planar, within-sample) distance between two cells of $\mathcal C_s$, and $e_s(c)$ is Diggle's edge correction *for sample $s$'s own spatial window* — the smallest bounding box containing $\mathcal C_s$'s coordinates. Concretely, `buildNiches()` never forms a $C \times C$ inter-cell distance matrix or a single shared spatial window: `.speApply()` first splits the `SpatialExperiment` into one subset per sample, and `.effectiveNiche()` builds a fresh `spatstat` point pattern, window and kernel density surface **for that subset only**. Two cells from different samples that happen to share the same $(x,y)$ coordinates (routine, since each sample is imaged/segmented on its own coordinate system) therefore never interact in $\Lambda$ — there is no notion of "distance between a cell in sample 3 and a cell in sample 7". The expected log-count of type $t'$ in a disc of radius $\sigma$ is
 
 $$
 N_{c,t',s}(\sigma) \;=\; \log\!\left(\pi\sigma^2\,\Lambda_{c,t',s}(\sigma) + 1\right).
 $$
 
-Stacking over cell types gives the **effective niche composition** $N_{c,s}(\sigma) = \big(N_{c,1,s}(\sigma),\dots,N_{c,T,s}(\sigma)\big)$. Niches are computed per sample but then concatenated across all cells into a $C \times T$ matrix $N(\sigma)$. In the package this is `buildNiches()`, which stores $N(\sigma)$ as `reducedDim(spe, "Niche<sigma>")`.
+Stacking over cell types gives the **effective niche composition** $N_{c,s}(\sigma) = \big(N_{c,1,s}(\sigma),\dots,N_{c,T,s}(\sigma)\big)$, still computed one sample at a time. Once every sample has been processed (in parallel, via `BiocParallel::bplapply`), the per-sample results are row-bound — not recomputed jointly — into one $C \times T$ matrix $N(\sigma)$ covering all samples. In the package this is `buildNiches()`, which stores $N(\sigma)$ as `reducedDim(spe, "Niche<sigma>")`.
 
 ## The negative binomial GLM
 
@@ -67,6 +67,14 @@ $$
  + \sum_{t'=1}^{T} N_{c,t',s}(\sigma)\,\alpha_{g,t,t'}
  + r_s \sum_{t'=1}^{T} N_{c,t',s}(\sigma)\,\beta_{g,t,t'} .
 $$
+
+Writing $\mu_{c,g} = \mathbb{E}(Y_{c,g}\mid\cdots)$ for the modelled mean, the negative-binomial **variance function** — how noisy a count is around its mean — is
+
+$$
+\mathrm{Var}(Y_{c,g}) = \mu_{c,g} + \phi_g\,\mu_{c,g}^2 ,
+$$
+
+i.e. Poisson noise ($\mu_{c,g}$) plus an extra, gene-specific overdispersion term that grows with the square of the mean. $\phi_g$ is estimated genome-wide (moderated across genes by `edgeR::estimateDisp()` inside `SpaNorm::fitNB`) and reappears throughout this vignette — it sets the IRLS working weights below and, later, the SE scaling of the mixed-effects fit.
 
 The coefficients are:
 
@@ -102,7 +110,7 @@ sums over all $C$ cells. The standard error of a response contrast therefore shr
 We can see it directly. Below we simulate a **null** data set: every cell of a patient shares a per-patient random shift, but there is *no* response effect at all — so every response test should be null.
 
 ```{r sim}
-sim_clustered <- function(n_samples = 10, n_per = 90, n_genes = 30,
+sim_clustered <- function(n_samples = 10, n_per = 90, n_genes = 300,
                           field = 500, sd_patient = 0.7, seed = 1) {
   set.seed(seed)
   cts <- c("A", "B", "C"); gn <- sprintf("G%d", seq_len(n_genes))
@@ -126,32 +134,108 @@ sim_clustered <- function(n_samples = 10, n_per = 90, n_genes = 30,
   lmu <- lmu + u[, cd$sample_id, drop = FALSE]
   counts <- matrix(rnbinom(length(lmu), mu = as.vector(exp(lmu)), size = 5),
                    n_genes, dimnames = list(gn, cd$cell_id))
-  SpatialExperiment(assays = list(counts = counts),
-                    colData = S4Vectors::DataFrame(cd),
-                    spatialCoords = as.matrix(cd[, c("x", "y")]))
+  list(spe = SpatialExperiment(assays = list(counts = counts),
+                               colData = S4Vectors::DataFrame(cd),
+                               spatialCoords = as.matrix(cd[, c("x", "y")])),
+       u = u)   # the true per-(gene, sample) random intercepts, kept for later
 }
 
-spe <- buildNiches(sim_clustered(), sigma = 30)
+sim_null <- sim_clustered()
+spe <- buildNiches(sim_null$spe, sigma = 30)
 ```
 
-A helper to pull the two-sided p-values of the (null) response effect:
+300 genes, not a handful, because $\tau^2$ below is a **single value shared across every
+gene fit** (more on why in "The fitting procedure"): estimating a variance from
+only a few genes is noisy, exactly the way estimating a variance from only a
+few observations is noisy in any other setting.
+
+A helper that fits one random mode once and returns both the response p-values
+and the fitted object (so later sections can reuse it instead of re-fitting):
 
 ```{r respp}
-response_p <- function(random) {
+fit_mode <- function(random) {
   f <- fitSpiDE(spe, "condition", sigma = 30, random = random, verbose = FALSE)
   res <- testSpiDE(f, spe = spe)          # populates the Wald inference slots
   ff <- fits(res)[[1]]
   rc <- ff$coefmap$covariate[as.character(ff$covtype) == "Response"]
   df <- if (is.null(ff$df)) Inf else ff$df
-  2 * pt(-abs(ff$t_stat[, rc]), df)
+  list(fit = ff, p = 2 * pt(-abs(ff$t_stat[, rc]), df))
 }
-p_fixed <- response_p("none")
-mean(p_fixed < 0.05)  # should be ~0.05 under the null
+fixed <- fit_mode("none")
+mean(fixed$p < 0.05)  # should be ~0.05 under the null
 ```
 
 The fixed-effects fit rejects a large fraction of these null tests at $\alpha = 0.05$ — grossly anti-conservative.
 
 # Mixed-effects correction via ridge
+
+If you know GLMs but have never fit or interpreted a random-effects (mixed)
+model, this section is written for you. It builds the model up from the one
+question a fixed-effects modeller always asks first, then walks through
+*exactly* what `fitSpiDE()` computes, step by step, with a small worked
+example you can run and modify yourself.
+
+## Why not just add sample as a fixed effect?
+
+The pseudo-replication problem above comes from ignoring that cells cluster by
+patient. Your instinct from fixed-effects modelling is probably: *if
+`sample_id` is a nuisance grouping variable, just add it to the design as
+another factor*, the way you would `batch` or `site`. It is worth seeing
+concretely why that does not work here, because the reason is exactly what
+motivates a random effect instead.
+
+```{r whynotfixed}
+set.seed(42)
+# a deliberately modest n_per and baseline mean: with abundant cells per
+# sample, each sample's own data pins down its baseline so precisely that a
+# random effect has little left to correct -- see "Shrinkage" below
+S <- 12; n_per <- 12
+toy_sample <- factor(rep(seq_len(S), each = n_per))
+toy_resp   <- rep(rbinom(S, 1, 0.5), each = n_per)   # constant within a sample
+true_tau2  <- 0.49                                    # matches sd_patient = 0.7
+u_true     <- rnorm(S, 0, sqrt(true_tau2))
+eta_true   <- 0.3 * toy_resp + u_true[as.integer(toy_sample)]
+toy_y      <- rpois(length(eta_true), exp(eta_true))
+toy <- data.frame(y = toy_y, resp = toy_resp, sample_id = toy_sample)
+
+naive_fixed <- glm(y ~ sample_id + resp, family = poisson, data = toy)
+coef(naive_fixed)["resp"]
+```
+
+`resp` comes back `NA`. This is not a numerical accident: because *every cell
+of a sample shares the same response label*, `resp` is an exact linear
+combination of the sample dummy columns (it is just "which samples are
+Responders", encoded twice). A design that already contains a free column per
+sample has nothing left to estimate the response contrast from — the two
+sets of columns span the same space, and `glm()` correctly refuses to invent
+information that is not there. (`spiDE` enforces the same logic the other way
+around: `checkSample()` **errors** if you pass a sample-constant covariate
+together with `random != "none"`, since the random intercept would make it
+exactly as inestimable.)
+
+Even setting the collinearity aside, giving every sample its own completely
+free (unpenalised) parameter throws away the one thing a mixed model is
+for: **borrowing strength across patients**. A free per-sample parameter fits
+that one sample's data perfectly and tells you nothing about how much
+patients differ *in general* — which is precisely the quantity ($\tau^2$
+below) the corrected test needs.
+
+What we actually want sits **between** two extremes:
+
+-   *ignore the patient entirely* (fixed-effects default) — one shared
+    parameter for everyone, badly anti-conservative, as shown above;
+-   *give every patient a fully free parameter* (fixed factor) — inestimable
+    here, and even when it isn't, it doesn't pool information across
+    patients.
+
+A **random effect** is the middle ground: each patient gets its own deviation
+$u_s$, but those deviations are constrained to be draws from a shared
+distribution, $u_s \sim \mathcal N(0, \tau^2)$, rather than free parameters.
+$\tau^2$ — how much patients genuinely differ — is *estimated from the data*,
+and each patient's own $\hat u_s$ is pulled ("shrunk") toward zero by an
+amount that depends on how reliable its own data is relative to $\tau^2$. The
+rest of this section makes that precise and shows it happening on real
+numbers.
 
 ## The model
 
@@ -172,56 +256,344 @@ u_{g,s} \sim \mathcal N(0,\tau^2_{\text{int}}),\qquad
 v_{g,s,t,t'} \sim \mathcal N(0,\tau^2_{\text{slope}}).
 $$
 
+Note the variance components $\tau^2_{\text{int}}, \tau^2_{\text{slope}}$ carry
+**no gene index**: a single value of each is shared by every gene (why, and
+how that is estimated, is the subject of "The fitting procedure" below). The
+realised deviations $u_{g,s}$ do vary by gene — each gene gets its own random
+draw — only their common variance is pooled.
+
 -   The random **intercept** $u_{g,s}$ is the patient-level counterpart of the response main effect $\eta_g$: it lets each patient's baseline float, so $\eta_g$ is identified from between-patient contrasts.
 -   The random **slopes** $v_{g,s,t,t'}$ are the patient-level counterparts of the $\beta_{g,t,t'}$ terms: they let each patient's niche→expression slope float, so $\beta_{g,t,t'}$ is tested against between-patient *slope* variability. A random intercept alone would not protect $\beta$, because $\beta$ multiplies a covariate that varies *within* a patient.
 
 `random = "intercept"` adds $u_{g,s}$ only; `random = "slope"` adds both. The slope model gives the fullest protection of $\beta$, but note the trade-off: the random slope $v_{g,s,t,t'}$ and the fixed effect $\beta_{g,t,t'}$ both describe how the niche→expression slope differs across patients, so with **few patients per response group** the random slope can absorb a genuine $\beta$ (a real effect seen in only a handful of responders is, statistically, hard to distinguish from patient-to-patient slope noise). With an adequate number of samples prefer `"slope"`; with only a few, `"intercept"` is a more powerful default and still corrects the dominant (baseline) source of pseudo-replication.
 
-## Ridge $\equiv$ random effects
+## Ridge $\equiv$ random effects: the conceptual bridge
 
-Write the expanded design as $\tilde W = [\,W \mid Z\,]$, where $Z$ holds the random-effect columns (one indicator per sample for $u$, and sample-indicator $\times$ `CellType:niche` columns for $v$). On the IRLS working scale a Gaussian random effect is *exactly* an $L_2$ (ridge) penalty applied only to its columns: maximising the penalised working likelihood
+If you know **ridge regression**, you already know 90% of what a random
+effect *is* — you have just not called it that. Recall ordinary IRLS for a
+GLM: at the current fit $\hat\theta$, form the linear predictor
+$\eta_{c,g} = (W\theta)_{c,g}$, the **working response**
+
+$$
+z_{c,g} \;=\; \eta_{c,g} + \frac{Y_{c,g} - \mu_{c,g}}{\mu_{c,g}},
+$$
+
+(a first-order, log-link linearisation of the count around the current fit)
+and the working weight $w_{c,g} = \mu_{c,g}/(1+\phi_g\mu_{c,g})$ from before.
+One IRLS step is then an ordinary **weighted least-squares** regression of
+$z_{c,g}$ on $W$ with weights $D_g = \mathrm{diag}(w_{c,g})$ — this is exactly
+what `SpaNorm::fitNB` already does for `spiDE`'s fixed-effects fit, and it is
+the "GLM" part you already know.
+
+Write the expanded design as $\tilde W = [\,W \mid Z\,]$, where $Z$ holds the
+random-effect columns: one indicator per sample for $u$, and sample-indicator
+$\times$ `CellType:niche` columns for $v$. **A Gaussian random effect on a
+group of columns is, on this same working scale, exactly an $L_2$ (ridge)
+penalty applied only to those columns** — not an approximation, an identity.
+Maximising the penalised weighted least-squares objective
 
 $$
 \big\lVert z - \tilde W\theta \big\rVert^2_{D_g} \;+\; \theta^\top \Lambda\, \theta,
+\qquad \lVert a \rVert^2_D := a^\top D\, a,
 \qquad
 \Lambda = \mathrm{blockdiag}\!\left(0_{\text{fixed}},\; \lambda_{\text{int}} I,\; \lambda_{\text{slope}} I\right),
 $$
 
-gives the BLUP/penalised estimate $\hat\theta = (\tilde W^\top D_g \tilde W +
-\Lambda)^{-1}\tilde W^\top D_g z$, with the variance-component correspondence
+gives the closed-form estimate
 
 $$
+\hat\theta = \big(\tilde W^\top D_g \tilde W + \Lambda\big)^{-1}\tilde W^\top D_g\, z,
+\qquad\text{with}\qquad
 \boxed{\ \lambda_k \;=\; 1/\tau^2_k\ }.
 $$
 
-This is the standard penalised quasi-likelihood (PQL) construction used by `lme4` / `mgcv`. It fits `spiDE` perfectly: `SpaNorm::fitNB` already accepts a **per-column** ridge penalty `lambda.a`, so we set it to $0$ on the fixed columns and $1/\tau^2_k$ on the random ones — no change to the fitting engine.
+Two equivalent ways to see *why* this identity holds, whichever you find more
+natural:
 
-## Estimating the variance components
+-   **Bayesian / MAP view.** A ridge penalty $\lambda\lVert b\rVert^2$ is
+    exactly the log-density (up to a constant) of a Gaussian prior
+    $b \sim \mathcal N(0, 1/\lambda)$. Maximising the penalised likelihood is
+    maximising a *posterior* under that prior — i.e. assuming $b_s$ are drawn
+    from a shared Gaussian, which is the literal definition of a random
+    effect. $\lambda = 1/\tau^2$ then just says: a *tighter* prior (small
+    $\tau^2$, large $\lambda$) pulls estimates harder toward zero.
+-   **Shrinkage view.** Without the penalty, $\hat\theta$ solves ordinary
+    weighted least squares and each $\hat u_s$ is a free, unpooled estimate
+    (the fixed-factor case that failed above). The penalty term pulls every
+    $\hat u_s$ toward $0$ by an amount that grows with $\lambda$ — this pull
+    is exactly what "borrowing strength across patients" means numerically,
+    and $\hat\theta$ restricted to the random columns is called the model's
+    **BLUP** (Best Linear Unbiased Predictor): "unbiased" in the sense of
+    minimising mean-squared error *given* $\tau^2$, "predictor" because,
+    unlike a fixed effect, $u_s$ is treated as a random draw being predicted,
+    not a fixed unknown being estimated.
 
-`fitNB` treats `lambda.a` as fixed, so the variance components are estimated by an outer **Schall / PQL** loop (shared across genes, matching the dispersion moderation): alternate a penalised fit with a moment update
+This is the standard penalised quasi-likelihood (PQL) construction (Breslow &
+Clayton, 1993; Schall, 1991) — the same idea `lme4`, `mgcv` and
+`MASS::glmmPQL()` all build on. It fits `spiDE` perfectly with **no change to
+the fitting engine**: `SpaNorm::fitNB` already accepts a per-column ridge
+penalty `lambda.a`, so we set it to $0$ on the fixed columns and $1/\tau^2_k$
+on the random ones.
+
+## The fitting procedure: a nested loop
+
+The one piece the ridge equivalence does not hand us for free is $\tau^2$
+itself — it is not data, it is exactly what we are trying to learn. `spiDE`
+gets it with **two nested loops**, implemented in `.fitNBmixed()`
+(`R/fitSpiDE.R`):
+
+-   **Inner loop (existing machinery, unchanged).** For a *fixed* candidate
+    $\tau^2$ (hence $\Lambda$), call `SpaNorm::fitNB(Y, W, lambda.a = ...)` —
+    the package's ordinary IRLS engine, which already knows how to fit a
+    penalised NB-GLM to the whole gene set at once. From `spiDE`'s point of
+    view this is a black box: "give me the penalised MLE (the BLUPs
+    $\hat u_{g,s}$ included) for this penalty."
+-   **Outer loop (the new part).** Given those BLUPs, re-estimate $\tau^2$
+    with a **method-of-moments** update, then re-penalise and re-fit. Repeat
+    until $\tau^2$ stops moving.
+
+The moment update, for random-effect group $k$ (e.g. `"SampleInt"`) of size
+$q_k$ (its number of columns, i.e. the number of samples for a random
+intercept):
 
 $$
 \hat\tau^2_k \;=\; \frac{\sum_g \lVert \hat b_{g,k}\rVert^2}{G\,\big(q_k - \lambda_k\,\mathrm{tr}\, C_{kk}\big)},
-\qquad C = (\tilde W^\top \bar D\, \tilde W + \Lambda)^{-1},
+\qquad C = \big(\tilde W^\top \bar D\, \tilde W + \Lambda\big)^{-1}.
 $$
 
-where $\hat b_{g,k}$ are the BLUPs of block $k$, $q_k$ its size and $C_{kk}$ its sub-block, until $\tau^2$ converges. This is `.fitNBmixed()` in `R/fitSpiDE.R`.
+New symbols here, defined:
+
+| symbol | meaning |
+|---|---|
+| $\hat b_{g,k}$ | the fitted BLUPs of block $k$ for gene $g$ (e.g. $\hat u_{g,\cdot}$, the $S$ per-sample intercepts) |
+| $G$ | number of genes — **every gene contributes to the same $\hat\tau^2_k$** |
+| $\bar D = \mathrm{diag}(\bar w_c)$ | a single, **gene-averaged** working-weight matrix, $\bar w_c = \frac1G\sum_g w_{c,g}$, standing in for each gene's own (slightly different) $D_g$ |
+| $C_{kk}$ | the block-$k$ diagonal sub-block of $C$ — the *penalised* covariance of $\hat\theta$ |
+| $q_k - \lambda_k\,\mathrm{tr}\,C_{kk}$ | the block's **effective degrees of freedom** — less than $q_k$ because shrinkage means the BLUPs use up less than one full parameter each |
+
+The numerator sums squared BLUPs **over every gene** — this is why the
+earlier demo simulates 300 genes rather than a handful: $\tau^2$ is a single
+number pooling information across the whole gene set, and pooling over more
+genes is what makes that number stable (a single gene's own $\hat\tau^2$ would
+be about as noisy as any variance estimated from a small sample — you'll see
+this directly below). $\bar D$ exists for the same reason: since $\tau^2$
+is shared, the outer loop needs *one* representative information matrix, not
+$G$ separate ones.
+
+Two implementation details worth knowing, because they affect what you should
+expect to see:
+
+-   **A convergence criterion on $\log\tau^2$.** The loop stops once
+    $|\log\hat\tau^2_{\text{new}} - \log\hat\tau^2_{\text{old}}| < \texttt{re.tol}$
+    — log scale because $\tau^2$ is a variance (strictly positive, and
+    naturally multiplicative in how far off a bad starting guess is).
+-   **Cell subsampling for speed (`re.prop`, default `0.2`).** The *inner*
+    loop's fits, while $\tau^2$ is still moving, run on a stratified subsample
+    of cells (every sample $\times$ cell type stays represented) with a
+    single dispersion iteration — cheap, because only the shared scalar
+    $\tau^2$ needs to be right at this stage, not every gene's exact
+    coefficient. Once $\tau^2$ has converged, one **final fit on all cells
+    with full dispersion** supplies the $\hat\alpha_g$ / $\hat\phi_g$ that
+    inference actually uses — so subsampling only ever perturbs $\tau^2$,
+    never the reported coefficients. See the companion vignette *Speeding up
+    the mixed-effects fit* for the speed/accuracy trade-off this buys.
+
+### Watching it work: a worked example
+
+To make this concrete rather than abstract, we fit the *same* algorithm by
+hand on one gene's worth of the toy data above, using `MASS::glmmPQL()` — a
+well-tested, textbook implementation of exactly this PQL/Schall construction
+(it is not `spiDE`'s own code, but the same algorithm family; think of it as
+a second, independent implementation you can cross-check against).
+
+```{r pql_demo, message = FALSE}
+library(MASS)
+fit_pql <- glmmPQL(y ~ resp, random = ~ 1 | sample_id, family = poisson,
+                   data = toy, verbose = FALSE)
+summary(fit_pql)$tTable
+```
+
+Compare `resp`'s row to the collinear, undefined coefficient a few paragraphs
+back: with the response now a random-intercept counterpart rather than a
+free-for-all sample factor, it is perfectly estimable, and its reference `DF`
+is $S - 2 = 10$ — the between-patient degrees of freedom formula used
+throughout this vignette (below).
+
+**The outer loop converging.** `glmmPQL()` exposes its outer-iteration cap as
+`niter`; refitting with `niter` $= 1, 2, \dots$ replays the same trajectory
+`.fitNBmixed()`'s own loop takes internally.
+
+```{r tau2_trace, fig.small = TRUE, fig.cap = "The outer Schall/PQL loop converging on the patient-level variance component, for one gene. The dashed line is the true simulated value."}
+tau2_trace <- vapply(1:8, function(k) {
+  f <- suppressWarnings(glmmPQL(y ~ resp, random = ~ 1 | sample_id,
+                                family = poisson, data = toy, niter = k,
+                                verbose = FALSE))
+  as.numeric(nlme::VarCorr(f)[1, 1])
+}, numeric(1))
+ggplot(data.frame(iteration = seq_along(tau2_trace), tau2 = tau2_trace),
+      aes(iteration, tau2)) +
+  geom_hline(yintercept = true_tau2, linetype = 2, colour = spide_pal$ref) +
+  geom_line(colour = spide_pal$accent) + geom_point(colour = spide_pal$accent) +
+  labs(x = "outer (Schall/PQL) iteration",
+       y = expression(hat(tau)^2), title = "One gene's variance-component estimate")
+```
+
+It converges within a handful of iterations (`.fitNBmixed()`'s default cap is
+`re.maxit = 10`) — but notice it does **not** land exactly on the dashed true
+value. With only $S = 12$ patients contributing to a single gene's estimate,
+$\hat\tau^2$ has real sampling noise, the same way any variance estimated from
+12 numbers does. This is precisely why `spiDE` never estimates a per-gene
+$\tau^2$: it pools the numerator ($\sum_g\lVert\hat b_{g,k}\rVert^2$) across
+every gene being fit. Rerunning the *real* `fitSpiDE()` on the 300-gene `spe`
+object from earlier makes the difference concrete:
+
+```{r tau2_pooled}
+mixed <- fit_mode("intercept")
+mixed$fit$tau2   # pooled across 300 genes -- compare to true_tau2 = 0.49
+```
+
+**Do the random intercepts actually look Gaussian?** $\hat\tau^2$ being close
+to $0.49$ confirms the model recovers the right *scale* of between-patient
+variation, but not that the underlying assumption — $u_{g,s} \sim \mathcal
+N(0, \tau^2)$ — genuinely holds. With only $S=12$ or $S=10$ patients, a
+histogram of one gene's random intercepts would be far too few points to say
+anything about a distribution's shape. What we *can* look at is every
+$u_{g,s}$ the simulator actually drew: 300 genes $\times$ 10 samples $=$
+3,000 independent draws, kept from `sim_clustered()` (`sim_null$u`) precisely
+for this. Alongside them, the *fitted* BLUPs (extracted the same way as the
+toy example, but now for all 300 genes and all `SampleInt` columns at once):
+
+```{r gauss_check, fig.small = TRUE, fig.cap = "Empirical density of the true simulated random intercepts and the fitted BLUPs (pooled across all 300 genes and 10 samples), against the theoretical N(0, 0.49) the simulator drew from."}
+blup_cols <- which(mixed$fit$re_group == "SampleInt")
+blups <- mixed$fit$alpha[, blup_cols, drop = FALSE]
+u_df <- data.frame(
+  value = c(as.vector(sim_null$u), as.vector(blups)),
+  source = rep(c("true simulated u (n = 3,000)", "fitted BLUPs (n = 3,000)"),
+              c(length(sim_null$u), length(blups))))
+theory <- data.frame(x = seq(-3, 3, length.out = 200))
+theory$density <- dnorm(theory$x, 0, sqrt(true_tau2))
+
+ggplot(u_df, aes(value, colour = source)) +
+  geom_density(linewidth = 0.9) +
+  geom_line(data = theory, aes(x, density), inherit.aes = FALSE,
+           linetype = 2, colour = spide_pal$ref, linewidth = 0.8) +
+  scale_colour_manual(
+    values = c("true simulated u (n = 3,000)" = unname(spide_pal$method[["fixed"]]),
+              "fitted BLUPs (n = 3,000)" = unname(spide_pal$method[["intercept"]])),
+    name = NULL) +
+  labs(x = "per-(gene, sample) random intercept", y = "density",
+       title = "The dashed line is the theoretical N(0, 0.49) density")
+```
+
+The **true simulated values** (orange) track the dashed theoretical $\mathcal
+N(0, 0.49)$ curve closely — unsurprising, since that is literally the
+distribution `rnorm(n_genes * n_samples, 0, sd_patient)` draws from, but
+useful to see directly rather than take on faith. The **fitted BLUPs**
+(green) are visibly *narrower* than both — their empirical variance is
+`r round(var(as.vector(blups)), 3)`, below the true $0.49$. This is
+shrinkage again, now visible in aggregate
+rather than one sample at a time: every individual BLUP is pulled toward
+zero, so the *population* of fitted BLUPs is always somewhat narrower than
+the population of true effects they estimate. `@tau2` is **not** simply the
+variance of the BLUPs — the moment estimator's denominator
+($q_k - \lambda_k\,\mathrm{tr}\,C_{kk}$, "The fitting procedure" above)
+exists specifically to correct for this narrowing, which is why `@tau2`
+lands close to $0.49$ even though `var(BLUPs)` does not.
+
+**Shrinkage.** The other signature behaviour of a random effect is that its
+BLUPs are pulled toward zero relative to what each patient's data would say
+on its own. We can see this directly by comparing `glmmPQL()`'s BLUPs to the
+*fully unpooled* per-sample estimate — the fixed, saturated model
+`y ~ sample_id - 1` (one free parameter per sample, no response term, so no
+collinearity issue this time).
+
+**How much shrinkage to expect.** Shrinkage is not a fixed amount — it is
+strongest exactly when a single patient's own data is *unreliable* relative to
+$\tau^2$, and weak when it is not. Concretely, the naive per-sample estimate
+has its own sampling variance shrinking like $1/(n_{\text{per}}\cdot\bar\mu)$
+(more cells, or a higher mean count, means a more precise per-sample estimate
+on its own); the smaller that is *relative to* $\tau^2$, the less the model
+needs to borrow strength, and naive and BLUP converge to looking almost
+identical. This is why the toy dataset above deliberately uses a modest
+`n_per = 12` and a low baseline mean (about 2 counts/cell) rather than, say,
+the 90 cells/sample used in `sim_clustered()` — with abundant, high-count
+data per sample, shrinkage here would be barely visible at all, which is
+itself worth knowing: **a housekeeping-like gene, well measured in every
+sample, gets little help from the random effect and only a modest SE
+correction from points 1–3 below; a sparse marker or background gene, where
+each sample's own count is noisy, is exactly where shrinkage — and the
+random-effect correction generally — does the most work.**
+
+A scatter of naive against BLUP would put almost every point close to a
+diagonal line no matter how much shrinkage is happening (12 numbers spanning
+a wide range makes small, uniform pulls hard to see by eye), so instead we
+plot each sample **twice** — its naive value and its BLUP — connected by an
+arrow, samples ordered by their naive deviation:
+
+```{r shrinkage, fig.width = 6.5, fig.height = 4, fig.cap = "Each sample's naive (unpooled) deviation and its BLUP from the mixed model, connected by an arrow. Every arrow points toward zero; the sample with the most extreme (least reliable) naive estimate is pulled in the most."}
+naive_sat <- glm(y ~ sample_id - 1, family = poisson, data = toy)
+naive_u <- coef(naive_sat) - mean(coef(naive_sat))
+blup_u <- nlme::ranef(fit_pql)[[1]]
+ord <- order(naive_u)
+shrink_df <- data.frame(sample = factor(seq_len(S)[ord], levels = seq_len(S)[ord]),
+                        naive = naive_u[ord], blup = blup_u[ord])
+ggplot(shrink_df) +
+  geom_segment(aes(x = sample, xend = sample, y = naive, yend = blup),
+              arrow = arrow(length = unit(0.12, "cm")), colour = "grey55") +
+  geom_hline(yintercept = 0, linetype = 2, colour = spide_pal$ref) +
+  geom_point(aes(sample, naive, colour = "naive (unpooled)"), size = 2.2) +
+  geom_point(aes(sample, blup, colour = "BLUP (mixed model)"), size = 2.2) +
+  scale_colour_manual(
+    values = c("naive (unpooled)" = unname(spide_pal$method[["fixed"]]),
+              "BLUP (mixed model)" = unname(spide_pal$method[["intercept"]])),
+    name = NULL) +
+  labs(x = "sample (sorted by naive deviation)",
+       y = "deviation from population mean",
+       title = sprintf("var(naive) = %.2f, var(BLUP) = %.2f (%.0f%% reduction)",
+                       var(naive_u), var(blup_u),
+                       100 * (1 - var(blup_u) / var(naive_u)))) +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+Every arrow points toward the dashed zero line — no sample's BLUP moves
+*away* from the population mean. The pull is not uniform: the sample with the
+largest naive deviation (far left) is pulled in substantially, while samples
+already close to zero barely move, because they have little to correct. **How
+to read it**: an arrow of length zero would mean the random effect is doing
+nothing for that sample (its own data is already fully informative,
+effectively $\tau^2 \to \infty$ in relative terms); if every BLUP collapsed
+to exactly $0$, the model would be concluding patients don't really differ at
+all ($\hat\tau^2 \to 0$). Real data sits in between, and, as the "how much
+shrinkage to expect" note above explains, exactly where depends on how
+reliable each sample's own naive estimate is relative to $\tau^2$. This is
+the concrete, numerical form of "borrowing strength" — and it is what a
+per-sample *fixed* effect, by construction, could never do.
 
 ## Corrected inference
 
-With the random effects in place, three things change relative to the fixed-effects Wald test:
+With the random effects in place, three things change relative to the fixed-effects Wald test — each is a direct consequence of what fitting just did:
 
 1.  **Covariance** uses the full penalised information and extracts the fixed response block, $\widehat{\mathrm{Var}}(\hat\theta_\text{resp}) = \varphi_g \big[(\tilde
-    W^\top D_g \tilde W + \Lambda)^{-1}\big]_\text{resp}$. Because $Z$ absorbs the within-patient correlation, this block is inflated to a between-patient scale.
-2.  **Dispersion** $\varphi_g$ is the working (Pearson) dispersion of the *random-effects* model, $\varphi_g = \frac{1}{C - p}\sum_c (Y_{c,g} -
-    \mu_{c,g})^2 / (\mu_{c,g} + \phi_g\mu_{c,g}^2)$, rather than the raw NB dispersion.
-3.  **Reference distribution** is a $t$ with a **between-patient** degrees of freedom $S - 2$ (the response has two levels), not a normal.
+    W^\top D_g \tilde W + \Lambda)^{-1}\big]_\text{resp}$. Because $Z$ absorbs the within-patient correlation, this block is inflated to a between-patient scale — the SEs get *larger*, which is the whole point: the fixed-effects fit's SEs were too small.
+2.  **Dispersion.** $\varphi_g$ replaces the raw NB dispersion $\phi_g$ with an empirical, *post-fit* working (Pearson) dispersion,
+    $$
+    \varphi_g = \frac{1}{C - p}\sum_c \frac{(Y_{c,g} - \mu_{c,g})^2}{\mu_{c,g} + \phi_g\mu_{c,g}^2},
+    \qquad p = \#\{\text{fixed (non-random) columns}\},
+    $$
+    i.e. a Pearson-residual-based scale factor, exactly analogous to the
+    dispersion `summary(glm(..., family = quasipoisson))` reports — a
+    familiar GLM device for saying "trust the assumed variance function, but
+    rescale it by how much residual scatter this particular fit actually
+    shows," now applied on top of the random-effects model rather than a
+    plain GLM.
+3.  **Reference distribution** is a $t$ with a **between-patient** degrees of freedom $S - 2$, not a normal — the "$-2$" is the same bookkeeping as an ordinary two-sample $t$-test (Responder vs. non-Responder) at the *patient* level: two group means are estimated from the between-patient information, leaving $S-2$ residual df, regardless of how many niche coefficients are simultaneously tested.
 
-Together these test each response contrast against patient-level variability. Let us re-run the null simulation with the mixed-effects fit:
+Together these test each response contrast against patient-level variability,
+not cell-level variability. Compare the null calibration of the two fits (the
+`fit_mode()` helper from earlier already fit both):
 
 ```{r mixed}
-p_mixed <- response_p("intercept")
-c(fixed = mean(p_fixed < 0.05), mixed = mean(p_mixed < 0.05))
+c(fixed = mean(fixed$p < 0.05), mixed = mean(mixed$p < 0.05))
 ```
 
 ```{r qq, fig.small = TRUE, fig.cap = "Null response-effect p-values. The fixed-effects fit is grossly anti-conservative; the mixed-effects fit is close to the uniform (dashed) reference."}
@@ -229,7 +601,7 @@ qq_points <- function(p, mode) {
   data.frame(mode = mode, expected = sort(-log10(ppoints(length(p)))),
              observed = sort(-log10(p)))
 }
-qq_df <- rbind(qq_points(p_fixed, "fixed"), qq_points(p_mixed, "intercept"))
+qq_df <- rbind(qq_points(fixed$p, "fixed"), qq_points(mixed$p, "intercept"))
 qq_df$mode <- factor(qq_df$mode, levels = c("fixed", "intercept"),
                      labels = c("fixed", "mixed"))
 ggplot(qq_df, aes(expected, observed, colour = mode)) +
@@ -242,13 +614,21 @@ ggplot(qq_df, aes(expected, observed, colour = mode)) +
        y = expression(-log[10]("observed p")))
 ```
 
-The mixed-effects fit also **recovers the planted between-patient variance** ($0.7^2 = 0.49$):
+## Interpreting a mixed `SpiDEFit`
 
-```{r tau2}
-fit <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
-                verbose = FALSE)
-fits(fit)[[1]]@tau2
-```
+A fit made with `random != "none"` populates three extra slots on each
+`SpiDEFit` (`fits(res)[[1]]`, or `$` directly), all `NULL` for a plain
+fixed-effects fit:
+
+| slot | what it holds | how to read it |
+|---|---|---|
+| `@tau2` | the fitted variance component(s), named `SampleInt` (and `SampleSlope` under `random = "slope"`) | on the **log-mean scale**: a patient with $u_s = +\hat\tau$ has roughly $e^{\hat\tau}$-fold higher baseline expression than average. If `@tau2` is tiny, patients barely differ beyond sampling noise (the mixed fit will look similar to, but always slightly more conservative than, the fixed fit); if it is large relative to the within-patient (Poisson/NB) noise, a sizeable share of what a fixed-effects fit reported as "response signal" was actually between-patient noise leaking through |
+| `@df` | the between-patient reference degrees of freedom, $S - 2$ | small `@df` (few patients) means a wide-tailed $t$ reference and hence conservative p-values *even for a real effect* — this is expected, not a bug, and improves with more patients |
+| `@penalty` | the per-column ridge penalty actually used ($0$ on fixed columns, $1/\hat\tau^2_k$ on random ones) | mostly a diagnostic: a very small penalty on a random block means that group's $\hat\tau^2$ converged large, i.e. that source of between-patient variation is real and substantial |
+
+For the toy fit above, `mixed$fit$tau2` pooled across 300 genes should sit
+close to the simulated $0.49$; `mixed$fit$df` should read `10` ($S=12$
+patients).
 
 ## Usage and caveats
 
@@ -259,7 +639,7 @@ res <- spiDE(spe, condition = "condition", sigma = c(10, 30, 50),
              random = "slope")
 ```
 
--   **Sample-level covariates.** A per-sample random intercept already adjusts for *all* between-sample nuisance variation, so it is confounded with measured sample-level covariates (Age, Sex, Stage). `spiDE` therefore errors if such a covariate is passed together with `random != "none"` — drop it; the random intercept subsumes it.
+-   **Sample-level covariates.** A per-sample random intercept already adjusts for *all* between-sample nuisance variation, so it is confounded with measured sample-level covariates (Age, Sex, Stage) — exactly the collinearity demonstrated at the top of this section. `spiDE` therefore errors if such a covariate is passed together with `random != "none"` — drop it; the random intercept subsumes it.
 -   **Number of samples.** The correction is only as good as the between-sample information: with very few samples the variance components (and the $S-2$ reference df) are unstable, and a warning is issued.
 -   **Correct, not merely "fixed with extras".** The mixed fit does more than add a between-patient variance component: it also replaces the default's NB dispersion scaling and sub-design covariance with the correct **working (quasi-NB) dispersion** and **full penalised covariance**. So even when $\tau^2 \to 0$ (no genuine clustering) the mixed fit does *not* reproduce the default fit — it gives the correctly-scaled, and hence more conservative, standard errors. This is deliberate: the default fit is known to be anti-conservative, so its larger apparent "power" is partly spurious.
 -   **Power needs samples and effect size.** Because the test is now honest, a real response-niche effect must be visible *between patients* to be declared. With few patients, or an effect seen in only a handful of responders, the between-patient df ($S-2$) and the inflated SEs will (correctly) leave it non-significant. Larger sample sizes restore power.

@@ -7,3 +7,5 @@ docs
 !.claude/skills
 .claude/skills/*
 !.claude/skills/deploy-bioc
+.DS_Store
+/research/

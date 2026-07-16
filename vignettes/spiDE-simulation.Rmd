@@ -404,28 +404,105 @@ Notice that under the **random** layout the true signal is spatially flat: there
 
 ## The benchmark experiments
 
-Every result in Part 2 comes from a single study, defined in `research/R/scenarios.R` and run on a compute cluster. It is organised as four experiment families. Each family expands into (design point × replicate) jobs; **each simulated dataset is fit once**, and every metric is re-derived from that one fit (re-gating discoveries at each FDR threshold rather than re-fitting). The full study uses **40 replicates** per design point, and every summary metric below is reported as a mean over those replicates (medians, standard deviations and quartiles are also computed, for error bars).
+```{r bench-load-all, include = FALSE}
+# Load every summary table once, and derive every design-point constant used
+# in the prose below directly from the data -- nothing in this report should
+# be hand-typed from research/config.R, so it never goes stale when the study
+# is re-run with different parameters and `Rscript research/R/install_results.R`
+# is re-run.
+bench_dir <- system.file("extdata", "benchmark", package = "spiDE")
+bench <- function(f) {
+  path <- file.path(bench_dir, f)
+  if (!file.exists(path)) return(NULL)
+  if (grepl("\\.rds$", f)) readRDS(path) else
+    utils::read.csv(path, check.names = FALSE)
+}
+se_of <- function(df, m) {
+  sd <- df[[paste0(m, "_sd")]]; n <- df[[paste0(m, "_n")]]
+  ifelse(is.finite(sd) & is.finite(n) & n > 0, sd / sqrt(n), NA_real_)
+}
+errbars <- function(df, m, width = 0) {
+  df$.lo <- df[[m]] - se_of(df, m); df$.hi <- df[[m]] + se_of(df, m)
+  geom_errorbar(data = df, aes(ymin = .lo, ymax = .hi), width = width,
+                linewidth = 0.5, show.legend = FALSE)
+}
+# exactly-one-row lookup, so a stale prose callout (e.g. "at 250 cells") fails
+# loudly at render time if that grid point no longer exists, instead of
+# silently going stale.
+gv <- function(df, col, ...) {
+  filt <- list(...)
+  for (nm in names(filt)) df <- df[df[[nm]] == filt[[nm]], ]
+  if (nrow(df) != 1) {
+    stop(sprintf("gv(): expected 1 row for %s, got %d", col, nrow(df)))
+  }
+  df[[col]]
+}
+# smallest/largest x at which `col` first crosses `thresh`, for "recall stays
+# near zero until ... then rises" style claims that describe a threshold
+# rather than one fixed grid value.
+first_above <- function(df, col, method_val, thresh, xcol) {
+  d <- df[df$method == method_val, ]; d <- d[order(d[[xcol]]), ]
+  v <- d[[xcol]][d[[col]] > thresh]
+  if (length(v) == 0) NA else v[1]
+}
+last_at_or_below <- function(df, col, method_val, thresh, xcol) {
+  d <- df[df$method == method_val, ]; d <- d[order(d[[xcol]]), ]
+  v <- d[[xcol]][d[[col]] <= thresh]
+  if (length(v) == 0) NA else max(v)
+}
 
-The niche effect is spiked into a fixed number of genes **from each gene class** — 300 cell-type markers, 300 housekeeping genes and 300 background genes — so that detectability can be compared across classes. Most other settings are held fixed while one axis at a time is swept, so each figure isolates a single variable.
+t1 <- bench("null_type1.csv"); qq <- bench("null_qq.csv")
+pp <- bench("power_points.csv"); pf <- bench("power_fdr.csv")
+bc <- bench("power_by_category.csv")
+sp <- bench("spatial.csv"); tm <- bench("timing.csv")
+cb <- bench("combiner.csv"); pt <- bench("pql_timing.csv")
+
+S_grid    <- sort(unique(pf$S[pf$sweep == "samples"]))
+npc_grid  <- sort(unique(pf$n_per[pf$sweep == "cells"]))
+beta_grid <- sort(unique(pf$beta[pf$sweep == "effect"]))
+S_fixed   <- unique(pf$S[pf$sweep == "cells"])
+npc_fixed <- unique(pf$n_per[pf$sweep == "samples"])
+beta_fixed <- unique(pf$beta[pf$sweep == "samples"])
+n_reps    <- unique(pf$tpr_n)
+n_genes_total <- round(mean(tm$n_genes, na.rm = TRUE), -2)
+fdr_grid  <- sort(unique(pf$fdr))
+layouts_swept <- unique(sp$layout)
+modes_swept   <- levels(factor(pf$method, levels = names(spide_pal$method)))
+
+pow_samples <- subset(pp, sweep == "samples")
+pow_cells   <- subset(pp, sweep == "cells")
+pow_effect  <- subset(pp, sweep == "effect")
+tpr_samples <- subset(pf, sweep == "samples" & fdr == 0.05)
+tpr_cells   <- subset(pf, sweep == "cells" & fdr == 0.05)
+tpr_effect  <- subset(pf, sweep == "effect" & fdr == 0.05)
+cat_samples <- subset(bc, sweep == "samples" & fdr == 0.05)
+cat_cells   <- subset(bc, sweep == "cells" & fdr == 0.05)
+cat_effect  <- subset(bc, sweep == "effect" & fdr == 0.05)
+cat_layout  <- subset(bc, sweep == "layout" & fdr == 0.05)
+```
+
+Every result in Part 2 comes from a single study, defined in `research/R/scenarios.R` and run on a compute cluster. It is organised as four experiment families. Each family expands into (design point × replicate) jobs; **each simulated dataset is fit once**, and every metric is re-derived from that one fit (re-gating discoveries at each FDR threshold rather than re-fitting). The full study uses **`r n_reps` replicates** per design point, and every summary metric below is reported as a mean over those replicates (medians, standard deviations and quartiles are also computed, for error bars).
+
+The niche effect is spiked into a fixed number of genes **from each gene class** — 300 cell-type markers, 300 housekeeping genes and 300 background genes — so that detectability can be compared across classes. Most other settings are held fixed while one axis at a time is swept, so each figure isolates a single variable. The table below is generated from the shipped summary tables wherever a quantity can be read off them; a handful of rows describe simulator inputs that never appear as a column in the output (gene-category counts, the niche bandwidth, the between-patient SD) and are typed from `research/config.R` directly.
 
 | quantity | fixed value | swept range (in which family) |
 |------------------------|------------------------|------------------------|
-| total genes | 10,000 | — |
+| total genes | \~`r format(n_genes_total, big.mark = ",")` | — |
 | — cell-type markers (per type) | 500 | — |
 | — housekeeping genes | 1,500 | — |
 | — background genes | remainder (\~7,000) | — |
 | true niche-responsive genes | 900: **300 markers + 300 housekeeping + 300 background** | — |
-| patient samples, `S` | 12 | **4, 6, 10, 16, 24** (null, power) |
-| cells per sample | 300 | **100, 250, 500, 1,000** (power) |
-| effect size, `β` | 2 | **1, 1.5, 2, 3** (power) |
-| spatial layout | gradient | **gradient, clustered, random, multiniche** (power) |
+| patient samples, `S` | `r S_fixed` | **`r paste(S_grid, collapse = ", ")`** (null, power) |
+| cells per sample | `r npc_fixed` | **`r paste(format(npc_grid, big.mark = ","), collapse = ", ")`** (power) |
+| effect size, `β` | `r beta_fixed` | **`r paste(beta_grid, collapse = ", ")`** (power) |
+| spatial layout | gradient | **`r paste(layouts_swept, collapse = ", ")`** (power) |
 | niche bandwidth, `σ` | 50 | — |
-| inference mode | intercept | **fixed, intercept, slope** (null, power) |
-| p-value combiner | Cauchy | **Cauchy, Brown** (combiner) |
-| PQL cell fraction, `re.prop` | 0.2 | **0.05, 0.1, 0.2, 0.25, 1** (pql) |
+| inference mode | intercept | **`r paste(modes_swept, collapse = ", ")`** (null, power) |
+| p-value combiner | Cauchy | **`r paste(sort(unique(cb$combine)), collapse = ", ")`** (combiner) |
+| PQL cell fraction, `re.prop` | 0.2 | **`r paste(sort(unique(pt$re.prop)), collapse = ", ")`** (pql) |
 | between-patient SD | 0.5 | 0.6 (pql) |
-| nominal FDR thresholds | — | 0.01, 0.05, 0.1, 0.2 |
-| replicates per design point | 40 | — |
+| nominal FDR thresholds | — | `r paste(fdr_grid, collapse = ", ")` |
+| replicates per design point | `r n_reps` | — |
 
 The four families and what each varies:
 
@@ -433,8 +510,8 @@ The four families and what each varies:
 |---------------|---------------|---------------|---------------|---------------|
 | **null** | type-I error / calibration | `S` × {gradient, clustered}, `β = 0` | 300 cells | fixed / intercept / slope |
 | **power** | power, FDR, recall (overall and per gene class), spatial robustness and fit/inference timing | four sweeps: `S`; cells; `β`; **layout** | gradient layout (except the layout sweep); the other axes at their fixed value | fixed / intercept / slope |
-| **combiner** | Cauchy vs Brown | null (`β = 0`) and alternative arms | `S = 12`, 300 cells, `β = 2` | intercept |
-| **pql** | subsampling speed/accuracy | `re.prop` | `S = 12`, 1,000 cells | intercept |
+| **combiner** | Cauchy vs Brown | null (`β = 0`) and alternative arms | `S = ` `r S_fixed`, `r npc_fixed` cells, `β = ` `r beta_fixed` | intercept |
+| **pql** | subsampling speed/accuracy | `re.prop` | `S = ` `r unique(pt$S)`, `r format(unique(pt$n_per), big.mark = ",")` cells | intercept |
 
 The `power` family now also carries the layout sweep, so its results supply the **spatial-robustness** metrics, and its per-fit wall-clock times supply the **scalability** metrics — dedicated spatial and timing families are no longer required. The `combiner` and `pql` families are reported in the two companion vignettes.
 
@@ -480,7 +557,7 @@ The mixed-effects modes exist because a patient contributes many cells but only 
 
 **How to read it.** A curve **on** the dashed line is perfectly calibrated. **Above** the line means *anti-conservative* — the test declares significance too readily, which would inflate false discoveries. **Below** the line means *conservative* — the test is cautious and will sacrifice some power.
 
-**How it is computed.** From the *null* family (no planted effect, `β = 0`): for each of the 40 replicates we record the fraction of all 10,000 genes whose two-sided ResponseNiche Wald p-value — the single index-`A` × condition × `B`-niche coefficient — falls below 0.05, then average over replicates. Two layouts (gradient, clustered) and five sample sizes are shown.
+**How it is computed.** From the *null* family (no planted effect, `β = 0`): for each of the `r n_reps` replicates we record the fraction of all \~`r format(n_genes_total, big.mark = ",")` genes whose two-sided ResponseNiche Wald p-value — the single index-`A` × condition × `B`-niche coefficient — falls below 0.05, then average over replicates. Two layouts (gradient, clustered) and five sample sizes are shown.
 
 ```{r bench-type1, fig.height = 4, fig.cap = "Realised type-I error at alpha = 0.05 under the null, versus the number of patient samples, for two layouts. On the dashed line is calibrated; above is anti-conservative; below is conservative."}
 t1 <- bench("null_type1.csv")
@@ -523,7 +600,7 @@ if (!is.null(qq)) {
 
 **What is plotted.** With a real effect planted, *raw power* is the fraction of truly niche-responsive genes the test flags **before** multiple-testing correction — a measure of the per-gene test's sensitivity, **pooled across all three gene categories** (a category-resolved version follows in "Which genes are detected?" below). The three panels sweep, respectively, the number of patient **samples**, the number of **cells per sample**, and the **effect size** $\beta$. Higher is better; there is no reference line.
 
-**How it is computed.** From the *power* family, in which \~9 % of genes (900 of \~10,000: 300 markers + 300 housekeeping + 300 background) carry the planted effect. Raw power is the fraction of those 900 true genes whose uncorrected ResponseNiche p-value is below 0.05, averaged over 40 replicates. Each panel sweeps one axis while the other two are held at their fixed values (`S = 12`, 300 cells, `β = 2`).
+**How it is computed.** From the *power* family, in which \~9 % of genes (900 of \~`r format(n_genes_total, big.mark = ",")`: 300 markers + 300 housekeeping + 300 background) carry the planted effect. Raw power is the fraction of those 900 true genes whose uncorrected ResponseNiche p-value is below 0.05, averaged over `r n_reps` replicates. Each panel sweeps one axis while the other two are held at their fixed values (`S = ` `r S_fixed`, `r npc_fixed` cells, `β = ` `r beta_fixed`).
 
 ```{r bench-power, fig.height = 4, fig.cap = "Raw (uncorrected) power to detect the planted niche effect versus the number of patient samples, the number of cells per sample, and the effect size. Higher is better."}
 pp <- bench("power_points.csv")
@@ -547,14 +624,14 @@ if (!is.null(pp)) {
 
 **Interpretation.** All three levers increase power, and the mixed-effects modes are uniformly *more* powerful than the fixed-effects mode — because modelling the between-patient variance correctly leaves a cleaner estimate of the effect. Two points are worth drawing out:
 
--   **More patients help the most.** Power climbs steeply with the number of samples (from \~0.09 at 4 patients to \~0.95 at 24 for the mixed modes), because the condition contrast is fundamentally a *between-patient* comparison.
--   **More cells also help here** — unlike a simple between-patient mean contrast, the niche effect is a *within-patient spatial gradient*, so additional cells genuinely sharpen each patient's estimate of that gradient (power rises from \~0.53 at 100 cells to \~0.98 at 1,000). Cells are informative for the niche interaction even though they cannot manufacture independent evidence about the condition label itself.
+-   **More patients help the most.** Power climbs steeply with the number of samples (from \~`r round(gv(pow_samples, "power_raw", method = "intercept", S = min(S_grid)), 2)` at `r min(S_grid)` patients to \~`r round(gv(pow_samples, "power_raw", method = "intercept", S = max(S_grid)), 2)` at `r max(S_grid)` for the mixed modes), because the condition contrast is fundamentally a *between-patient* comparison.
+-   **More cells also help here** — unlike a simple between-patient mean contrast, the niche effect is a *within-patient spatial gradient*, so additional cells genuinely sharpen each patient's estimate of that gradient (power rises from \~`r round(gv(pow_cells, "power_raw", method = "intercept", n_per = 100), 2)` at 100 cells to \~`r round(gv(pow_cells, "power_raw", method = "intercept", n_per = max(npc_grid)), 2)` at `r format(max(npc_grid), big.mark = ",")`). Cells are informative for the niche interaction even though they cannot manufacture independent evidence about the condition label itself.
 
 ## From raw power to controlled discoveries
 
 Raw power measures a *single* gene's test sensitivity. What a user actually receives is the set of genes that survive genome-wide multiplicity control, and that set is much smaller. This section makes the distinction explicit — it is the reason raw power can be high while recall stays low — and shows across conditions where discoveries are made and where the false-discovery rate is controlled.
 
-**How discoveries and their errors are computed.** From the *power* family: at each design point all \~10,000 genes are fit, and a gene is *discovered* when it clears `spiDE`'s three-level hierarchical Benjamini–Hochberg gate — gene level, then index cell type, then niche cell type — at the nominal threshold. The realised **false-discovery proportion (FDP)** is the fraction of discoveries that are not among the 900 true genes; **recall** is the fraction of the 900 true genes discovered. Both are averaged over 40 replicates.
+**How discoveries and their errors are computed.** From the *power* family: at each design point all \~`r format(n_genes_total, big.mark = ",")` genes are fit, and a gene is *discovered* when it clears `spiDE`'s three-level hierarchical Benjamini–Hochberg gate — gene level, then index cell type, then niche cell type — at the nominal threshold. The realised **false-discovery proportion (FDP)** is the fraction of discoveries that are not among the 900 true genes; **recall** is the fraction of the 900 true genes discovered. Both are averaged over `r n_reps` replicates.
 
 ### Why raw power is high but recall is low
 
@@ -583,7 +660,7 @@ if (!is.null(pp) && !is.null(pf)) {
 }
 ```
 
-**Interpretation.** Raw power rises smoothly with sample size, reaching \~0.5 by 6 patients and \~0.95 by 24. Recall behaves completely differently: it stays near zero until the study is large enough — here about 16 patients — and then climbs steeply. This threshold is characteristic of genome-wide multiplicity control. A gene is only discovered if it clears the hierarchical Benjamini–Hochberg gate, whose gene-level step must separate the 900 true genes from \~9,100 nulls. A raw p-value just under 0.05 is nowhere near small enough to survive that correction; only once the effect is strong enough to push the true genes' p-values deep into the tail do they start to clear the bar — at which point many clear it together. **High raw power is therefore necessary but not sufficient for recall:** raw power says the per-gene test can see the effect, while recall says the effect is strong enough to be reported genome-wide at a controlled error rate.
+**Interpretation.** Raw power rises smoothly with sample size, reaching \~`r round(gv(pow_samples, "power_raw", method = "intercept", S = S_grid[2]), 2)` by `r S_grid[2]` patients and \~`r round(gv(pow_samples, "power_raw", method = "intercept", S = max(S_grid)), 2)` by `r max(S_grid)`. Recall behaves completely differently: it stays near zero until the study is large enough — here about `r first_above(tpr_samples, "tpr", "intercept", 0.1, "S")` patients — and then climbs steeply. This threshold is characteristic of genome-wide multiplicity control. A gene is only discovered if it clears the hierarchical Benjamini–Hochberg gate, whose gene-level step must separate the 900 true genes from \~`r format(n_genes_total - 900, big.mark = ",")` nulls. A raw p-value just under 0.05 is nowhere near small enough to survive that correction; only once the effect is strong enough to push the true genes' p-values deep into the tail do they start to clear the bar — at which point many clear it together. **High raw power is therefore necessary but not sufficient for recall:** raw power says the per-gene test can see the effect, while recall says the effect is strong enough to be reported genome-wide at a controlled error rate.
 
 ### The same threshold governs cells and effect size
 
@@ -612,7 +689,7 @@ if (!is.null(pf)) {
 }
 ```
 
-**Interpretation.** More cells per sample and larger effects cross the same threshold: recall is \~0 below it (≤250 cells, or $\beta \le 1.5$) and rises once the signal clears genome-wide correction (to \~0.54 at 1,000 cells, \~0.41 at $\beta = 3$). So the practical message is not "cells don't help" — they clearly do here — but that *some* minimum combination of patients, cells and effect size is needed before any discoveries are made at all.
+**Interpretation.** More cells per sample and larger effects cross the same threshold: recall is \~0 below it (≤`r last_at_or_below(tpr_cells, "tpr", "intercept", 0.05, "n_per")` cells, or $\beta \le$ `r last_at_or_below(tpr_effect, "tpr", "intercept", 0.05, "beta")`) and rises once the signal clears genome-wide correction (to \~`r round(gv(tpr_cells, "tpr", method = "intercept", n_per = max(npc_grid)), 2)` at `r format(max(npc_grid), big.mark = ",")` cells, \~`r round(gv(tpr_effect, "tpr", method = "intercept", beta = max(beta_grid)), 2)` at $\beta =$ `r max(beta_grid)`). So the practical message is not "cells don't help" — they clearly do here — but that *some* minimum combination of patients, cells and effect size is needed before any discoveries are made at all.
 
 ### Where discoveries are made, is the FDR controlled?
 
@@ -641,7 +718,22 @@ if (!is.null(pf)) {
 }
 ```
 
-**Interpretation.** Wherever a mode actually makes discoveries, the mixed-effects modes hold FDP at or comfortably below the nominal 0.05 (≈ 0.015–0.03) on all three axes. The fixed-effects mode is **anti-conservative whenever discoveries are scarce** — FDP ≈ 0.13 at 4 patients, ≈ 0.075 at 6, and ≈ 0.135 at only 100 cells per sample — and while it improves as more patients are added (settling to ≈ 0.038 at 24), it stays elevated *above* the nominal level on the cells and effect-size axes even where it is discovering plenty (≈ 0.078 at 1,000 cells, ≈ 0.051 at $\beta = 3$): more cells and a bigger effect buy the fixed mode more discoveries, not better-calibrated ones. The panels start later on the x-axis where the fixed mode makes essentially no discoveries (recall ≤ 5 %), so there is nothing meaningful to plot until it starts discovering. Combined with its lack of an honest error guarantee, this is why the mixed-effects modes are the recommended default despite the fixed mode's superficially higher raw power.
+```{r fdp-stats, include = FALSE}
+# "Worst point on each axis" computed from the data, not asserted, so the
+# callout below is correct even if a future rerun shifts where FDP peaks.
+fixed_fdp  <- subset(pf, fdr == 0.05 & method == "fixed")
+mixed_fdp  <- subset(pf, fdr == 0.05 & tpr > 0.05 & method %in% c("intercept", "slope"))
+samples_fixed <- subset(fixed_fdp, sweep == "samples")
+cells_fixed   <- subset(fixed_fdp, sweep == "cells")
+effect_fixed  <- subset(fixed_fdp, sweep == "effect")
+w_fixed_samples <- samples_fixed[which.max(samples_fixed$fdp), ]
+w_fixed_cells   <- cells_fixed[which.max(cells_fixed$fdp), ]
+w_fixed_effect  <- effect_fixed[which.max(effect_fixed$fdp), ]
+w_mixed         <- mixed_fdp[which.max(mixed_fdp$fdp), ]
+mixed_fdp_range <- range(mixed_fdp$fdp)
+```
+
+**Interpretation.** Wherever a mode actually makes discoveries, the mixed-effects modes hold FDP close to the nominal 0.05 on all three axes (\~`r round(mixed_fdp_range[1], 3)`–`r round(mixed_fdp_range[2], 3)`) — with one point worth flagging honestly rather than glossing over: at the largest effect size studied ($\beta =$ `r w_mixed$beta`), FDP creeps mildly above nominal for the mixed modes too (\~`r round(w_mixed$fdp, 2)`), though still well below the fixed mode's anti-conservatism at the same point (\~`r round(gv(effect_fixed, "fdp", beta = w_mixed$beta), 2)`). The fixed-effects mode is **anti-conservative whenever discoveries are scarce or the signal is strong** — its worst points on each axis are \~`r round(w_fixed_samples$fdp, 2)` at `r w_fixed_samples$S` patients, \~`r round(w_fixed_cells$fdp, 2)` at `r format(w_fixed_cells$n_per, big.mark = ",")` cells, and \~`r round(w_fixed_effect$fdp, 2)` at $\beta =$ `r w_fixed_effect$beta` — and while it settles closer to nominal as more patients are added (\~`r round(gv(samples_fixed, "fdp", S = max(S_grid)), 2)` by `r max(S_grid)` patients), it does not reliably improve with more cells or a bigger effect: those levers buy the fixed mode more discoveries, not better-calibrated ones. The panels start later on the x-axis where a mode makes essentially no discoveries (recall ≤ 5 %), so there is nothing meaningful to plot until it starts discovering. Combined with its lack of an honest error guarantee even where it is well within the nominal rate, this is why the mixed-effects modes are the recommended default despite the fixed mode's superficially higher raw power.
 
 ## Which genes are detected? Performance by gene category
 
@@ -649,9 +741,9 @@ The planted effect is spread across three biologically distinct kinds of gene (s
 
 ### Detection versus sample size
 
-**What is plotted.** For the samples sweep, raw (uncorrected) power (top row) and recall at a 5 % FDR (bottom row) versus the number of patients, split into one column per gene category and coloured by inference mode. Higher is better; error bars are $\pm 1$ standard error over the 40 replicates.
+**What is plotted.** For the samples sweep, raw (uncorrected) power (top row) and recall at a 5 % FDR (bottom row) versus the number of patients, split into one column per gene category and coloured by inference mode. Higher is better; error bars are $\pm 1$ standard error over the `r n_reps` replicates.
 
-**How it is computed.** From the *power* family, but with the true genes partitioned by category: 300 markers, 300 housekeeping and 300 background genes each carry the planted effect. Raw power and recall are computed exactly as before (uncorrected $p < 0.05$; survival of the hierarchical gate at 5 % FDR) but averaged **within** each category, over the 40 replicates.
+**How it is computed.** From the *power* family, but with the true genes partitioned by category: 300 markers, 300 housekeeping and 300 background genes each carry the planted effect. Raw power and recall are computed exactly as before (uncorrected $p < 0.05$; survival of the hierarchical gate at 5 % FDR) but averaged **within** each category, over the `r n_reps` replicates.
 
 ```{r bench-category, fig.height = 5, fig.cap = "Detection split by gene category (columns) and inference mode (colour), for raw power (top) and recall at 5% FDR (bottom), versus sample size. Abundant housekeeping genes are recovered with far fewer patients than sparse markers; near-silent background genes are hardest."}
 bc <- bench("power_by_category.csv")
@@ -680,13 +772,21 @@ if (!is.null(bc)) {
 }
 ```
 
-**Interpretation.** Detection tracks expression level. **Housekeeping** genes, which are abundant and broadly detected, are recovered with the fewest patients — their raw power is already high at 6 patients and recall clears the multiplicity threshold by \~16. **Cell-type markers**, expressed in only the index cells and so sampled at far lower depth, need substantially more patients to reach the same raw power and cross the recall threshold much later. **Background** genes, planted on a near-silent baseline, are the hardest and are barely recovered even at 24 patients. The ordering is the same for all three inference modes — and, as elsewhere, the mixed-effects modes are uniformly more powerful than the fixed mode. The practical lesson is that a spatial study's effective sensitivity is gene-specific: an effect of the same true size is far easier to detect on an abundant gene than on a sparse marker, so power and sample-size planning should be framed for the expression regime of the genes of interest.
+```{r bench-category-samples-stats, include = FALSE}
+hk_S  <- subset(cat_samples, category == "housekeeping")
+mk_S  <- subset(cat_samples, category == "marker")
+bg_S  <- subset(cat_samples, category == "background")
+hk_cross <- first_above(hk_S, "tpr", "intercept", 0.1, "S")
+mk_cross <- first_above(mk_S, "tpr", "intercept", 0.1, "S")
+```
+
+**Interpretation.** Detection tracks expression level. **Housekeeping** genes, which are abundant and broadly detected, are recovered with the fewest patients — their raw power is already high (\~`r round(gv(hk_S, "power_raw", method = "intercept", S = S_grid[2]), 2)`) by `r S_grid[2]` patients, and recall clears a substantial detection level by \~`r hk_cross` patients. **Cell-type markers**, expressed in only the index cells and so sampled at far lower depth, need more patients to reach the same raw power, only crossing that same level at \~`r mk_cross` patients. **Background** genes, planted on a near-silent baseline, are the hardest of all and stay barely recovered even at the largest sample size studied here (recall \~`r round(gv(bg_S, "tpr", method = "intercept", S = max(S_grid)), 2)` at `r max(S_grid)` patients). The ordering is the same for all three inference modes — and, as elsewhere, the mixed-effects modes are uniformly more powerful than the fixed mode. The practical lesson is that a spatial study's effective sensitivity is gene-specific: an effect of the same true size is far easier to detect on an abundant gene than on a sparse marker, so power and sample-size planning should be framed for the expression regime of the genes of interest.
 
 ### Does buying more cells or a bigger effect change the ranking?
 
-**What is plotted.** Recall at a 5 % FDR, split by gene category (columns) and inference mode (colour), against cells per sample (left) and effect size (right), at the fixed `S = 12` used for those two sweeps. Error bars are $\pm 1$ standard error.
+**What is plotted.** Recall at a 5 % FDR, split by gene category (columns) and inference mode (colour), against cells per sample (left) and effect size (right), at the fixed `S = ` `r S_fixed` used for those two sweeps. Error bars are $\pm 1$ standard error.
 
-```{r bench-category-cells-effect, fig.height = 4.5, fig.cap = "Recall at 5% FDR by gene category and inference mode, versus cells per sample (left) and effect size (right), at S = 12. Housekeeping genes are recovered first on both axes; markers lag; background genes are essentially never recovered at this sample size."}
+```{r bench-category-cells-effect, fig.height = 4.5, fig.cap = sprintf("Recall at 5%% FDR by gene category and inference mode, versus cells per sample (left) and effect size (right), at S = %d. Housekeeping genes are recovered first on both axes; markers lag; background genes lag furthest of all.", S_fixed)}
 bc <- bench("power_by_category.csv")
 if (!is.null(bc)) {
   cats <- c("marker", "housekeeping", "background")
@@ -706,14 +806,14 @@ if (!is.null(bc)) {
     facet_wrap(~ category) +
     scale_colour_spide("method") +
     labs(x = xlab, y = "recall @ 5% FDR", title = title)
-  g1 <- rc2(dc, "n_per", "cells per sample", "vs cells (S = 12)")
-  g2 <- rc2(de, "beta", "effect size (beta)", "vs effect size (S = 12)")
+  g1 <- rc2(dc, "n_per", "cells per sample", sprintf("vs cells (S = %d)", S_fixed))
+  g2 <- rc2(de, "beta", "effect size (beta)", sprintf("vs effect size (S = %d)", S_fixed))
   g1 + g2 + patchwork::plot_layout(guides = "collect", ncol = 1) &
     theme(legend.position = "bottom")
 }
 ```
 
-**Interpretation.** At the fixed `S = 12` used for these two sweeps, **background** genes never clear the 5 % FDR gate — recall is exactly 0 across the whole cells and effect-size range for every mode, because 12 patients is below the threshold identified above (recall for background only turns on around 24 patients). **Housekeeping** and **marker** genes do respond to both cells and effect size, in the same order as before (housekeeping easiest, markers harder). One apparent anomaly is worth flagging explicitly: in the mid-range of the cells axis (250–500 cells) the **fixed** mode shows *higher* raw recall than the mixed-effects modes for housekeeping genes (e.g. \~0.63 vs \~0.02 recall at 250 cells) — this looks like an advantage but is not one. The FDR-control figure above shows the fixed mode is anti-conservative in exactly this regime (few patients, moderate discoveries), so those extra "discoveries" include an inflated share of false positives; the realised FDP, not the raw recall, is what determines whether a set of discoveries can be trusted. **The takeaway is unchanged: more patients is the more reliable lever than more cells or a bigger effect for recovering sparse gene classes without sacrificing FDR control.**
+**Interpretation.** At the fixed `S =` `r S_fixed` used for these two sweeps, **background** genes are recovered only marginally even at the favourable end of each axis (intercept-mode recall reaches just \~`r round(gv(cat_cells, "tpr", category = "background", method = "intercept", n_per = max(npc_grid)), 2)` at `r format(max(npc_grid), big.mark = ",")` cells, and \~`r round(gv(cat_effect, "tpr", category = "background", method = "intercept", beta = max(beta_grid)), 2)` at $\beta =$ `r max(beta_grid)`). **Housekeeping** genes are detected readily across almost the whole range of both axes. **Marker** genes — sparse, but no longer starved of patients at this `S` — now show real, climbing recall on both axes too, rather than staying flat at zero the way they do at a smaller `S`: intercept-mode marker recall reaches \~`r round(gv(cat_cells, "tpr", category = "marker", method = "intercept", n_per = max(npc_grid)), 2)` at `r format(max(npc_grid), big.mark = ",")` cells and \~`r round(gv(cat_effect, "tpr", category = "marker", method = "intercept", beta = max(beta_grid)), 2)` at $\beta =$ `r max(beta_grid)`. The ordering — housekeeping easiest, then markers, then background — holds throughout; what a larger `S` changes is how much of each axis's range clears the detection threshold at all, not the ordering itself. As elsewhere, treat any point where the **fixed** mode's raw recall exceeds the mixed-effects modes' with caution: the FDR-control figure above shows the fixed mode can be anti-conservative, so a higher recall there is not necessarily a real advantage — the realised FDP, not raw recall, is what determines whether a set of discoveries can be trusted. **The takeaway is unchanged: more patients is the more reliable lever than more cells or a bigger effect for recovering sparse gene classes without sacrificing FDR control.**
 
 ## Robustness to the spatial arrangement of cells
 
@@ -723,7 +823,7 @@ The niche effect is recovered under structured layouts and must vanish under the
 
 **What is plotted.** Two metrics per layout. **Recall \@ 5 % FDR** is the fraction of responsive genes recovered at a 5 % false-discovery threshold. **Niche specificity** is the fraction of the time the *correct* niche cell type (`B`) is identified as the strongest association for a responsive gene — a check that the method attributes the effect to the right neighbour, not a bystander. Both range from 0 to 1; higher is better, **except** that under the random negative control recall *should* be near zero.
 
-**How it is computed.** From the *power* family's **layout sweep**: one dataset per layout (`S = 12`, 300 cells, `β = 2`, intercept mode) is fit. Recall \@ 5 % FDR uses the hierarchical gate; niche specificity asks, for each true gene, whether the `B`-niche coefficient has the largest $|t|$ among all candidate niche cell types. Both are averaged over true genes and 40 replicates.
+**How it is computed.** From the *power* family's **layout sweep**: one dataset per layout (`S = ` `r S_fixed`, `r npc_fixed` cells, `β = ` `r beta_fixed`, intercept mode) is fit. Recall \@ 5 % FDR uses the hierarchical gate; niche specificity asks, for each true gene, whether the `B`-niche coefficient has the largest $|t|$ among all candidate niche cell types. Both are averaged over true genes and `r n_reps` replicates.
 
 ```{r bench-spatial, fig.height = 4, fig.cap = "Recall at 5% FDR and niche specificity across the four layouts. Structured layouts (gradient, clustered, multiniche) recover the effect and identify the correct niche; the random control correctly yields near-zero recall."}
 sp <- bench("spatial.csv")
@@ -747,13 +847,13 @@ if (!is.null(sp)) {
 }
 ```
 
-**Interpretation.** The gradient layout is the easiest (a smooth, global signal) and gives the highest recall and specificity; the patchy clustered and multiniche layouts are harder but still recover the effect and, crucially, still point at the correct niche type. The **random** control behaves as it must: recall collapses to essentially zero, confirming that the method does not manufacture a niche effect where there is no spatial structure. Because this overview pools across gene categories, and housekeeping genes are by far the most detectable at this study's fixed `S = 12`, the figure above is effectively telling the housekeeping story — the breakdown below shows why.
+**Interpretation.** The gradient layout is the easiest (a smooth, global signal) and gives the highest recall and specificity; the patchy clustered and multiniche layouts are harder but still recover the effect and, crucially, still point at the correct niche type. The **random** control behaves as it must: recall collapses to essentially zero, confirming that the method does not manufacture a niche effect where there is no spatial structure. Because this overview pools across gene categories, and housekeeping genes are by far the most detectable at this study's fixed `S = ` `r S_fixed`, the figure above is effectively telling the housekeeping story — the breakdown below shows why.
 
 ### Breakdown by gene category and inference mode
 
 **What is plotted.** The same two metrics, now split by gene category (columns) *and* inference mode (fill/dodge), for every layout. Error bars are $\pm 1$ standard error.
 
-```{r bench-spatial-category, fig.width = 9.5, fig.height = 6, fig.cap = "Recall at 5% FDR (top) and niche specificity (bottom) across the four layouts, split by gene category (columns) and inference mode (bars), at S = 12."}
+```{r bench-spatial-category, fig.width = 9.5, fig.height = 6, fig.cap = sprintf("Recall at 5%% FDR (top) and niche specificity (bottom) across the four layouts, split by gene category (columns) and inference mode (bars), at S = %d.", S_fixed)}
 bc <- bench("power_by_category.csv")
 if (!is.null(bc)) {
   cats <- c("marker", "housekeeping", "background")
@@ -783,15 +883,25 @@ if (!is.null(bc)) {
 }
 ```
 
-**Interpretation.** At this study's fixed `S = 12`, only **housekeeping** genes are detected often enough for the breakdown to be informative: recall is substantial under the three structured layouts and collapses under random, and niche specificity is high (≈ 0.93–0.99) wherever there is real structure to attribute the effect to, versus ≈ 0.58–0.61 under the random control (roughly chance among the candidate niche types). **Cell-type markers and background genes are essentially never discovered at `S = 12`** (recall ≈ 0 in every layout and mode, consistent with the samples-sweep finding that markers and background need many more patients), so their niche-specificity bars, computed only over the tiny handful of genes that do clear the gate, are noisy and sit close to chance regardless of layout — they should be read as "not enough discoveries to tell" rather than as evidence the method mis-attributes the niche for these categories. This is a direct consequence of the sample-size threshold established earlier, not a layout-specific weakness: at a large enough `S`, marker and background genes are expected to show the same layout-dependent recall and specificity pattern housekeeping genes show here.
+```{r bench-spatial-category-stats, include = FALSE}
+structured <- intersect(c("gradient", "clustered", "multiniche"), layouts_swept)
+detected_cats <- subset(cat_layout, category %in% c("housekeeping", "marker"))
+spec_structured <- range(subset(detected_cats, layout %in% structured)$niche_spec)
+spec_random     <- range(subset(detected_cats, layout == "random")$niche_spec)
+marker_gradient <- gv(cat_layout, "tpr", category = "marker", method = "intercept",
+                      layout = "gradient")
+bg_best <- max(subset(cat_layout, category == "background")$tpr)
+```
+
+**Interpretation.** At this study's fixed `S =` `r S_fixed`, **housekeeping** genes are detected often enough under every structured layout for the breakdown to be informative, and — unlike at a smaller `S` — **marker** genes now clear the bar too, most clearly under the gradient layout (intercept-mode recall \~`r round(marker_gradient, 2)`). Recall collapses under the random control for both, as it must. Niche specificity for housekeeping and marker genes is high (\~`r round(spec_structured[1], 2)`–`r round(spec_structured[2], 2)`) wherever there is real spatial structure to attribute the effect to, versus close to chance (\~`r round(spec_random[1], 2)`–`r round(spec_random[2], 2)`) under the random control. **Background** genes remain essentially undiscovered at every layout and mode (recall \~`r round(bg_best, 2)` at best), so their niche-specificity bars, computed only over the tiny handful of genes that do clear the gate, are noisy and sit close to chance regardless of layout — they should be read as "not enough discoveries to tell" rather than as evidence the method mis-attributes the niche for this category. This is a direct consequence of the sample-size threshold established earlier, not a layout-specific weakness: markers only joined housekeeping in being reliably discovered once `S` reached the level used here, and background genes are expected to follow the same pattern at a large enough `S`.
 
 ## Computational scalability
 
-**What is plotted.** Wall-clock time for the two stages of the pipeline — fitting the model and running inference — as the number of cells grows, at a realistic \~10,000-gene scale. Lower is better.
+**What is plotted.** Wall-clock time for the two stages of the pipeline — fitting the model and running inference — as the number of cells grows, at a realistic \~`r format(n_genes_total, big.mark = ",")`-gene scale. Lower is better.
 
-**How it is computed.** From the *power* family's **cells sweep**: at \~10,000 genes and `S = 12` (intercept mode), the fit and inference stages are timed separately as the number of cells per sample grows, averaged over replicates.
+**How it is computed.** From the *power* family's **cells sweep**: at \~`r format(n_genes_total, big.mark = ",")` genes and `S = ` `r S_fixed` (intercept mode), the fit and inference stages are timed separately as the number of cells per sample grows, averaged over replicates.
 
-```{r bench-timing, fig.height = 4, fig.cap = "Fit and inference time versus the number of cells, at ~10,000 genes. Both stages scale gracefully to tens of thousands of cells."}
+```{r bench-timing, fig.height = 4, fig.cap = sprintf("Fit and inference time versus the number of cells, at ~%s genes. Both stages scale gracefully to tens of thousands of cells.", format(n_genes_total, big.mark = ","))}
 tm <- bench("timing.csv")
 if (!is.null(tm)) {
   long_tm <- rbind(
@@ -819,8 +929,8 @@ if (!is.null(tm)) {
 -   The `spiDE` simulator reproduces the defining features of real spatial data: many genes, counts dominated by zeros and ones, a downward mean–variance trend, three biologically distinct gene categories, four spatial niche layouts, and a planted, condition-dependent niche effect that serves as ground truth.
 -   Under this realistic model the **mixed-effects modes control both type-I error and the false-discovery rate**, where the fixed-effects mode is anti-conservative — most visibly when patients are few.
 -   **Raw per-gene power rises smoothly** with patients, cells and effect size, but **recall shows a threshold**: it stays near zero until the signal is strong enough to clear genome-wide multiplicity control, then climbs sharply. A high raw power is necessary but not sufficient for a discovery, which is why power can look strong while recall is still low.
--   **Detection is gene-category-dependent**: abundant housekeeping genes are recovered with far fewer patients, cells or a smaller effect than sparse cell-type markers, and near-silent background genes need the most of all — at this study's default `S = 12` used for the cells/effect/layout sweeps, markers and background genes are essentially never discovered, only becoming detectable once `S` reaches \~16–24.
--   The niche effect is **recovered across spatial layouts** with correct niche attribution, and correctly **vanishes under a spatially random control** — though, consistent with the point above, this is only visible for housekeeping genes at `S = 12`; markers and background need more patients before their layout-specific recall becomes interpretable.
+-   **Detection is gene-category-dependent**: abundant housekeeping genes are recovered with far fewer patients, cells or a smaller effect than sparse cell-type markers, and near-silent background genes need the most of all — at this study's design point (`S =` `r S_fixed` for the cells/effect/layout sweeps), marker genes are now meaningfully discovered while background genes remain essentially undetected, underscoring that patient count, more than cells or effect size, is what unlocks detection for sparse gene classes.
+-   The niche effect is **recovered across spatial layouts** with correct niche attribution, and correctly **vanishes under a spatially random control** — though, consistent with the point above, this is clearly visible for housekeeping and, at this study's sample size, marker genes; background genes still need more patients before their layout-specific recall becomes interpretable.
 -   The pipeline **scales** to ten thousand genes and tens of thousands of cells in minutes.
 
 The companion vignettes drill into two components: *Combining correlated niche p-values* (the within-gene p-value combiner, Cauchy vs Brown) and *Speeding up the mixed-effects fit* (the PQL subsampling trade-off).
