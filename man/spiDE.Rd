@@ -25,6 +25,7 @@ spiDE(spe, condition, ...)
   fdr = 0.05,
   combine = c("cauchy", "brown"),
   block.size = NULL,
+  gpu.mem.budget = NULL,
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
   ...
@@ -73,8 +74,11 @@ simulation vignettes.}
 \code{\link[SpaNorm]{fitNB}} (coefficient winsorisation and the base ridge
 penalty on the fixed columns).}
 
-\item{backend}{a character, the fitNB compute backend
-("auto", "cpu", or "gpu").}
+\item{backend}{a character, the compute backend for \strong{both} the model fit
+("auto", "cpu", or "gpu", forwarded to \code{\link[SpaNorm]{fitNB}}) and
+the inference stage (where the GPU backend batches the per-gene Wald
+covariance and negative-binomial working weights across each gene-block
+on the accelerator, forcing a serial \code{BPPARAM} in the process).}
 
 \item{name}{a character, the niche reducedDim prefix.}
 
@@ -83,7 +87,13 @@ penalty on the fixed columns).}
 \item{combine}{one of "cauchy" (default) or "brown", the within-gene combiner
 for the correlated niche p-values (passed to \code{\link[=testSpiDE]{testSpiDE()}}).}
 
-\item{block.size}{a numeric, genes per inference block (NULL = single block).}
+\item{block.size}{a numeric, genes per inference block (NULL = a single
+block on the CPU backend, or a memory-bounded auto-selected size on the
+GPU backend).}
+
+\item{gpu.mem.budget}{a numeric, the GPU memory budget in bytes used to
+size inference blocks (NULL auto-detects; only relevant for the GPU
+backend).}
 
 \item{BPPARAM}{a BiocParallelParam for niche construction and inference.}
 

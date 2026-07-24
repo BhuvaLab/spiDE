@@ -107,7 +107,7 @@ nrow(results(res2))
 
 # Scaling
 
-Fitting is performed over all genes at once (the negative binomial dispersion is moderated across genes). The per-gene inference is independent across genes and is processed in gene-blocks, dispatched with `r BiocStyle::Biocpkg("BiocParallel")`; the counts matrix may be a `r BiocStyle::Biocpkg("DelayedArray")` and is realised one block at a time. Results are invariant to the block size and the parallel backend.
+Fitting is performed over all genes at once (the negative binomial dispersion is moderated across genes). The per-gene inference is independent across genes and is processed in gene-blocks, dispatched with `r BiocStyle::Biocpkg("BiocParallel")`; the counts matrix may be a `r BiocStyle::Biocpkg("DelayedArray")` and is realised one block at a time. On the CPU backend, results are exactly invariant to the block size and the parallel backend; see below for the GPU backend's tolerance-level invariance.
 
 ```{r parallel, eval = FALSE}
 library(BiocParallel)
@@ -120,7 +120,7 @@ res <- spiDE(
 )
 ```
 
-The `backend` argument (`"auto"`, `"cpu"`, `"gpu"`) is forwarded to `SpaNorm::fitNB()` and selects the compute backend for the model fit.
+The `backend` argument (`"auto"`, `"cpu"`, `"gpu"`) selects the compute backend for **both** stages. For the model fit it is forwarded to `SpaNorm::fitNB()`. For inference, the GPU backend batches the per-gene Wald covariance and negative-binomial working weights across each gene-block on the accelerator (via `r BiocStyle::Biocpkg("SpaNorm")`'s tensor engine), rather than computing them one gene at a time. On the GPU backend the block size is auto-selected to keep peak device memory within the detected budget (override with `gpu.mem.budget`, in bytes), and a serial `BPPARAM` is used automatically — GPU execution is already batched across genes, so multiple CPU workers would only contend for the one device. The GPU path uses single-precision on Metal/MPS, so its results match the CPU path to a small tolerance rather than exactly (the CPU path remains exactly reproducible and block-size invariant).
 
 # Mixed-effects inference for pseudo-replication
 

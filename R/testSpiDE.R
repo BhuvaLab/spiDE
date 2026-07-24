@@ -28,7 +28,18 @@
 #'   controls type-I error under correlation without estimating a correlation
 #'   matrix; "brown" is the correlation-aware Brown's method. Used only if the
 #'   Wald inference is not already present on the fits.
-#' @param block.size a numeric, genes per inference block (NULL = single block).
+#' @param block.size a numeric, genes per inference block (NULL = a single
+#'   block on the CPU backend, or a memory-bounded auto-selected size on the
+#'   GPU backend).
+#' @param backend a character, the compute backend for the inference stage
+#'   ("auto", "cpu", or "gpu"). The GPU backend batches the per-gene Wald
+#'   covariance and NB math across each block via \code{SpaNorm}'s tensor
+#'   engine; it also forces a serial \code{BPPARAM} (with a warning) to avoid
+#'   multiple processes contending for one GPU device. Used only if the Wald
+#'   inference is not already present on the fits.
+#' @param gpu.mem.budget a numeric, the GPU memory budget in bytes used to
+#'   size inference blocks (NULL auto-detects; only relevant for the GPU
+#'   backend).
 #' @param BPPARAM a BiocParallelParam for the inference stage.
 #' @param ... ignored.
 #'
@@ -52,9 +63,12 @@ setMethod(
   definition = function(object, spe = NULL, assay = "counts", fdr = 0.05,
                         weight.thresh = 0.1, combine = c("cauchy", "brown"),
                         block.size = NULL,
+                        backend = c("auto", "cpu", "gpu"),
+                        gpu.mem.budget = NULL,
                         BPPARAM = BiocParallel::SerialParam(), ...) {
     checkFdr(fdr)
     combine <- match.arg(combine)
+    backend <- match.arg(backend)
     if (combine == "brown" && !requireNamespace("poolr", quietly = TRUE)) {
         stop("combine = \"brown\" requires the 'poolr' package; ",
              "install it or use combine = \"cauchy\".", call. = FALSE)
@@ -70,6 +84,7 @@ setMethod(
       Y <- SummarizedExperiment::assay(spe, assay)
       fits <- lapply(fits, function(f) {
         .blockedInference(f, Y, block.size = block.size, combine = combine,
+                          backend = backend, gpu.mem.budget = gpu.mem.budget,
                           BPPARAM = BPPARAM)
       })
       object@fits <- fits

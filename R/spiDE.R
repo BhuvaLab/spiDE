@@ -11,10 +11,20 @@
 #' @inheritParams fitSpiDE
 #' @param sample_id a character, the colData column identifying samples (used
 #'   when niches must be built and for the random-effects fit).
+#' @param backend a character, the compute backend for **both** the model fit
+#'   ("auto", "cpu", or "gpu", forwarded to \code{\link[SpaNorm]{fitNB}}) and
+#'   the inference stage (where the GPU backend batches the per-gene Wald
+#'   covariance and negative-binomial working weights across each gene-block
+#'   on the accelerator, forcing a serial \code{BPPARAM} in the process).
 #' @param fdr a numeric, the target false discovery rate.
 #' @param combine one of "cauchy" (default) or "brown", the within-gene combiner
 #'   for the correlated niche p-values (passed to [testSpiDE()]).
-#' @param block.size a numeric, genes per inference block (NULL = single block).
+#' @param block.size a numeric, genes per inference block (NULL = a single
+#'   block on the CPU backend, or a memory-bounded auto-selected size on the
+#'   GPU backend).
+#' @param gpu.mem.budget a numeric, the GPU memory budget in bytes used to
+#'   size inference blocks (NULL auto-detects; only relevant for the GPU
+#'   backend).
 #' @param BPPARAM a BiocParallelParam for niche construction and inference.
 #'
 #' @return a [SpiDEResults] object with the tidy results table populated (see
@@ -41,7 +51,7 @@ setMethod(
                         winsor = 4, lambda.a = 0,
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         fdr = 0.05, combine = c("cauchy", "brown"),
-                        block.size = NULL,
+                        block.size = NULL, gpu.mem.budget = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
     random <- match.arg(random)
@@ -64,6 +74,7 @@ setMethod(
                     verbose = verbose, ...)
 
     testSpiDE(res, spe = spe, assay = assay, fdr = fdr, combine = combine,
-              block.size = block.size, BPPARAM = BPPARAM)
+              block.size = block.size, backend = backend,
+              gpu.mem.budget = gpu.mem.budget, BPPARAM = BPPARAM)
   }
 )

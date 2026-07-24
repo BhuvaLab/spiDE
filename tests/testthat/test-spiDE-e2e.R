@@ -57,11 +57,16 @@ test_that("combine = 'cauchy' produces valid results recovering G1/A/B", {
 })
 
 test_that("spiDE is deterministic and invariant to block.size", {
+  # exact block-size invariance is a property of the reproducible CPU path;
+  # the GPU path is float32 and its matmul is not bit-identical across
+  # differing block (matrix) shapes, so pin the backend for this determinism
+  # check (GPU block-size invariance is tested to tolerance in
+  # test-gpuInference.R).
   spe <- .toySPE()
   a <- spiDE(spe, condition = "condition", sigma = c(10, 30),
-    covariates = "Age", verbose = FALSE)
+    covariates = "Age", backend = "cpu", verbose = FALSE)
   b <- spiDE(spe, condition = "condition", sigma = c(10, 30),
-    covariates = "Age", verbose = FALSE, block.size = 3)
+    covariates = "Age", backend = "cpu", verbose = FALSE, block.size = 3)
   expect_equal(results(a), results(b))
 })
 
