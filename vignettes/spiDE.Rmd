@@ -120,7 +120,7 @@ res <- spiDE(
 )
 ```
 
-The `backend` argument (`"auto"`, `"cpu"`, `"gpu"`) is forwarded to `SpaNorm::fitNB()` and selects the compute backend for the model fit.
+The `backend` argument (`"auto"`, `"cpu"`, `"gpu"`) selects the compute backend for **both** stages. For the model fit it is forwarded to `SpaNorm::fitNB()`. For inference, the GPU backend batches the per-gene Wald covariance and negative-binomial working weights across each gene-block on the accelerator (via `r BiocStyle::Biocpkg("SpaNorm")`'s tensor engine), rather than computing them one gene at a time. On the GPU backend the block size is auto-selected to keep peak device memory within the detected budget (override with `gpu.mem.budget`, in bytes), and a serial `BPPARAM` is used automatically — GPU execution is already batched across genes, so multiple CPU workers would only contend for the one device. The GPU path uses single-precision on Metal/MPS, so its results match the CPU path to a small tolerance rather than exactly (the CPU path remains exactly reproducible and block-size invariant).
 
 # Mixed-effects inference for pseudo-replication
 

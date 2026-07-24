@@ -93,3 +93,71 @@ test_that(".chunkGenes partitions all genes exactly once", {
   expect_equal(sort(unname(unlist(ch))), seq_len(10))
   expect_true(all(lengths(ch) <= 3))
 })
+
+test_that(".wwFlat / .gramBatch reproduce the per-gene weighted Gram matrix", {
+  set.seed(20)
+  ncells <- 40
+  p <- 5
+  b <- 6
+  W <- matrix(rnorm(ncells * p), ncells, p)
+  wt <- matrix(runif(b * ncells, 0.5, 2), b, ncells)
+
+  ref <- array(0, c(b, p, p))
+  for (g in seq_len(b)) ref[g, , ] <- crossprod(W * wt[g, ], W)
+
+  ww <- spiDE:::.wwFlat(W)
+  expect_equal(dim(ww), c(ncells, p * p))
+  info <- spiDE:::.gramBatch(ww, wt, p)
+  expect_equal(dim(info), c(b, p, p))
+  expect_equal(info, ref, tolerance = 1e-10)
+
+  # ridge penalty is added to every slice's diagonal
+  pen <- runif(p)
+  ref_pen <- ref
+  for (g in seq_len(b)) ref_pen[g, , ] <- ref[g, , ] + diag(pen)
+  info_pen <- spiDE:::.gramBatch(ww, wt, p, penalty_diag = pen)
+  expect_equal(info_pen, ref_pen, tolerance = 1e-10)
+})
+
+test_that(".subsetBatch and .batchDiag match base-array indexing", {
+  set.seed(21)
+  b <- 4
+  p <- 5
+  arr <- array(rnorm(b * p * p), c(b, p, p))
+  sel <- c(2, 4)
+  expect_equal(spiDE:::.subsetBatch(arr, sel), arr[, sel, sel, drop = FALSE])
+
+  d <- spiDE:::.batchDiag(arr)
+  ref <- t(vapply(seq_len(b), function(g) diag(arr[g, , ]), numeric(p)))
+  expect_equal(d, ref)
+})
+
+test_that("batched Cauchy path matches the per-gene .waldBrownGene loop (CPU)", {
+  tf <- .toyFit()
+  f <- spiDE:::.blockedInference(tf$fit, tf$Y, combine = "cauchy",
+                                 backend = "cpu")
+
+  # per-gene reference for the same fit
+  W_full <- tf$fit@W
+  covtype <- as.character(tf$fit@covtype)
+  cols_gene <- grepl("Response", covtype)
+  Wsub <- W_full[, cols_gene, drop = FALSE]
+  cov_niche <- covtype[cols_gene] == "ResponseNiche"
+  coefmap_sub <- tf$fit@coefmap[cols_gene, , drop = FALSE]
+  index_ct <- coefmap_sub$index[cov_niche]
+  uniq_index <- unique(index_ct)
+  alpha_sub <- tf$fit@alpha[, cols_gene, drop = FALSE]
+  psi <- tf$fit@psi
+  mu <- SpaNorm::calculateMu(rep(0, nrow(tf$fit@alpha)), tf$fit@alpha, W_full)
+  wt <- 1 / (1 / mu + psi)
+
+  ref <- lapply(seq_len(nrow(alpha_sub)), function(i) {
+    spiDE:::.waldBrownGene(alpha_sub[i, ], Wsub, wt[i, ], psi[i], cov_niche,
+                           index_ct, uniq_index, combine = "cauchy")
+  })
+  ref_t <- do.call(rbind, lapply(ref, `[[`, "t_stat"))
+  ref_ppos <- do.call(rbind, lapply(ref, `[[`, "p.pos"))
+
+  expect_equal(unname(f@t_stat), unname(ref_t), tolerance = 1e-8)
+  expect_equal(unname(f@p.combined.pos), unname(ref_ppos), tolerance = 1e-8)
+})

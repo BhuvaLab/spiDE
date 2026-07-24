@@ -25,6 +25,7 @@ spiDE(spe, condition, ...)
   fdr = 0.05,
   combine = c("cauchy", "brown"),
   block.size = NULL,
+  gpu.mem.budget = NULL,
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
   ...
@@ -83,7 +84,14 @@ penalty on the fixed columns).}
 \item{combine}{one of "cauchy" (default) or "brown", the within-gene combiner
 for the correlated niche p-values (passed to \code{\link[=testSpiDE]{testSpiDE()}}).}
 
-\item{block.size}{a numeric, genes per inference block (NULL = single block).}
+\item{block.size}{a numeric, genes per inference block (NULL = a single
+block on the CPU backend, or a memory-bounded auto-selected size on the
+GPU backend).}
+
+\item{gpu.mem.budget}{a numeric, the GPU memory budget in bytes used to
+size inference blocks (NULL auto-detects; only relevant for the GPU
+backend). The \code{backend} argument selects the compute backend for
+both the fit and the inference stage.}
 
 \item{BPPARAM}{a BiocParallelParam for niche construction and inference.}
 
