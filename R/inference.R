@@ -307,6 +307,13 @@
     p_ct <- vapply(uniq_index, function(ct) {
       .cauchyCombine(p_niche[, index_ct == ct, drop = FALSE])
     }, numeric(b))
+    # vapply drops to a plain (unnamed-dim) vector when b == 1 (FUN.VALUE has
+    # length 1), instead of the (b, n_index) matrix it returns for b > 1 --
+    # force the matrix shape unconditionally (a no-op reshape when b > 1,
+    # since vapply's own column-major layout already matches) and restore the
+    # column names vapply's auto-naming would otherwise have supplied.
+    p_ct <- matrix(p_ct, nrow = b, ncol = length(uniq_index),
+                   dimnames = list(NULL, uniq_index))
     cbind(Gene = p_gene, p_ct)
   })
 
@@ -450,23 +457,28 @@ SPIDE_TENSOR_MULT_COV <- 6
   # NULL on the CPU path preserves the pre-existing single-block behaviour.
   if (is.null(block.size) && gpu_active) {
     p_eff <- if (has_re) ncol(W_full) else ncol(Wsub)
-    block.size <- .inferenceBlockSize(ng, ncol(W_full), p_eff, backend,
+    block.size <- .inferenceBlockSize(ng, nrow(W_full), p_eff, backend,
                                       gpu.mem.budget)
   }
   blocks <- .chunkGenes(ng, block.size)
 
-  # the design and its Khatri-Rao cross term are shared across all genes, so
-  # they are built (and pushed to the device) once, not per block. The Gram
-  # design is Wsub for a fixed-effects fit, the full W for a mixed fit.
-  gram_design <- if (has_re) W_full else Wsub
-  if (gpu_active) {
-    W_full_dev <- SpaNorm::toGPUMatrix(W_full, backend = backend)
-    gram_dev <- if (has_re) W_full_dev else
+  # the design (needed by both combiners, for calculateMu) and its Khatri-Rao
+  # cross term (needed only by the batched "cauchy" path) are shared across
+  # all genes, so they are built (and pushed to the device) once, not per
+  # block. The Gram design is Wsub for a fixed-effects fit, the full W for a
+  # mixed fit. WW_flat is skipped for combine == "brown", which never uses it
+  # (its per-gene .waldBrownGene() path builds its own covariance directly).
+  W_full_dev <- if (gpu_active) SpaNorm::toGPUMatrix(W_full, backend = backend)
+                else W_full
+  if (combine == "cauchy") {
+    gram_dev <- if (has_re) {
+      W_full_dev
+    } else if (gpu_active) {
       SpaNorm::toGPUMatrix(Wsub, backend = backend)
+    } else {
+      Wsub
+    }
     WW_flat <- .wwFlat(gram_dev)
-  } else {
-    W_full_dev <- W_full
-    WW_flat <- .wwFlat(gram_design)
   }
 
   block_res <- BiocParallel::bplapply(blocks, function(gi) {

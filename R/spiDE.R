@@ -11,6 +11,11 @@
 #' @inheritParams fitSpiDE
 #' @param sample_id a character, the colData column identifying samples (used
 #'   when niches must be built and for the random-effects fit).
+#' @param backend a character, the compute backend for **both** the model fit
+#'   ("auto", "cpu", or "gpu", forwarded to \code{\link[SpaNorm]{fitNB}}) and
+#'   the inference stage (where the GPU backend batches the per-gene Wald
+#'   covariance and negative-binomial working weights across each gene-block
+#'   on the accelerator, forcing a serial \code{BPPARAM} in the process).
 #' @param fdr a numeric, the target false discovery rate.
 #' @param combine one of "cauchy" (default) or "brown", the within-gene combiner
 #'   for the correlated niche p-values (passed to [testSpiDE()]).
@@ -19,8 +24,7 @@
 #'   GPU backend).
 #' @param gpu.mem.budget a numeric, the GPU memory budget in bytes used to
 #'   size inference blocks (NULL auto-detects; only relevant for the GPU
-#'   backend). The \code{backend} argument selects the compute backend for
-#'   both the fit and the inference stage.
+#'   backend).
 #' @param BPPARAM a BiocParallelParam for niche construction and inference.
 #'
 #' @return a [SpiDEResults] object with the tidy results table populated (see

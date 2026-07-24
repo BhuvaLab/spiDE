@@ -132,6 +132,31 @@ test_that(".subsetBatch and .batchDiag match base-array indexing", {
   expect_equal(d, ref)
 })
 
+test_that(".waldCauchyBlock returns a proper matrix for a single-gene block", {
+  # regression test: vapply(uniq_index, FUN, numeric(b)) drops to a plain
+  # (unnamed) vector rather than a (b, n_index) matrix when b == 1, which
+  # silently corrupted cbind(Gene = p_gene, p_ct) for single-gene blocks.
+  set.seed(22)
+  ncells <- 30
+  p <- 4
+  W <- matrix(rnorm(ncells * p), ncells, p)
+  colnames(W) <- paste0("c", seq_len(p))
+  wtb <- matrix(runif(ncells, 0.5, 2), nrow = 1)
+  alpha_block <- matrix(rnorm(p), nrow = 1)
+  cov_niche <- c(FALSE, TRUE, TRUE, TRUE)
+  index_ct <- c("A", "A", "B")
+  uniq_index <- c("A", "B")
+
+  ww <- spiDE:::.wwFlat(W)
+  res <- spiDE:::.waldCauchyBlock(alpha_block, W, wtb, scale_block = 0.3,
+                                  cov_niche = cov_niche, index_ct = index_ct,
+                                  uniq_index = uniq_index, WW_flat = ww)
+  expect_equal(dim(res$p.pos), c(1, 3))
+  expect_equal(dim(res$p.neg), c(1, 3))
+  expect_equal(colnames(res$p.pos), c("Gene", "A", "B"))
+  expect_true(all(res$p.pos >= 0 & res$p.pos <= 1))
+})
+
 test_that("batched Cauchy path matches the per-gene .waldBrownGene loop (CPU)", {
   tf <- .toyFit()
   f <- spiDE:::.blockedInference(tf$fit, tf$Y, combine = "cauchy",

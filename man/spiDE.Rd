@@ -74,8 +74,11 @@ simulation vignettes.}
 \code{\link[SpaNorm]{fitNB}} (coefficient winsorisation and the base ridge
 penalty on the fixed columns).}
 
-\item{backend}{a character, the fitNB compute backend
-("auto", "cpu", or "gpu").}
+\item{backend}{a character, the compute backend for \strong{both} the model fit
+("auto", "cpu", or "gpu", forwarded to \code{\link[SpaNorm]{fitNB}}) and
+the inference stage (where the GPU backend batches the per-gene Wald
+covariance and negative-binomial working weights across each gene-block
+on the accelerator, forcing a serial \code{BPPARAM} in the process).}
 
 \item{name}{a character, the niche reducedDim prefix.}
 
@@ -90,8 +93,7 @@ GPU backend).}
 
 \item{gpu.mem.budget}{a numeric, the GPU memory budget in bytes used to
 size inference blocks (NULL auto-detects; only relevant for the GPU
-backend). The \code{backend} argument selects the compute backend for
-both the fit and the inference stage.}
+backend).}
 
 \item{BPPARAM}{a BiocParallelParam for niche construction and inference.}
 
