@@ -134,71 +134,88 @@
   list(t_stat = t_stat, se = se, p.pos = dirs$p.pos, p.neg = dirs$p.neg)
 }
 
-#' Khatri-Rao / face-splitting cross term of a design matrix
+#' Select rows of a matrix or a torch tensor
 #'
-#' Builds an \code{N x p^2} matrix whose column \code{(i, j)} is
-#' \code{W[, i] * W[, j]} (elementwise), for every pair \code{i, j} in
-#' \code{1:p} (including the redundant \code{(j, i)} pair -- computing all
-#' \code{p^2} rather than just the \code{p*(p+1)/2} unique pairs is a small,
-#' deliberate simplification). This lets a whole block's per-gene weighted
-#' Gram matrices \code{crossprod(W * wt_g, W)} be computed as a single matmul
-#' (\code{wt_block \%*\% WW_flat}, see \code{.gramBatch()}) instead of one
-#' \code{crossprod()} call per gene -- \code{W} is shared across all genes, so
-#' this only needs to be built once per bandwidth, not once per block.
-#' GPU-aware: dispatches to \code{torch_index_select} when \code{W} is a
-#' torch tensor (the repeated-column indexing below does not carry over to
-#' tensor \code{[} indexing the way it does for a base R matrix).
+#' Row-subsetting helper for the gene sub-batching in
+#' \code{.waldCauchyBlock()}: base R \code{[} does not carry over to torch
+#' tensors (which need \code{torch_index_select()}), and the working weights
+#' may be either depending on the backend.
 #'
-#' @param W a design matrix (or torch tensor), cells x p.
-#' @return an \code{N x p^2} matrix (or torch tensor).
+#' @param x a matrix or torch tensor.
+#' @param ii integer row positions to keep.
+#' @return \code{x} restricted to rows \code{ii}, same type as the input.
 #' @noRd
-.wwFlat <- function(W) {
-  p <- ncol(W)
-  idx <- rep(seq_len(p), each = p)
-  jdx <- rep(seq_len(p), times = p)
-  if (SpaNorm::is_torch_tensor(W)) {
-    idx_t <- torch::torch_tensor(as.integer(idx), dtype = torch::torch_long(),
-                                 device = W$device)
-    jdx_t <- torch::torch_tensor(as.integer(jdx), dtype = torch::torch_long(),
-                                 device = W$device)
-    return(torch::torch_index_select(W, 2, idx_t) *
-             torch::torch_index_select(W, 2, jdx_t))
+.rowsOf <- function(x, ii) {
+  if (SpaNorm::is_torch_tensor(x)) {
+    idx <- torch::torch_tensor(as.integer(ii), dtype = torch::torch_long(),
+                               device = x$device)
+    return(torch::torch_index_select(x, 1, idx))
   }
-  W[, idx, drop = FALSE] * W[, jdx, drop = FALSE]
+  x[ii, , drop = FALSE]
 }
 
-#' Batched per-gene weighted Gram matrix, for a whole block at once
+#' Batched per-gene weighted Gram matrix, for a sub-batch of genes at once
 #'
-#' Computes \code{crossprod(W * wt_g, W)} for every gene \code{g} in a block
-#' simultaneously: \code{wt_block \%*\% WW_flat} (one matmul) reshaped to a
-#' \code{(block, p, p)} array/tensor, optionally adding a shared ridge penalty
-#' (mixed-effects) to every slice. Replaces what would otherwise be
-#' \code{block} separate \code{crossprod()} calls.
+#' Computes the weighted information matrix \code{crossprod(W * wt_g, W)} =
+#' \code{W' diag(wt_g) W} for every gene \code{g} in a sub-batch, returning a
+#' \code{(batch, p, p)} array/tensor and optionally adding a shared ridge
+#' penalty (mixed-effects) to every slice.
 #'
-#' @param WW_flat the precomputed \code{N x p^2} cross term from
-#'   \code{.wwFlat()}.
-#' @param wt_block the block's working weights, \code{block x N}.
-#' @param p \code{ncol} of the design \code{WW_flat} was built from.
+#' On the accelerator this is a single batched matmul over the
+#' \code{(batch, ncells, p)} weighted design; on CPU it is a per-gene
+#' \code{crossprod()} loop (base R has no batched matmul, and the
+#' construction is the cheap part relative to the inversion anyway).
+#'
+#' Peak memory here is \strong{linear in \code{p}}
+#' (\code{batch x ncells x p}) and directly controllable via the sub-batch
+#' size. An earlier implementation instead precomputed a Khatri-Rao /
+#' face-splitting cross term of \code{W} (\code{ncells x p^2}, built once per
+#' bandwidth and shared across all gene blocks), turning every gene's Gram
+#' matrix into one row of a single large matmul. That is elegant, but it
+#' scales \emph{quadratically} in \code{p} and -- being built once, outside
+#' the gene loop -- could not be bounded by any choice of block size. On a
+#' realistic mixed-effects design it is fatal: a 602-column random-intercept
+#' design over 21,843 cells needs 63 GB, and a 4,906-column random-slope
+#' design needs 4.2 TB, which made \code{combine = "cauchy"} unusable with
+#' random effects on \emph{both} backends. Do not reintroduce that form
+#' without bounding it by the gene sub-batch.
+#'
+#' @param W the design the Gram matrix is over (cells x p; a matrix or a
+#'   torch tensor) -- \code{Wsub} for a fixed-effects fit, the full \code{W}
+#'   for a mixed fit.
+#' @param wt_block the sub-batch's working weights, \code{batch x ncells}.
 #' @param penalty_diag if supplied, a length-\code{p} ridge penalty added to
 #'   every slice's diagonal (mixed-effects only).
-#' @param backend the resolved backend, forwarded to the GPU-aware broadcast.
-#' @return a \code{(block, p, p)} array (or torch tensor).
+#' @param backend the resolved backend (unused on the base-R path; kept for
+#'   signature symmetry with the other batched helpers).
+#' @return a \code{(batch, p, p)} array (or torch tensor).
 #' @noRd
-.gramBatch <- function(WW_flat, wt_block, p, penalty_diag = NULL,
-                       backend = "cpu") {
-  info_flat <- SpaNorm::matmul_gpu(wt_block, WW_flat) # block x p^2
-  if (!is.null(penalty_diag)) {
-    pen_flat <- as.vector(diag(penalty_diag, nrow = p))
-    info_flat <- SpaNorm::add_vec_mat_gpu(pen_flat, info_flat,
-                                          backend = backend)
+.gramBatch <- function(W, wt_block, penalty_diag = NULL, backend = "cpu") {
+  if (SpaNorm::is_torch_tensor(W)) {
+    # (batch, ncells, p) weighted design. Weighting both factors by sqrt(wt)
+    # (rather than one by wt) keeps the product exactly symmetric, which
+    # linalg_cholesky() in invert_mat_batched() relies on; the working
+    # weights 1/(1/mu + psi) are strictly positive, so the sqrt is safe.
+    Wg <- torch::torch_sqrt(wt_block)$unsqueeze(3) * W$unsqueeze(1)
+    info <- torch::torch_matmul(Wg$transpose(2, 3), Wg)
+    if (!is.null(penalty_diag)) {
+      pen <- torch::torch_tensor(as.numeric(penalty_diag),
+                                 dtype = info$dtype, device = info$device)
+      info <- info + torch::torch_diag(pen)$unsqueeze(1)
+    }
+    return(info)
   }
 
-  if (SpaNorm::is_torch_tensor(info_flat)) {
-    b <- dim(info_flat)[[1]]
-    return(info_flat$view(c(as.integer(b), as.integer(p), as.integer(p))))
+  p <- ncol(W)
+  b <- nrow(wt_block)
+  pen_mat <- if (is.null(penalty_diag)) NULL else diag(penalty_diag, nrow = p)
+  info <- array(0, dim = c(b, p, p))
+  for (g in seq_len(b)) {
+    ig <- crossprod(W * wt_block[g, ], W)
+    if (!is.null(pen_mat)) ig <- ig + pen_mat
+    info[g, , ] <- ig
   }
-  b <- nrow(info_flat)
-  aperm(array(t(info_flat), dim = c(p, p, b)), c(3, 1, 2))
+  info
 }
 
 #' Subset a (block, p, p) array/tensor to (block, k, k) via a column index
@@ -243,16 +260,16 @@
 #' Batched Wald covariance + Cauchy combination for a whole gene block
 #'
 #' Batched replacement for the per-gene \code{.waldBrownGene()} loop when
-#' \code{combine == "cauchy"}: the per-gene weighted Gram matrix is computed
-#' for the whole block in one matmul (\code{.wwFlat()}/\code{.gramBatch()}),
-#' inverted in one batched Cholesky call (\code{SpaNorm::invert_mat_batched()}
-#' ), and the within-gene Cauchy combination is vectorized across the block by
-#' looping only over \code{uniq_index} (a handful of cell types) rather than
-#' over genes -- \code{.cauchyCombine()} already accepts a genes x k matrix,
-#' it is just never fed more than one row at a time by the per-gene path.
-#' Only valid for \code{combine == "cauchy"}: Brown's method needs a
-#' gene-specific correlation matrix and cannot batch this way, so it keeps
-#' using \code{.waldBrownGene()} per gene.
+#' \code{combine == "cauchy"}: per-gene weighted Gram matrices are built for a
+#' sub-batch of genes at a time (\code{.gramBatch()}), inverted in one batched
+#' Cholesky call (\code{SpaNorm::invert_mat_batched()}), and the within-gene
+#' Cauchy combination is vectorized across the block by looping only over
+#' \code{uniq_index} (a handful of cell types) rather than over genes --
+#' \code{.cauchyCombine()} already accepts a genes x k matrix, it is just
+#' never fed more than one row at a time by the per-gene path. Only valid for
+#' \code{combine == "cauchy"}: Brown's method needs a gene-specific
+#' correlation matrix and cannot batch this way, so it keeps using
+#' \code{.waldBrownGene()} per gene.
 #'
 #' @param alpha_block genes(block) x k coefficients for the Response/
 #'   ResponseNiche columns.
@@ -263,30 +280,59 @@
 #'   dispersion for a fixed-effects fit, working (Pearson) dispersion for a
 #'   mixed fit.
 #' @param cov_niche,index_ct,uniq_index as in \code{.waldBrownGene()}.
-#' @param WW_flat the precomputed Khatri-Rao cross term (\code{.wwFlat()}),
-#'   built from \code{Wsub} (fixed effects) or \code{W_full} (mixed effects).
+#' @param Wgram the design the Gram matrix is taken over: \code{Wsub} for a
+#'   fixed-effects fit, the full \code{W} for a mixed fit (already on the
+#'   device when the GPU backend is active).
 #' @param W_full,penalty,sel,df as in \code{.waldBrownGene()}; \code{W_full}
 #'   NULL for the fixed-effects fit.
 #' @param backend the resolved backend, forwarded to the GPU-aware helpers.
+#' @param cov.batch genes per covariance sub-batch (NULL = all of them at
+#'   once); see \code{.covBatchSize()}.
 #' @return a list with t_stat, se (genes(block) x k) and p.pos, p.neg
 #'   (genes(block) x (1 + n_index)) -- the same shape as stacking
 #'   \code{.waldBrownGene()}'s per-gene output over the block.
 #' @noRd
 .waldCauchyBlock <- function(alpha_block, Wsub, wtb, scale_block, cov_niche,
-                             index_ct, uniq_index, WW_flat, W_full = NULL,
+                             index_ct, uniq_index, Wgram, W_full = NULL,
                              penalty = NULL, sel = NULL, df = NULL,
-                             backend = "cpu") {
+                             backend = "cpu", cov.batch = NULL) {
   b <- nrow(alpha_block)
-  p_gram <- if (is.null(W_full)) ncol(Wsub) else ncol(W_full)
 
-  info <- .gramBatch(WW_flat, wtb, p_gram, penalty_diag = penalty,
-                     backend = backend)
-  varcov <- SpaNorm::invert_mat_batched(info)
-  if (!is.null(W_full)) {
-    varcov <- .subsetBatch(varcov, sel)
+  # The only per-gene quantity the Wald statistics need out of the (p x p)
+  # covariance is the diagonal of its Response/ResponseNiche sub-block -- a
+  # length-k vector, with k = ncol(Wsub) small regardless of how wide the
+  # full design is. So the (batch, p, p) Gram/inverse stack is built, used
+  # and discarded one sub-batch at a time, and only the (b, k) diagonals are
+  # accumulated. This is what bounds peak memory for wide mixed-effects
+  # designs independently of the caller's gene block.size.
+  diagB <- matrix(0, nrow = b, ncol = ncol(Wsub))
+  on_cpu <- !SpaNorm::is_torch_tensor(wtb)
+  if (on_cpu && !is.null(cov.batch) && as.integer(cov.batch) == 1L) {
+    # Very wide designs (large p) can only afford one gene per sub-batch, and
+    # at that size the batched machinery is pure overhead: the (1, p, p)
+    # array, invert_mat_batched()'s vapply/aperm round-trip and the
+    # .subsetBatch() copy each duplicate a p x p matrix (192 MB at p = 4906)
+    # to do the work of a single invert_mat() call. Go direct instead --
+    # measurably faster, and identical by construction, which the
+    # cov.batch-invariance test pins down.
+    pen_mat <- if (is.null(penalty)) NULL else diag(penalty, nrow = ncol(Wgram))
+    for (g in seq_len(b)) {
+      info <- crossprod(Wgram * wtb[g, ], Wgram)
+      if (!is.null(pen_mat)) info <- info + pen_mat
+      vc_diag <- diag(SpaNorm::invert_mat(info))
+      diagB[g, ] <- if (is.null(W_full)) vc_diag else vc_diag[sel]
+    }
+  } else {
+    for (ii in .chunkGenes(b, cov.batch)) {
+      info <- .gramBatch(Wgram, .rowsOf(wtb, ii), penalty_diag = penalty,
+                         backend = backend)
+      vc <- SpaNorm::invert_mat_batched(info)
+      if (!is.null(W_full)) {
+        vc <- .subsetBatch(vc, sel)
+      }
+      diagB[ii, ] <- SpaNorm::toRMatrix(.batchDiag(vc))
+    }
   }
-
-  diagB <- SpaNorm::toRMatrix(.batchDiag(varcov))
   scale_block <- as.numeric(SpaNorm::toRMatrix(scale_block))
   se <- sqrt(scale_block * diagB)
   colnames(se) <- colnames(Wsub)
@@ -329,28 +375,22 @@
 #' the CPU path is never affected by GPU blocking, exactly mirroring
 #' \code{SpaNorm::geneBlockCount()}'s own invariant.
 #'
-#' Two co-resident tensor families drive peak memory, so (unlike SpaNorm's
-#' single-term \code{geneBlockCount()}) the estimate needs two per-gene terms
-#' plus a one-off term:
-#' \itemize{
-#'   \item NB math, \code{block x ncells}: \code{Yb}, \code{mub},
-#'     \code{wtb}, the NB log-pmf internals and (mixed) the dispersion
-#'     intermediates -- multiplier \code{SPIDE_TENSOR_MULT_NB}.
-#'   \item covariance batching, \code{block x p_eff^2}: the batched Gram
-#'     matrix, its Cholesky factor and inverse -- multiplier
-#'     \code{SPIDE_TENSOR_MULT_COV}.
-#'   \item the Khatri-Rao cross term \code{WW_flat}, \code{ncells x p_eff^2},
-#'     built once per bandwidth (not per block) -- subtracted from the budget
-#'     up front.
-#' }
-#' Both multipliers are rough, deliberately generous estimates that need
-#' empirical validation on real hardware, exactly as noted for SpaNorm's own
+#' This sizes the \strong{NB math} only -- \code{Yb}, \code{mub}, \code{wtb},
+#' the NB log-pmf internals and (mixed) the dispersion intermediates, all
+#' \code{block x ncells} -- via \code{SPIDE_TENSOR_MULT_NB}. The covariance
+#' side is \emph{not} sized here: \code{.waldCauchyBlock()} sub-batches the
+#' \code{(batch, p, p)} Gram/inverse stack internally (see
+#' \code{.covBatchSize()}), so it is bounded whatever block size is chosen,
+#' and the two concerns stay independent. The multiplier is a rough,
+#' deliberately generous estimate that needs empirical validation on real
+#' hardware, exactly as noted for SpaNorm's own
 #' \code{GPU_BLOCK_TENSOR_MULTIPLIER}.
 #'
 #' @param ng number of genes.
 #' @param ncells number of cells.
-#' @param p_eff the batched-covariance dimension: \code{ncol(Wsub)} for a
-#'   fixed-effects fit, \code{ncol(W_full)} for a mixed fit.
+#' @param p_eff the covariance dimension (\code{ncol(Wsub)} fixed effects,
+#'   \code{ncol(W_full)} mixed); retained for signature stability and future
+#'   use -- the covariance term is now bounded by \code{.covBatchSize()}.
 #' @param backend the resolved backend.
 #' @param gpu.mem.budget \code{NULL} (auto-detect via
 #'   \code{SpaNorm::getGPUMemoryBudget()}) or a budget in bytes.
@@ -358,6 +398,12 @@
 #' @noRd
 SPIDE_TENSOR_MULT_NB <- 12
 SPIDE_TENSOR_MULT_COV <- 6
+# fraction of the memory budget each of the two independently-bounded stages
+# (NB math per gene block, covariance per sub-batch) may claim
+SPIDE_BUDGET_FRACTION <- 0.5
+# default cap on the covariance stack when there is no GPU budget to consult
+# (the CPU path); override with options(spiDE.cov.mem.budget = <bytes>)
+SPIDE_COV_MEM_BUDGET_CPU <- 2e9
 
 .inferenceBlockSize <- function(ng, ncells, p_eff, backend,
                                 gpu.mem.budget = NULL) {
@@ -369,14 +415,55 @@ SPIDE_TENSOR_MULT_COV <- 6
     return(NULL)
   }
   bytes <- SpaNorm::gpuDtypeBytes()
-  ncells <- as.numeric(ncells)
-  pe2 <- as.numeric(p_eff)^2
-
-  one_off <- ncells * pe2 * bytes * 2
-  remaining <- budget - one_off
-  per_gene <- bytes * (ncells * SPIDE_TENSOR_MULT_NB + pe2 * SPIDE_TENSOR_MULT_COV)
-  b <- max(1L, as.integer(floor(remaining / per_gene)))
+  per_gene <- bytes * as.numeric(ncells) * SPIDE_TENSOR_MULT_NB
+  b <- max(1L, as.integer(floor(budget * SPIDE_BUDGET_FRACTION / per_gene)))
   if (b >= ng) NULL else b
+}
+
+#' Number of genes per covariance sub-batch
+#'
+#' Bounds the \code{(batch, p, p)} Gram/inverse stack (and, on the GPU, the
+#' \code{(batch, ncells, p)} weighted design feeding it) inside
+#' \code{.waldCauchyBlock()}. This is the knob that makes wide mixed-effects
+#' designs tractable: peak covariance memory is linear in \code{p} and scales
+#' with this batch, so a design too wide to process all at once is handled by
+#' shrinking the sub-batch rather than failing.
+#'
+#' Applies on \strong{both} backends. The CPU path needs it just as much as
+#' the GPU path -- a single block of 13,348 genes at \code{p = 4906} would
+#' otherwise try to allocate a \code{(13348, 4906, 4906)} array -- and unlike
+#' \code{.inferenceBlockSize()} it therefore does not return NULL for CPU.
+#'
+#' @param ncells number of cells.
+#' @param p the covariance dimension (\code{ncol} of the Gram design).
+#' @param backend the resolved backend.
+#' @param gpu.mem.budget \code{NULL} (auto-detect) or a budget in bytes; only
+#'   consulted on the GPU path.
+#' @return a single integer, genes per covariance sub-batch (at least 1).
+#' @noRd
+.covBatchSize <- function(ncells, p, backend, gpu.mem.budget = NULL) {
+  gpu_active <- backend %in% c("gpu", "auto") && SpaNorm::checkGPU()
+  budget <- if (gpu_active) {
+    SpaNorm::getGPUMemoryBudget(gpu.mem.budget)
+  } else {
+    getOption("spiDE.cov.mem.budget", SPIDE_COV_MEM_BUDGET_CPU)
+  }
+  if (!is.finite(budget)) {
+    budget <- SPIDE_COV_MEM_BUDGET_CPU
+  }
+  bytes <- if (gpu_active) SpaNorm::gpuDtypeBytes() else 8
+  ncells <- as.numeric(ncells)
+  p <- as.numeric(p)
+
+  # GPU: the (batch, ncells, p) weighted design plus its transpose view, then
+  # the (batch, p, p) Gram/Cholesky/inverse stack. CPU: the (batch, p, p)
+  # stack only -- construction there is one p x p crossprod at a time.
+  per_gene <- if (gpu_active) {
+    bytes * (ncells * p * 2 + p^2 * SPIDE_TENSOR_MULT_COV)
+  } else {
+    bytes * p^2 * SPIDE_TENSOR_MULT_COV
+  }
+  max(1L, as.integer(floor(budget * SPIDE_BUDGET_FRACTION / per_gene)))
 }
 
 #' Compute Wald inference + within-gene combination for a SpiDEFit, block-wise
@@ -388,13 +475,20 @@ SPIDE_TENSOR_MULT_COV <- 6
 #'
 #' The block-wide NB math (fitted means, working weights, log-likelihood) and
 #' the within-gene Wald covariance run on the accelerator when \code{backend}
-#' resolves to one: the per-gene weighted Gram matrices are computed for the
-#' whole block in one matmul and inverted in one batched Cholesky call
+#' resolves to one: per-gene weighted Gram matrices are built in a batched
+#' matmul and inverted in one batched Cholesky call
 #' (\code{.waldCauchyBlock()}), rather than one \code{crossprod()}/inverse per
-#' gene. This block-batched path is used for \code{combine == "cauchy"} only;
+#' gene. This batched path is used for \code{combine == "cauchy"} only;
 #' \code{combine == "brown"} needs a gene-specific correlation matrix and so
 #' keeps the per-gene \code{.waldBrownGene()} loop (its NB math is still
 #' GPU-accelerated).
+#'
+#' Two memory concerns are bounded independently: \code{block.size} (via
+#' \code{.inferenceBlockSize()}) sizes the \code{block x ncells} NB math,
+#' while \code{.waldCauchyBlock()} sub-batches the \code{(batch, p, p)}
+#' covariance stack internally (via \code{.covBatchSize()}). Keeping these
+#' separate is what lets a very wide mixed-effects design run at any
+#' \code{block.size}.
 #'
 #' @param fit a SpiDEFit (with the NB fit populated).
 #' @param Y the counts matrix (dense, sparse, or DelayedArray).
@@ -462,23 +556,26 @@ SPIDE_TENSOR_MULT_COV <- 6
   }
   blocks <- .chunkGenes(ng, block.size)
 
-  # the design (needed by both combiners, for calculateMu) and its Khatri-Rao
-  # cross term (needed only by the batched "cauchy" path) are shared across
-  # all genes, so they are built (and pushed to the device) once, not per
-  # block. The Gram design is Wsub for a fixed-effects fit, the full W for a
-  # mixed fit. WW_flat is skipped for combine == "brown", which never uses it
-  # (its per-gene .waldBrownGene() path builds its own covariance directly).
+  # the design is shared across all genes, so it is built (and pushed to the
+  # device) once, not per block. The Gram design is Wsub for a fixed-effects
+  # fit, the full W for a mixed fit; it is only needed by the batched
+  # "cauchy" path, since combine == "brown" builds its own covariance
+  # per gene in .waldBrownGene().
   W_full_dev <- if (gpu_active) SpaNorm::toGPUMatrix(W_full, backend = backend)
                 else W_full
   if (combine == "cauchy") {
-    gram_dev <- if (has_re) {
+    Wgram <- if (has_re) {
       W_full_dev
     } else if (gpu_active) {
       SpaNorm::toGPUMatrix(Wsub, backend = backend)
     } else {
       Wsub
     }
-    WW_flat <- .wwFlat(gram_dev)
+    # genes per covariance sub-batch -- bounds the (batch, p, p) stack
+    # independently of block.size, on both backends
+    cov_batch <- .covBatchSize(nrow(W_full),
+                               if (has_re) ncol(W_full) else ncol(Wsub),
+                               backend, gpu.mem.budget)
   }
 
   block_res <- BiocParallel::bplapply(blocks, function(gi) {
@@ -516,10 +613,10 @@ SPIDE_TENSOR_MULT_COV <- 6
     if (combine == "cauchy") {
       res <- .waldCauchyBlock(alpha_block[, cols_gene, drop = FALSE], Wsub,
                               wtb, scale_block, cov_niche, index_ct,
-                              uniq_index, WW_flat,
+                              uniq_index, Wgram,
                               W_full = if (has_re) W_full else NULL,
                               penalty = penalty, sel = sel, df = re_df,
-                              backend = backend)
+                              backend = backend, cov.batch = cov_batch)
       res$loglik <- loglikb
       return(res)
     }

@@ -94,7 +94,7 @@ test_that(".chunkGenes partitions all genes exactly once", {
   expect_true(all(lengths(ch) <= 3))
 })
 
-test_that(".wwFlat / .gramBatch reproduce the per-gene weighted Gram matrix", {
+test_that(".gramBatch reproduces the per-gene weighted Gram matrix", {
   set.seed(20)
   ncells <- 40
   p <- 5
@@ -105,9 +105,7 @@ test_that(".wwFlat / .gramBatch reproduce the per-gene weighted Gram matrix", {
   ref <- array(0, c(b, p, p))
   for (g in seq_len(b)) ref[g, , ] <- crossprod(W * wt[g, ], W)
 
-  ww <- spiDE:::.wwFlat(W)
-  expect_equal(dim(ww), c(ncells, p * p))
-  info <- spiDE:::.gramBatch(ww, wt, p)
+  info <- spiDE:::.gramBatch(W, wt)
   expect_equal(dim(info), c(b, p, p))
   expect_equal(info, ref, tolerance = 1e-10)
 
@@ -115,8 +113,36 @@ test_that(".wwFlat / .gramBatch reproduce the per-gene weighted Gram matrix", {
   pen <- runif(p)
   ref_pen <- ref
   for (g in seq_len(b)) ref_pen[g, , ] <- ref[g, , ] + diag(pen)
-  info_pen <- spiDE:::.gramBatch(ww, wt, p, penalty_diag = pen)
+  info_pen <- spiDE:::.gramBatch(W, wt, penalty_diag = pen)
   expect_equal(info_pen, ref_pen, tolerance = 1e-10)
+
+  # sub-batching the genes must not change the result: the same slices come
+  # back whether built all at once or a few at a time. This is the property
+  # that makes .covBatchSize()'s bound safe to apply at any size.
+  chunked <- array(0, c(b, p, p))
+  for (ii in list(1:2, 3:4, 5:6)) {
+    chunked[ii, , ] <- spiDE:::.gramBatch(W, wt[ii, , drop = FALSE])
+  }
+  expect_equal(chunked, ref, tolerance = 1e-10)
+})
+
+test_that(".covBatchSize shrinks with design width and stays >= 1", {
+  # the point of the sub-batch: covariance memory is linear in p, so a wider
+  # design yields a smaller batch rather than an unbounded allocation
+  narrow <- spiDE:::.covBatchSize(20000, 50, "cpu")
+  wide <- spiDE:::.covBatchSize(20000, 5000, "cpu")
+  expect_gt(narrow, wide)
+  expect_gte(wide, 1L)
+
+  # a design too wide for any budget still yields a usable batch of 1,
+  # never 0 or negative
+  expect_equal(spiDE:::.covBatchSize(20000, 5e5, "cpu"), 1L)
+
+  # a larger budget allows a larger batch
+  big <- withr::with_options(
+    list(spiDE.cov.mem.budget = 2e10),
+    spiDE:::.covBatchSize(20000, 5000, "cpu"))
+  expect_gt(big, wide)
 })
 
 test_that(".subsetBatch and .batchDiag match base-array indexing", {
@@ -147,10 +173,9 @@ test_that(".waldCauchyBlock returns a proper matrix for a single-gene block", {
   index_ct <- c("A", "A", "B")
   uniq_index <- c("A", "B")
 
-  ww <- spiDE:::.wwFlat(W)
   res <- spiDE:::.waldCauchyBlock(alpha_block, W, wtb, scale_block = 0.3,
                                   cov_niche = cov_niche, index_ct = index_ct,
-                                  uniq_index = uniq_index, WW_flat = ww)
+                                  uniq_index = uniq_index, Wgram = W)
   expect_equal(dim(res$p.pos), c(1, 3))
   expect_equal(dim(res$p.neg), c(1, 3))
   expect_equal(colnames(res$p.pos), c("Gene", "A", "B"))
@@ -185,4 +210,73 @@ test_that("batched Cauchy path matches the per-gene .waldBrownGene loop (CPU)", 
 
   expect_equal(unname(f@t_stat), unname(ref_t), tolerance = 1e-8)
   expect_equal(unname(f@p.combined.pos), unname(ref_ppos), tolerance = 1e-8)
+})
+
+test_that(".waldCauchyBlock is invariant to the covariance sub-batch size", {
+  # Regression test for the Khatri-Rao blowup: the batched Cauchy path used
+  # to precompute an (ncells x p^2) cross term once per bandwidth, outside
+  # the gene loop, so its memory could not be bounded by any block size --
+  # 63 GB for a 602-column random-intercept design, 4.2 TB for a
+  # 4906-column random-slope one, making combine = "cauchy" unusable with
+  # random effects on both backends. The fix bounds it via a gene sub-batch
+  # instead, which is only sound if results do not depend on that size.
+  set.seed(23)
+  ncells <- 60
+  p <- 8
+  b <- 7
+  W <- matrix(rnorm(ncells * p), ncells, p)
+  colnames(W) <- paste0("c", seq_len(p))
+  wtb <- matrix(runif(b * ncells, 0.5, 2), b, ncells)
+  alpha_block <- matrix(rnorm(b * p), b, p)
+  scale_block <- runif(b, 0.2, 0.5)
+  cov_niche <- c(FALSE, rep(TRUE, p - 1))
+  index_ct <- rep(c("A", "B"), length.out = p - 1)
+  uniq_index <- c("A", "B")
+
+  run <- function(cb) {
+    spiDE:::.waldCauchyBlock(alpha_block, W, wtb, scale_block,
+                             cov_niche = cov_niche, index_ct = index_ct,
+                             uniq_index = uniq_index, Wgram = W,
+                             cov.batch = cb)
+  }
+  full <- run(NULL)
+  for (cb in c(1, 2, 3, b, b + 5)) {
+    expect_equal(run(cb), full, tolerance = 1e-10,
+                 info = paste("cov.batch =", cb))
+  }
+})
+
+test_that("mixed-effects Cauchy inference runs on a design too wide to flatten", {
+  # p = 120 makes the old (ncells x p^2) cross term 60x larger than the
+  # design itself; the sub-batched path handles it in bounded memory and
+  # must still agree with the per-gene reference exactly.
+  set.seed(24)
+  ncells <- 200
+  p <- 120
+  b <- 4
+  W <- matrix(rnorm(ncells * p), ncells, p)
+  colnames(W) <- paste0("c", seq_len(p))
+  sel <- 1:6
+  wtb <- matrix(runif(b * ncells, 0.5, 2), b, ncells)
+  alpha_block <- matrix(rnorm(b * length(sel)), b, length(sel))
+  scale_block <- runif(b, 0.2, 0.5)
+  penalty <- c(rep(0, 20), rep(2, p - 20))
+  cov_niche <- c(FALSE, rep(TRUE, length(sel) - 1))
+  index_ct <- rep(c("A", "B"), length.out = length(sel) - 1)
+  uniq_index <- c("A", "B")
+  Wsub <- W[, sel, drop = FALSE]
+
+  res <- spiDE:::.waldCauchyBlock(alpha_block, Wsub, wtb, scale_block,
+                                  cov_niche = cov_niche, index_ct = index_ct,
+                                  uniq_index = uniq_index, Wgram = W,
+                                  W_full = W, penalty = penalty, sel = sel,
+                                  df = 10, cov.batch = 2)
+
+  # per-gene reference: the full penalised inverse, restricted to sel
+  ref_se <- t(vapply(seq_len(b), function(g) {
+    vc <- solve(crossprod(W * wtb[g, ], W) + diag(penalty))
+    sqrt(scale_block[g] * diag(vc)[sel])
+  }, numeric(length(sel))))
+  expect_equal(unname(res$se), unname(ref_se), tolerance = 1e-8)
+  expect_true(all(is.finite(res$t_stat)))
 })

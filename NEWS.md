@@ -1,3 +1,19 @@
+# spiDE 0.99.4
+
+* Fixed a memory blowup that made `combine = "cauchy"` (the default) unusable
+  with random effects on realistically-sized data, on **both** backends. The
+  batched Wald covariance introduced in 0.99.3 precomputed a Khatri-Rao cross
+  term of the design (`ncells x p^2`) once per bandwidth. Being built outside
+  the gene loop, its size could not be bounded by `block.size`, and it scales
+  quadratically in the design width: a 602-column random-intercept design over
+  21,843 cells needs 63 GB, and a 4,906-column random-slope design 4.2 TB.
+  The per-gene Gram matrices are now built with a batched matmul over a
+  bounded sub-batch of genes instead — memory is linear in `p` and capped
+  automatically (`options(spiDE.cov.mem.budget = <bytes>)` on the CPU path,
+  the GPU budget otherwise), independently of `block.size`. Results are
+  unchanged (bit-identical on the CPU path) and invariant to the sub-batch
+  size.
+
 # spiDE 0.99.3
 
 * `testSpiDE()` / `spiDE()` gain a `backend` argument (`"auto"`, `"cpu"`,

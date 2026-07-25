@@ -39,7 +39,10 @@
 #'   inference is not already present on the fits.
 #' @param gpu.mem.budget a numeric, the GPU memory budget in bytes used to
 #'   size inference blocks (NULL auto-detects; only relevant for the GPU
-#'   backend).
+#'   backend). The batched Wald covariance is bounded separately, by a gene
+#'   sub-batch sized from this budget on the GPU path and from
+#'   \code{getOption("spiDE.cov.mem.budget", 2e9)} on the CPU path -- raise
+#'   the latter to trade memory for speed on wide (random-slope) designs.
 #' @param BPPARAM a BiocParallelParam for the inference stage.
 #' @param ... ignored.
 #'
