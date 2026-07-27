@@ -4,7 +4,6 @@
 ^research$
 ^_pkgdown\.yml$
 ^docs$
-^dev$
 ^\.github$
 ^\.devcontainer$
 ^LICENSE\.md$

@@ -7,5 +7,5 @@ docs
 !.claude/skills
 .claude/skills/*
 !.claude/skills/deploy-bioc
+!.claude/skills/hpc-job-sizing
 .DS_Store
-/research/
