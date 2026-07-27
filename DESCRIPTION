@@ -32,7 +32,7 @@ biocViews: Software, Spatial, DifferentialExpression, GeneExpression,
 Depends:
     R (>= 4.4)
 Imports:
-    SpaNorm (>= 1.7.6),
+    SpaNorm (>= 1.7.7),
     SpatialExperiment,
     SingleCellExperiment,
     SummarizedExperiment,

@@ -40,19 +40,26 @@ negative-binomial GLM once per iteration — the expensive part of the fit.
 Those variance components are a *single shared scalar per random-effect group* — a
 population quantity that does not need every cell to estimate, exactly as
 `SpaNorm::fitNB` already subsamples cells for its dispersion step. `spiDE` exposes
-three knobs that trade a little `tau2` accuracy for a large speed-up:
+three knobs that can trade `tau2` accuracy for speed, of which only `re.prop` is
+usually worth touching:
 
 | argument       | default | effect |
 |----------------|---------|--------|
-| `re.prop`      | `0.2`   | fraction of cells sampled per cell type within each sample for the PQL loop |
+| `re.prop`      | `1`     | fraction of cells sampled per cell type within each sample for the PQL loop; `1` disables subsampling |
 | `re.maxit.psi` | `1`     | dispersion iterations inside each PQL step |
 | `re.min.cells` | `100`   | per-stratum floor for `re.prop` |
 
 Crucially the loop only supplies `tau2`; a single **final fit on all cells with
 full dispersion** produces the coefficients and dispersion that inference uses. So
 subsampling perturbs only the shared variance estimate, not the per-gene effect
-sizes. This vignette quantifies the time saved and the accuracy retained, using
-the benchmark study in the package's `research/` directory.
+sizes — but, as this vignette shows, "only the shared variance estimate" is not
+the same as "safely, since it's just one number": `tau2` itself is what turns out
+to be systematically biased by subsampling, not merely noisier. This vignette
+quantifies the time saved and the accuracy cost, using two studies: a
+single-run simulation benchmark (`research/`, shipped as this vignette's
+figures) and a more rigorous real-cohort replicate study (5 refits per
+`re.prop` level on the full 55-sample YTMA cohort) that changed the package
+default, described below.
 
 # Time versus accuracy across `re.prop`
 
@@ -92,13 +99,38 @@ if (!is.null(timing)) {
 }
 ```
 
-Accuracy is largely retained because the coefficients come from the full final
-fit; `re.prop` only moves the shared `tau2`. The subsample does modestly
-underestimate `tau2` (here about 0.19 versus 0.25 at full data), and this feeds
-through to a small drop in the t-statistic correlation — to roughly 0.96 rather
-than 1. The default `re.prop = 0.2` therefore delivers the bulk of the speed-up
-at a small, well-characterised cost to the inference; use `re.prop = 1` when
-exact reproducibility matters more than speed.
+The coefficients come from the full final fit regardless of `re.prop`, so the
+response-niche t-statistics stay highly correlated with the full-data reference
+even under aggressive subsampling. This single-run simulation, taken on its
+own, reads as a favourable trade: the subsample here underestimates `tau2`
+(about 0.19 versus 0.25 at full data), and that feeds through to only a small
+drop in t-statistic correlation — to roughly 0.96 rather than 1.
+
+That reading turned out to be incomplete, which is why `re.prop = 1` (not
+`0.2`) is now the package default. A single simulated timing/accuracy point
+can't distinguish *noise* (would average out over replicates) from *bias*
+(wouldn't). A follow-up study on the real 55-sample YTMA cohort — 5 independent
+refits of identical data at each of `re.prop` = 0.2, 0.5, and 0.8, differing
+only in the unseeded stratified cell subsample, plus the deterministic
+`re.prop = 1` reference — found both, and the bias matters more:
+
+* **The subsampling noise itself does not shrink** between `re.prop = 0.2` and
+  `0.8` (replicate sd stayed in the 0.015-0.017 range throughout), and at every
+  level tested it matched or exceeded the genuine between-patient signal (sd
+  0.0145 from a 55-fold leave-one-sample-out jackknife) that `tau2` is meant to
+  capture.
+* **Mean `tau2` rose monotonically with `re.prop`** (0.034 -> 0.052 -> 0.059 ->
+  0.074 at `re.prop` = 0.2/0.5/0.8/1) — systematic downward attenuation at every
+  `re.prop < 1`, not random jitter around the true value. Averaging several
+  `re.prop < 1` replicates would not fix this, because their common mean is
+  itself biased low.
+
+So a small drop in t-statistic *correlation* against one particular full-data
+run (as in the simulation above) is the wrong lens: it can look reassuring even
+while the underlying `tau2` is being systematically underestimated. GPU
+backends make `re.prop = 1` affordable in practice (about 1.17x the fit time of
+a heavily-subsampled fit, per the LOO study), so it is now the default; treat
+`re.prop < 1` as a lower bound on `tau2`, not a point estimate, if used at all.
 
 ```{r tau2-table, echo = FALSE}
 if (!is.null(timing)) {
@@ -139,15 +171,21 @@ if (!is.null(tm) && nrow(tm) > 0) {
 
 # Summary
 
-* Subsampling cells for the PQL loop (`re.prop`) plus a single inner dispersion
-  iteration (`re.maxit.psi = 1`) cuts the mixed-effects fit time by roughly 1.8x,
-  while the final all-cell fit keeps the coefficients exact.
-* Response-niche t-statistics stay highly correlated (~0.96) with the full-data
-  fit across `re.prop`, so the default `re.prop = 0.2` is a fast choice at a
-  small, well-characterised accuracy cost.
-* Set `re.prop = 1` for a fully reproducible (seed-independent) fit, at the cost
-  of speed; otherwise set an external `set.seed()` to make a subsampled fit
-  reproducible.
+* Subsampling cells for the PQL loop (`re.prop < 1`) plus a single inner
+  dispersion iteration (`re.maxit.psi = 1`) cuts the mixed-effects fit time
+  substantially, while the final all-cell fit always keeps the coefficients
+  exact — only the shared `tau2` is affected.
+* That effect on `tau2` is not just noise: a real-cohort replicate study found
+  it systematically biased downward at every `re.prop < 1` tested, an
+  attenuation that gets worse (not better) the more the correlation-based
+  simulation check above might suggest is "fine". Response-niche t-statistic
+  correlation against a full-data fit is a poor proxy for this, since it can
+  look reassuring even while `tau2` itself is off.
+* `re.prop = 1` (no subsampling, fully reproducible, no seed required) is
+  therefore the package default; GPU backends make it affordable. Lower it
+  only when `tau2`'s absolute scale doesn't matter (e.g. a quick feasibility
+  check), and set an external `set.seed()` if reproducibility of a
+  `re.prop < 1` run matters.
 
 Timing numbers reflect the machine that produced the benchmark tables; regenerate
 them for your own hardware with the study in `research/`.

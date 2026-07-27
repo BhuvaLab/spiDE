@@ -1,5 +1,22 @@
 # spiDE 0.99.4
 
+* Changed `fitSpiDE()`'s default `re.prop` from `0.2` to `1` (no cell
+  subsampling in the random-effect variance-component loop). A replicate
+  study on real data (`vignettes/spiDE-mixed-benchmark.Rmd`) found that
+  `re.prop < 1` doesn't just add noise to the fitted `tau2` — the noise
+  itself stays roughly flat from `re.prop = 0.2` to `0.8` (never shrinking
+  below the genuine between-patient signal it's confounded with), and the
+  **mean** `tau2` is systematically biased downward at every `re.prop < 1`
+  tested, an attenuation that more replicates cannot average away. GPU
+  backends make `re.prop = 1` affordable in practice (see the benchmark
+  vignette), so it is now the default; lowering it remains possible but is
+  rarely advised (see `?fitSpiDE`).
+* Bumped the `SpaNorm` requirement to `>= 1.7.7`, which fixes
+  `getGPUMemoryBudget()` reporting a MIG-partitioned GPU's whole physical
+  card instead of the process's assigned slice — spiDE's GPU inference path
+  (`R/inference.R`) calls this directly, so on MIG hardware the bug could
+  feed a many-fold-too-large budget into `.covBatchSize()` and cause an
+  out-of-memory failure instead of the intended blocked, bounded-memory fit.
 * Fixed a memory blowup that made `combine = "cauchy"` (the default) unusable
   with random effects on realistically-sized data, on **both** backends. The
   batched Wald covariance introduced in 0.99.3 precomputed a Khatri-Rao cross

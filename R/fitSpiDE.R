@@ -168,7 +168,7 @@
                              cell_type, winsor, lambda.a, backend, name,
                              verbose, sample_id = "sample_id", random = "none",
                              re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
-                             re.prop = 0.2, re.maxit.psi = 1L,
+                             re.prop = 1, re.maxit.psi = 1L,
                              re.min.cells = 100L, ...) {
   des <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
                            cell_type, name, sample_id, random)
@@ -280,10 +280,22 @@
 #'   variance-component (PQL) loop, sampled per cell type within each sample
 #'   (\code{random != "none"}). For a stratum of \code{n} cells,
 #'   \code{min(n, max(ceil(re.prop * n), re.min.cells))} are used. \code{1}
-#'   disables subsampling (all cells, fully reproducible). The final fit that
-#'   feeds inference always uses all cells; only the shared \code{tau2} estimate
-#'   is affected. No seed is set internally — set one externally for
-#'   reproducibility.
+#'   (the default) disables subsampling (all cells, fully reproducible). The
+#'   final fit that feeds inference always uses all cells; only the shared
+#'   \code{tau2} estimate is affected. No seed is set internally — set one
+#'   externally for reproducibility of \code{re.prop < 1} runs. Lowering
+#'   \code{re.prop} trades accuracy for speed, and the trade is worse than it
+#'   looks: a replicate study on real data (\code{vignettes/spiDE-mixed-
+#'   benchmark.Rmd}) found that subsampling noise in \code{tau2} does not
+#'   shrink as \code{re.prop} rises from 0.2 to 0.8 (it stays comparable to or
+#'   larger than genuine between-patient variation), and — more importantly —
+#'   \code{tau2} is systematically \emph{biased downward} at every
+#'   \code{re.prop < 1} tested, an attenuation that averaging replicates
+#'   cannot fix, only shrinking as \code{re.prop} approaches 1. Using
+#'   \code{re.prop < 1} is therefore rarely advised; only do so when the
+#'   variance component's absolute scale doesn't matter (e.g. a quick
+#'   feasibility check) and treat its \code{tau2} as a lower bound, not a
+#'   point estimate.
 #' @param re.maxit.psi dispersion iterations for the inner PQL loop fits (the
 #'   final all-cell fit always uses full dispersion). \code{1} (default) skips
 #'   the redundant re-estimation of the barely-moving dispersion each iteration.
@@ -314,7 +326,7 @@ setMethod(
                         winsor = 4, lambda.a = 0,
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
-                        re.prop = 0.2, re.maxit.psi = 1L, re.min.cells = 100L,
+                        re.prop = 1, re.maxit.psi = 1L, re.min.cells = 100L,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
     random <- match.arg(random)

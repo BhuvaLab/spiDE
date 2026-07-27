@@ -387,16 +387,19 @@ expect to see:
     $|\log\hat\tau^2_{\text{new}} - \log\hat\tau^2_{\text{old}}| < \texttt{re.tol}$
     — log scale because $\tau^2$ is a variance (strictly positive, and
     naturally multiplicative in how far off a bad starting guess is).
--   **Cell subsampling for speed (`re.prop`, default `0.2`).** The *inner*
-    loop's fits, while $\tau^2$ is still moving, run on a stratified subsample
-    of cells (every sample $\times$ cell type stays represented) with a
-    single dispersion iteration — cheap, because only the shared scalar
-    $\tau^2$ needs to be right at this stage, not every gene's exact
-    coefficient. Once $\tau^2$ has converged, one **final fit on all cells
-    with full dispersion** supplies the $\hat\alpha_g$ / $\hat\phi_g$ that
-    inference actually uses — so subsampling only ever perturbs $\tau^2$,
-    never the reported coefficients. See the companion vignette *Speeding up
-    the mixed-effects fit* for the speed/accuracy trade-off this buys.
+-   **Cell subsampling for speed (`re.prop`, default `1`, i.e. off).** The
+    *inner* loop's fits can optionally run on a stratified subsample of cells
+    (every sample $\times$ cell type stays represented) with a single
+    dispersion iteration instead of every cell, trading speed for accuracy in
+    the shared scalar $\tau^2$ — never the reported coefficients, since one
+    **final fit on all cells with full dispersion** always supplies the
+    $\hat\alpha_g$ / $\hat\phi_g$ that inference uses, regardless of
+    `re.prop`. That trade is worse than it looks, though: a real-cohort
+    replicate study found `tau2` systematically biased *downward* at every
+    `re.prop < 1` tested, not just noisier, and averaging replicates does not
+    fix it. `re.prop = 1` (no subsampling) is therefore the default; see the
+    companion vignette *Speeding up the mixed-effects fit* for the full
+    speed/accuracy trade-off.
 
 ### Watching it work: a worked example
 
