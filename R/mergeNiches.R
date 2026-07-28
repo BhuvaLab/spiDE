@@ -20,6 +20,11 @@
 #' Macrophage subtypes into a single "Macrophage" niche). Cell types absent from
 #' \code{groups} are retained as their own (singleton) niche.
 #'
+#' The group membership is recorded in \code{metadata(spe)$spiDE_niche_groups}
+#' so that a subsequent [fitSpiDE()] / [nicheDesign()] automatically excludes a
+#' covariate whenever an index cell type is a member of the merged niche it is
+#' tested against (its own density would otherwise contaminate the niche).
+#'
 #' @param spe a SpatialExperiment with niche reducedDims (see [buildNiches()]).
 #' @param groups a named list mapping each merged niche name to a character
 #'   vector of cell-type column names to sum.
