@@ -14,6 +14,51 @@ test_that("nicheDesign tags covariates and drops self-interactions", {
   expect_equal(qr(des$W)$rank, ncol(des$W))
 })
 
+test_that(".isSelfNiche: no map reduces to exact index == niche", {
+  idx <- c("A", "A", "B", NA)
+  nch <- c("A", "B", "B", NA)
+  expect_equal(spiDE:::.isSelfNiche(idx, nch), c(TRUE, FALSE, TRUE, FALSE))
+})
+
+test_that(".isSelfNiche: member index against a merged niche is dropped", {
+  gm <- list(AC = c("A", "C"), B = "B")
+  # A and C are members of AC -> drop; B is not -> keep; self B:B -> drop
+  idx <- c("A", "C", "B", "B")
+  nch <- c("AC", "AC", "AC", "B")
+  expect_equal(spiDE:::.isSelfNiche(idx, nch, gm),
+               c(TRUE, TRUE, FALSE, TRUE))
+})
+
+test_that(".isSelfNiche: sanitises raw member/key names before matching", {
+  gm <- list(`T cell` = c("T cell CD4", "T cell CD8"))
+  idx <- c("T.cell.CD4", "T.cell.CD8", "B.cell")
+  nch <- c("T.cell", "T.cell", "T.cell")
+  expect_equal(spiDE:::.isSelfNiche(idx, nch, gm), c(TRUE, TRUE, FALSE))
+})
+
+test_that("nicheDesign drops member interactions of a merged niche", {
+  spe <- buildNiches(.toySPE(), sigma = 20)
+  # simulate a mergeNiches result: AC column = A + C, B carried through
+  nm <- SingleCellExperiment::reducedDim(spe, "Niche20")
+  merged <- cbind(AC = nm[, "A"] + nm[, "C"], B = nm[, "B"])
+  rownames(merged) <- rownames(nm)
+  SingleCellExperiment::reducedDim(spe, "Niche20") <- merged
+  S4Vectors::metadata(spe)$spiDE_niche_groups <-
+    list(Niche20 = list(AC = c("A", "C"), B = "B"))
+
+  des <- nicheDesign(spe, condition = "condition", sigma = 20)
+  cm <- des$coefmap
+  ac <- cm[!is.na(cm$niche) & cm$niche == "AC", ]
+
+  # no A- or C-indexed interaction survives against the AC niche
+  expect_false(any(ac$index %in% c("A", "C")))
+  # the genuine cross-type B:AC effect survives, as both Niche and ResponseNiche
+  expect_true(any(ac$index == "B" & ac$type == "Niche"))
+  expect_true(any(ac$index == "B" & ac$type == "ResponseNiche"))
+  # self B:B is still dropped
+  expect_false(any(cm$niche == "B" & cm$index == "B" & !is.na(cm$index)))
+})
+
 test_that("restricting niche cell types reduces interaction columns", {
   spe <- buildNiches(.toySPE(), sigma = 20)
   des <- nicheDesign(spe, condition = "condition", sigma = 20, niche = "B")
