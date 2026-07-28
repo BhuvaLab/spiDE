@@ -8,6 +8,38 @@
 # sanitise cell-type / niche names the same way as the analysis scripts
 .sanitise <- function(x) gsub(" |-", ".", x)
 
+#' Which interaction columns are index-vs-own-niche (to be dropped)
+#'
+#' A covariate pairing an index cell type with its own niche density is
+#' meaningless and is dropped. With merged niches, "its own" means the index is
+#' a \emph{member} of the group the niche column represents, so all member
+#' indices of a merged niche are dropped, not only the exact-name match.
+#'
+#' @param index,niche equal-length character vectors of the sanitised parsed
+#'   index / niche cell type of each design column (\code{NA} for non
+#'   interaction columns).
+#' @param group_map \code{NULL}, or a named list mapping each (raw) merged niche
+#'   column name to a character vector of its (raw) fine member cell types.
+#'   Names and members are sanitised here before matching. A niche column absent
+#'   from \code{group_map} has member set \code{{itself}}, so the test reduces to
+#'   \code{index == niche} — the pre-merge behaviour.
+#' @return a logical vector, \code{TRUE} where the column should be dropped.
+#' @noRd
+.isSelfNiche <- function(index, niche, group_map = NULL) {
+  san_map <- if (is.null(group_map)) {
+    list()
+  } else {
+    stats::setNames(lapply(group_map, .sanitise), .sanitise(names(group_map)))
+  }
+  members <- function(nch) if (!is.null(san_map[[nch]])) san_map[[nch]] else nch
+
+  ok <- !is.na(index) & !is.na(niche)
+  res <- logical(length(index))
+  res[ok] <- vapply(which(ok), function(k) index[k] %in% members(niche[k]),
+                    logical(1))
+  res
+}
+
 #' Build the patient-level random-effect design block
 #'
 #' Constructs the columns \code{Z} that carry the sample (patient) random
@@ -117,6 +149,7 @@
 #'   random-effect group label, `NA` for fixed columns).
 #' @importFrom stats model.matrix as.formula
 #' @importFrom SingleCellExperiment reducedDim
+#' @importFrom S4Vectors metadata
 #' @noRd
 .buildNicheDesign <- function(spe, condition, sigma, index = NULL, niche = NULL,
                               covariates = character(), cell_type = "cell_type",
@@ -161,10 +194,14 @@
   f <- stats::as.formula(paste("~ 0 +", paste(terms, collapse = " + ")))
   W <- stats::model.matrix(f, df)
 
-  # tag columns and drop symmetric self-interactions (index == niche)
+  # tag columns and drop self-interactions: an index cell type against its own
+  # niche density. When niches have been merged (mergeNiches records the group
+  # membership in metadata), "its own" means the index is a member of the merged
+  # niche's group, so every member index of a merged niche is dropped. Absent a
+  # stored mapping this reduces to the exact index == niche drop.
   coefmap <- .tagCovtype(colnames(W), niche_cols, response_coef)
-  is_self <- !is.na(coefmap$index) & !is.na(coefmap$niche) &
-    coefmap$index == coefmap$niche
+  group_map <- S4Vectors::metadata(spe)[["spiDE_niche_groups"]][[paste0(name, sigma)]]
+  is_self <- .isSelfNiche(coefmap$index, coefmap$niche, group_map)
   keep <- !is_self
 
   # optionally restrict interaction columns to requested index cell types
@@ -212,9 +249,11 @@
 #' "ResponseNiche", or "Other"). The scientifically important covariates are the
 #' three-way `CellType:condition:niche` interactions ("ResponseNiche"), which
 #' capture how expression within an index cell type changes with the condition
-#' as a function of a niche cell type's local density. Symmetric self
-#' interactions (an index cell type against its own density) are dropped. This
-#' is an escape hatch for custom fits; most users should call [fitSpiDE()].
+#' as a function of a niche cell type's local density. Self interactions — an
+#' index cell type against its own niche density — are dropped; when niches have
+#' been merged with [mergeNiches()], this extends to any index that is a member
+#' of the merged niche's group. This is an escape hatch for custom fits; most
+#' users should call [fitSpiDE()].
 #'
 #' @param spe a SpatialExperiment with a niche reducedDim for \code{sigma}.
 #' @param condition a character, the colData column of the tested condition.

@@ -31,6 +31,12 @@ Sums the density columns of grouped cell types in each niche
 Macrophage subtypes into a single "Macrophage" niche). Cell types absent from
 \code{groups} are retained as their own (singleton) niche.
 }
+\details{
+The group membership is recorded in \code{metadata(spe)$spiDE_niche_groups}
+so that a subsequent \code{\link[=fitSpiDE]{fitSpiDE()}} / \code{\link[=nicheDesign]{nicheDesign()}} automatically excludes a
+covariate whenever an index cell type is a member of the merged niche it is
+tested against (its own density would otherwise contaminate the niche).
+}
 \examples{
 data(toySpiDE)
 spe <- toySpiDE

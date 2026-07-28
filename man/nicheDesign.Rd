@@ -54,9 +54,11 @@ bandwidth and tags each covariate by type ("CellType", "Niche", "Response",
 "ResponseNiche", or "Other"). The scientifically important covariates are the
 three-way \code{CellType:condition:niche} interactions ("ResponseNiche"), which
 capture how expression within an index cell type changes with the condition
-as a function of a niche cell type's local density. Symmetric self
-interactions (an index cell type against its own density) are dropped. This
-is an escape hatch for custom fits; most users should call \code{\link[=fitSpiDE]{fitSpiDE()}}.
+as a function of a niche cell type's local density. Self interactions — an
+index cell type against its own niche density — are dropped; when niches have
+been merged with \code{\link[=mergeNiches]{mergeNiches()}}, this extends to any index that is a member
+of the merged niche's group. This is an escape hatch for custom fits; most
+users should call \code{\link[=fitSpiDE]{fitSpiDE()}}.
 }
 \examples{
 data(toySpiDE)

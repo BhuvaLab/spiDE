@@ -1,3 +1,12 @@
+# spiDE 0.99.5
+
+* `mergeNiches()` now records the merged niche group membership on the object,
+  and the design matrix built by `fitSpiDE()` / `nicheDesign()` uses it to drop
+  every covariate whose index cell type is a member of the merged niche it is
+  tested against (previously only the exact index-equals-niche self interaction
+  was dropped). This matches the neighbourhood self-density exclusion of the
+  original analysis scripts.
+
 # spiDE 0.99.4
 
 * Changed `fitSpiDE()`'s default `re.prop` from `0.2` to `1` (no cell
