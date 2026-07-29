@@ -16,6 +16,12 @@ test_that("random='none' is unchanged: no RE slots, results identical", {
   expect_true(all(c("SampleInt", "SampleSlope") %in% fb@re_group))
   expect_equal(length(fb@penalty), ncol(fb@W))
   expect_true(is.finite(fb@df))
+  # a satterthwaite fit populates @df as a per-tested-column vector
+  bs <- fitSpiDE(spe, "condition", sigma = 20, random = "slope",
+                 df.method = "satterthwaite", verbose = FALSE)
+  fbs <- fits(bs)[[1]]
+  expect_gt(length(fbs@df), 1L)
+  expect_equal(length(fbs@df), sum(grepl("Response", as.character(fbs@covtype))))
 })
 
 test_that("random-effect design targets the response-related effects", {

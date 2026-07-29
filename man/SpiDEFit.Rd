@@ -57,9 +57,12 @@ of \code{W} (\code{NA} for fixed columns); NULL for a fixed-effects fit.}
 \item{\code{penalty}}{a numeric (or NULL), the per-column ridge penalty (\code{lambda.a})
 used at fit time (0 on fixed columns, \code{1/tau2} on random columns).}
 
-\item{\code{df}}{a numeric (or NULL), the residual degrees of freedom used for the
-Wald reference distribution (finite for a mixed-effects fit, else NULL =
-normal reference).}
+\item{\code{df}}{a numeric (or NULL), the Wald reference degrees of freedom. NULL for
+a fixed-effects fit (normal reference); a scalar between-patient \code{S - 2}
+under \code{df.method = "between"}; or a named per-tested-coefficient vector
+(aligned to the columns of \code{t_stat}/\code{se}) under \code{df.method = "satterthwaite"}
+— the Response main effect stays ~ \code{S - 2} while niche interactions, informed
+by within-sample variation, get a larger df.}
 
 \item{\code{t_stat}}{a matrix, per-gene Wald t-statistics (genes x covariates).}
 

@@ -146,3 +146,14 @@ test_that("df.method='between' is byte-identical to the pre-existing scalar df",
   tb <- spiDE:::.blockedInference(fits(fb)[[1]], Y)
   expect_false(any(is.na(tb@p.combined.pos)))
 })
+
+test_that("df.method='satterthwaite' works for random='slope'", {
+  spe <- buildNiches(spiDE:::.toyClustered(n_samples = 16, sd_patient = 0.7),
+                     sigma = 30)
+  fs <- fitSpiDE(spe, "condition", sigma = 30, random = "slope",
+                 df.method = "satterthwaite", verbose = FALSE)
+  ds <- fits(fs)[[1]]@df
+  ct <- as.character(fits(fs)[[1]]@covtype)
+  expect_length(ds, sum(grepl("Response", ct)))
+  expect_true(all(is.finite(ds)) && all(ds >= 1))
+})

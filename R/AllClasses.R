@@ -25,9 +25,12 @@
 #'   (one per random-effect group); NULL for a fixed-effects fit.
 #' @slot penalty a numeric (or NULL), the per-column ridge penalty (`lambda.a`)
 #'   used at fit time (0 on fixed columns, `1/tau2` on random columns).
-#' @slot df a numeric (or NULL), the residual degrees of freedom used for the
-#'   Wald reference distribution (finite for a mixed-effects fit, else NULL =
-#'   normal reference).
+#' @slot df a numeric (or NULL), the Wald reference degrees of freedom. NULL for
+#'   a fixed-effects fit (normal reference); a scalar between-patient `S - 2`
+#'   under `df.method = "between"`; or a named per-tested-coefficient vector
+#'   (aligned to the columns of `t_stat`/`se`) under `df.method = "satterthwaite"`
+#'   — the Response main effect stays ~ `S - 2` while niche interactions, informed
+#'   by within-sample variation, get a larger df.
 #' @slot t_stat a matrix, per-gene Wald t-statistics (genes x covariates).
 #' @slot se a matrix, per-gene coefficient standard errors (genes x covariates).
 #' @slot p.combined.pos a matrix, combined p-values for up-regulation
