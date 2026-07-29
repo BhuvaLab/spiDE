@@ -208,13 +208,23 @@ benchmark report gains the calibration evidence.
   within-sample information, without touching the honest between-sample df of the
   main effect.
 
-### `vignettes/spiDE-mixed-benchmark.Rmd`
+### `vignettes/spiDE-mixed-benchmark.Rmd`  (calibration figure — in scope for this branch)
 
 Add a **calibration** section (figure + table, read from a shipped benchmark CSV
-like the existing timing/accuracy figures): null type-I error for `fixed` /
-`intercept` / `slope` × `df.method` across the `S` grid, for the Response effect
-and the ResponseNiche effect separately — the visual evidence that Satterthwaite
-relieves ResponseNiche over-conservatism while leaving Response at ≈ 0.99×.
+via the existing `bench()` helper, exactly like the timing/accuracy figures):
+null type-I error for `fixed` / `intercept` / `slope` × `df.method` across the
+`S` grid, for the Response effect and the ResponseNiche effect separately — the
+visual evidence that Satterthwaite relieves ResponseNiche over-conservatism while
+leaving Response at ≈ 0.99×.
+
+**Artifact.** The figure reads a shipped CSV
+`inst/extdata/benchmark/null_calibration.csv` (columns roughly `S`, `layout`,
+`method`, `df.method`, `effect` ∈ {`response`, `responseniche`}, `type1`). This
+branch **produces and ships that CSV** from the local small-grid calibration run
+(assessment step 1–2 below) so the vignette renders self-contained, matching how
+`pql_timing.csv` / `timing.csv` are already shipped. Regenerating it at full grid
+on HPC (the research-branch `null` scenario) is the same copy-into-`inst` step the
+other benchmark CSVs use.
 
 ## Assessment plan (simulation harness)
 
