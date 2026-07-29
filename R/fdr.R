@@ -79,13 +79,10 @@
     tmat <- f@t_stat[genes, rn, drop = FALSE]
     cm <- f@coefmap[respcols, , drop = FALSE][rn, , drop = FALSE]
     cols <- cm$covariate
-    # two-sided min-tail p per covariate (t reference for a mixed-effects fit,
-    # normal reference otherwise)
-    lower <- if (is.null(f@df)) {
-      stats::pnorm(tmat, lower.tail = TRUE)
-    } else {
-      stats::pt(tmat, df = f@df, lower.tail = TRUE)
-    }
+    # per-column df aligned to the ResponseNiche subset (rn) of the tested cols;
+    # a scalar/NULL @df is used as-is (recycled / normal reference).
+    dfn <- if (is.null(f@df) || length(f@df) == 1L) f@df else f@df[rn]
+    lower <- .ptByCol(tmat, dfn)
     pmat <- pmin(lower, 1 - lower)
     do.call(rbind, lapply(seq_along(cols), function(j) {
       data.frame(

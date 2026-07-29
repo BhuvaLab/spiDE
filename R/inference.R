@@ -19,6 +19,29 @@
   split(seq_len(n), ceiling(seq_len(n) / block.size))
 }
 
+#' Apply a t (or normal) tail to a statistic matrix, with per-column df
+#'
+#' \code{df} may be NULL (normal reference), a scalar (one df for all columns),
+#' a length-\code{ncol(tmat)} vector (a df per tested column, broadcast down the
+#' rows), or a matrix matching \code{tmat}. \code{tmat} may be a genes x k matrix
+#' or a length-k vector (a single gene). Centralises the reference-distribution
+#' logic so both the inference and FDR stages consume \code{@df} identically.
+#' @noRd
+.ptByCol <- function(tmat, df, lower.tail = TRUE) {
+  if (is.null(df)) {
+    return(stats::pnorm(tmat, lower.tail = lower.tail))
+  }
+  if (length(df) == 1L) {
+    return(stats::pt(tmat, df = df, lower.tail = lower.tail))
+  }
+  dfx <- if (is.matrix(tmat) && !is.matrix(df)) {
+    matrix(df, nrow(tmat), ncol(tmat), byrow = TRUE)
+  } else {
+    df               # vector tmat with length-k df, or df already a matrix
+  }
+  stats::pt(tmat, df = dfx, lower.tail = lower.tail)
+}
+
 #' Per-gene NB log-likelihood, computed gene-block-wise
 #'
 #' Sums the negative-binomial log-likelihood per gene without ever densifying
@@ -85,13 +108,13 @@
   if (is.null(W_full)) {
     # fixed-effects fit: covariance from the tested sub-design, normal reference
     varcov <- SpaNorm::invert_mat(crossprod(Wsub * wt_g, Wsub))
-    ptail <- function(t, lower.tail) stats::pnorm(t, lower.tail = lower.tail)
+    ptail <- function(t, lower.tail) .ptByCol(t, NULL, lower.tail)
   } else {
     # mixed-effects fit: full penalised information (X'WX + Lambda), then the
     # fixed-effect (Response/ResponseNiche) block -> larger, between-sample SEs
     info <- crossprod(W_full * wt_g, W_full) + diag(penalty)
     varcov <- SpaNorm::invert_mat(info)[sel, sel, drop = FALSE]
-    ptail <- function(t, lower.tail) stats::pt(t, df = df, lower.tail = lower.tail)
+    ptail <- function(t, lower.tail) .ptByCol(t, df, lower.tail)
   }
   se <- sqrt(psi_g * diag(varcov))
   t_stat <- alpha_g / se
@@ -339,10 +362,8 @@
   t_stat <- SpaNorm::toRMatrix(alpha_block) / se
   colnames(t_stat) <- colnames(Wsub)
 
-  ptail <- if (is.null(W_full)) {
-    function(t, lower.tail) stats::pnorm(t, lower.tail = lower.tail)
-  } else {
-    function(t, lower.tail) stats::pt(t, df = df, lower.tail = lower.tail)
+  ptail <- function(t, lower.tail) {
+    .ptByCol(t, if (is.null(W_full)) NULL else df, lower.tail)
   }
 
   eps <- 1e-15
