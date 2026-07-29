@@ -112,3 +112,37 @@ test_that(".varParamCov matches a brute-force n x n REML information (2 RE group
     Ibrute[a, b] <- 0.5 * sum(diag(P %*% Vlist[[a]] %*% P %*% Vlist[[b]]))
   expect_equal(unname(vp$cov), unname(solve(Ibrute)), tolerance = 1e-6)
 })
+
+test_that("df.method='satterthwaite' yields a per-column @df; Response df ~ S-2", {
+  spe <- buildNiches(spiDE:::.toyClustered(n_samples = 16, sd_patient = 0.7),
+                     sigma = 30)
+  fb <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+                 df.method = "between", verbose = FALSE)
+  fs <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+                 df.method = "satterthwaite", verbose = FALSE)
+  db <- fits(fb)[[1]]@df
+  ds <- fits(fs)[[1]]@df
+  # between: scalar S-2 = 14; satterthwaite: one df per tested column
+  expect_length(db, 1L)
+  ct <- as.character(fits(fs)[[1]]@covtype)
+  n_tested <- sum(grepl("Response", ct))
+  expect_length(ds, n_tested)
+  # Response column df ~ S-2 (the 0.99x regression anchor)
+  cm <- fits(fs)[[1]]@coefmap
+  resp_name <- cm$covariate[ct == "Response"]
+  expect_equal(unname(ds[resp_name]), 14, tolerance = 0.20)   # 16 samples -> ~14
+  # niche-interaction dfs are larger than the Response df (within-sample info)
+  rn_names <- cm$covariate[ct == "ResponseNiche"]
+  expect_gt(stats::median(ds[rn_names]), ds[resp_name])
+})
+
+test_that("df.method='between' is byte-identical to the pre-existing scalar df", {
+  spe <- buildNiches(spiDE:::.toyClustered(n_samples = 12, sd_patient = 0.7),
+                     sigma = 30)
+  Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
+  fb <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+                 df.method = "between", verbose = FALSE)
+  expect_equal(fits(fb)[[1]]@df, 10)                        # 12 samples -> S-2
+  tb <- spiDE:::.blockedInference(fits(fb)[[1]], Y)
+  expect_false(any(is.na(tb@p.combined.pos)))
+})

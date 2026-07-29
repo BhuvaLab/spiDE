@@ -51,11 +51,13 @@ setMethod(
                         winsor = 4, lambda.a = 0,
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         fdr = 0.05, combine = c("cauchy", "brown"),
+                        df.method = c("between", "satterthwaite"),
                         block.size = NULL, gpu.mem.budget = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
     random <- match.arg(random)
     combine <- match.arg(combine)
+    df.method <- match.arg(df.method)
 
     # build niches if the requested bandwidths are not already present
     need <- paste0(name, sigma)
@@ -70,8 +72,8 @@ setMethod(
                     covariates = covariates, sigma = sigma, assay = assay,
                     cell_type = cell_type, sample_id = sample_id,
                     random = random, winsor = winsor, lambda.a = lambda.a,
-                    backend = backend, name = name, BPPARAM = BPPARAM,
-                    verbose = verbose, ...)
+                    backend = backend, name = name, df.method = df.method,
+                    BPPARAM = BPPARAM, verbose = verbose, ...)
 
     testSpiDE(res, spe = spe, assay = assay, fdr = fdr, combine = combine,
               block.size = block.size, backend = backend,

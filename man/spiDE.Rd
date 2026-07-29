@@ -24,6 +24,7 @@ spiDE(spe, condition, ...)
   name = "Niche",
   fdr = 0.05,
   combine = c("cauchy", "brown"),
+  df.method = c("between", "satterthwaite"),
   block.size = NULL,
   gpu.mem.budget = NULL,
   BPPARAM = BiocParallel::SerialParam(),
@@ -86,6 +87,16 @@ on the accelerator, forcing a serial \code{BPPARAM} in the process).}
 
 \item{combine}{one of "cauchy" (default) or "brown", the within-gene combiner
 for the correlated niche p-values (passed to \code{\link[=testSpiDE]{testSpiDE()}}).}
+
+\item{df.method}{one of "between" (default) or "satterthwaite"; only used
+when \code{random != "none"}. "between" tests every Response/ResponseNiche
+coefficient against the same scalar between-sample reference df
+(\code{S - 2}), the original back-compatible behaviour. "satterthwaite"
+instead derives a separate df per tested column from the shared
+variance-component fit, distinguishing between-sample contrasts
+(Response: small df, close to "between") from within-sample contrasts
+(ResponseNiche: larger df, more power) rather than applying \code{S - 2}
+to both. Ignored when \code{random == "none"}.}
 
 \item{block.size}{a numeric, genes per inference block (NULL = a single
 block on the CPU backend, or a memory-bounded auto-selected size on the

@@ -47,6 +47,22 @@
   idx
 }
 
+#' Gene-averaged working weights over all cells, computed gene-block-wise
+#'
+#' The representative w-bar_c = mean_g mu_{c,g}/(1 + psi_g mu_{c,g}) used to form
+#' the representative penalised inverse for the Satterthwaite df. Blocked over
+#' genes so the genes x cells mean matrix is never fully materialised.
+#' @noRd
+.repWeights <- function(Y, alpha, W, psi, block.size = 2000L) {
+  ng <- nrow(alpha)
+  acc <- numeric(ncol(Y))
+  for (gi in .chunkGenes(ng, block.size)) {
+    mub <- SpaNorm::calculateMu(rep(0, length(gi)), alpha[gi, , drop = FALSE], W)
+    acc <- acc + colSums(mub / (1 + psi[gi] * mub))
+  }
+  acc / ng
+}
+
 #' Estimate random-effect variance components (Schall / PQL, shared across genes)
 #'
 #' Implements the mixed model via ridge: random-effect columns are penalised by
@@ -74,15 +90,24 @@
 #'   (NULL = all cells). The final fit always uses all cells.
 #' @param re.maxit.psi dispersion iterations (\code{maxit.psi}) for the inner
 #'   loop fits; the final fit uses full dispersion.
+#' @param df.method one of "between" (scalar \code{S - 2} residual df, the
+#'   default) or "satterthwaite" (a per-tested-column df vector via
+#'   \code{.satterthwaiteDF()}).
+#' @param cols_tested a logical over \code{colnames(W)} marking the
+#'   Response/ResponseNiche columns needing a df (only used when
+#'   \code{df.method == "satterthwaite"}).
 #' @return a list with the fitNB result plus \code{penalty} (per-column
 #'   \code{lambda.a}), \code{tau2} (named variance components) and \code{df}
-#'   (effective residual degrees of freedom).
+#'   (effective residual degrees of freedom: a scalar under "between", a
+#'   named length-k vector aligned to \code{cols_tested} under
+#'   "satterthwaite").
 #' @importFrom stats setNames
 #' @noRd
 .fitNBmixed <- function(Y, W, re_group, lambda.a, winsor, backend, verbose,
                         re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
                         tau2.range = c(1e-8, 1e4), idx = NULL,
-                        re.maxit.psi = 1L, ...) {
+                        re.maxit.psi = 1L, df.method = "between",
+                        cols_tested = NULL, ...) {
   p <- ncol(W)
   groups <- unique(re_group[!is.na(re_group)])
   base <- if (length(lambda.a) == 1) rep(lambda.a, p) else lambda.a
@@ -151,9 +176,23 @@
   # in the between-sample error stratum, so they are tested against the number of
   # samples, not cells (the condition has two levels -> S - 2). This, together
   # with the working (Pearson) dispersion used at inference time, is what
-  # corrects the cell-level pseudo-replication.
+  # corrects the cell-level pseudo-replication. df.method = "satterthwaite"
+  # instead derives a per-tested-column df from the shared variance-component
+  # fit (see .satterthwaiteDF()), which differentiates between-sample contrasts
+  # (Response, small df) from within-sample contrasts (ResponseNiche, larger
+  # df) rather than applying the same S - 2 to both.
   n_samples <- sum(re_group == "SampleInt", na.rm = TRUE)
-  df <- max(n_samples - 2, 1)
+  df_between <- max(n_samples - 2, 1)
+  if (df.method == "satterthwaite" && !is.null(cols_tested)) {
+    wbar <- .repWeights(Y, fit$alpha, W, fit$psi)
+    A <- crossprod(W * sqrt(wbar))
+    minv <- SpaNorm::invert_mat(A + diag(pen))
+    tested <- which(cols_tested)
+    df <- .satterthwaiteDF(A, minv, pen, re_group, tau2, tested, ncol(Y),
+                          colnames(W)[tested])
+  } else {
+    df <- df_between
+  }
 
   c(fit, list(penalty = pen, tau2 = tau2, df = df))
 }
@@ -229,7 +268,7 @@
                              verbose, sample_id = "sample_id", random = "none",
                              re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
                              re.prop = 1, re.maxit.psi = 1L,
-                             re.min.cells = 100L, ...) {
+                             re.min.cells = 100L, df.method = "between", ...) {
   des <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
                            cell_type, name, sample_id, random)
   W <- des$W
@@ -249,7 +288,10 @@
     fit <- .fitNBmixed(Y, W, des$re_group, lambda.a, winsor, backend, verbose,
                        re.maxit = re.maxit, re.tol = re.tol,
                        tau2.init = tau2.init, idx = idx,
-                       re.maxit.psi = re.maxit.psi, ...)
+                       re.maxit.psi = re.maxit.psi,
+                       df.method = df.method,
+                       cols_tested = grepl("Response", as.character(des$covtype)),
+                       ...)
     penalty <- fit$penalty
     tau2 <- fit$tau2
     df <- fit$df
@@ -360,6 +402,15 @@
 #'   final all-cell fit always uses full dispersion). \code{1} (default) skips
 #'   the redundant re-estimation of the barely-moving dispersion each iteration.
 #' @param re.min.cells the per-stratum floor for \code{re.prop} subsampling.
+#' @param df.method one of "between" (default) or "satterthwaite"; only used
+#'   when \code{random != "none"}. "between" tests every Response/ResponseNiche
+#'   coefficient against the same scalar between-sample reference df
+#'   (\code{S - 2}), the original back-compatible behaviour. "satterthwaite"
+#'   instead derives a separate df per tested column from the shared
+#'   variance-component fit, distinguishing between-sample contrasts
+#'   (Response: small df, close to "between") from within-sample contrasts
+#'   (ResponseNiche: larger df, more power) rather than applying \code{S - 2}
+#'   to both. Ignored when \code{random == "none"}.
 #' @param BPPARAM a BiocParallelParam (reserved for the inference stage).
 #' @param verbose a logical, whether to print fitting progress.
 #' @param ... further arguments forwarded to \code{\link[SpaNorm]{fitNB}}.
@@ -387,9 +438,11 @@ setMethod(
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
                         re.prop = 1, re.maxit.psi = 1L, re.min.cells = 100L,
+                        df.method = c("between", "satterthwaite"),
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
     random <- match.arg(random)
+    df.method <- match.arg(df.method)
     checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
     checkCondition(spe, condition)
     checkCovariates(spe, covariates)
@@ -417,7 +470,7 @@ setMethod(
                        re.maxit = re.maxit, re.tol = re.tol,
                        tau2.init = tau2.init, re.prop = re.prop,
                        re.maxit.psi = re.maxit.psi,
-                       re.min.cells = re.min.cells, ...)
+                       re.min.cells = re.min.cells, df.method = df.method, ...)
     })
     names(fits) <- paste0(name, sigma)
 

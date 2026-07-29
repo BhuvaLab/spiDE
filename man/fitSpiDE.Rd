@@ -28,6 +28,7 @@ fitSpiDE(spe, condition, ...)
   re.prop = 1,
   re.maxit.psi = 1L,
   re.min.cells = 100L,
+  df.method = c("between", "satterthwaite"),
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
   ...
@@ -114,6 +115,16 @@ final all-cell fit always uses full dispersion). \code{1} (default) skips
 the redundant re-estimation of the barely-moving dispersion each iteration.}
 
 \item{re.min.cells}{the per-stratum floor for \code{re.prop} subsampling.}
+
+\item{df.method}{one of "between" (default) or "satterthwaite"; only used
+when \code{random != "none"}. "between" tests every Response/ResponseNiche
+coefficient against the same scalar between-sample reference df
+(\code{S - 2}), the original back-compatible behaviour. "satterthwaite"
+instead derives a separate df per tested column from the shared
+variance-component fit, distinguishing between-sample contrasts
+(Response: small df, close to "between") from within-sample contrasts
+(ResponseNiche: larger df, more power) rather than applying \code{S - 2}
+to both. Ignored when \code{random == "none"}.}
 
 \item{BPPARAM}{a BiocParallelParam (reserved for the inference stage).}
 
