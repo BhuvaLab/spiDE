@@ -249,32 +249,34 @@ never the real obstacle.
 The real obstacle is the **error stratum**: making `resp` estimable does not by
 itself make its test honest. On the page-5 null (per-sample intercepts, no
 response effect) we test `resp` four ways, and — because unequal cell counts are
-an obvious worry — repeat it under a **3-fold cell imbalance** (90 vs 270
-cells/sample, balanced across conditions). Response-effect null type-I at
-$\alpha = 0.05$ (should be $\approx 0.05$; full script in
-`analysis/statistician-review/imbalance.R`):
+an obvious worry — sweep a **cell-count imbalance from 1× to 10×** (the larger
+samples get up to 10× the cells, balanced across conditions). Response-effect
+null type-I at $\alpha = 0.05$ (should be $\approx 0.05$; a few folds shown, full
+1×–10× sweep in `analysis/statistician-review/imbalance.R`):
 
 ```{r nested_imbalance_table, echo = FALSE}
 knitr::kable(
   data.frame(
-    design = c("balanced", "3-fold imbalance"),
-    `fixed (cell SE)` = c(0.762, 0.852),
-    `nested, cell SE` = c(0.809, 0.823),
-    `nested, between-sample df` = c(0.035, 0.037),
-    `random intercept` = c(0.040, 0.041),
+    imbalance = c("1x (balanced)", "3x", "5x", "10x"),
+    `fixed (cell SE)` = c(0.730, 0.837, 0.898, 0.905),
+    `nested, cell SE` = c(0.763, 0.832, 0.833, 0.825),
+    `nested, between-sample df` = c(0.047, 0.048, 0.040, 0.038),
+    `random intercept` = c(0.048, 0.053, 0.042, 0.045),
     check.names = FALSE),
-  caption = paste("Response-effect null type-I. Nesting alone (cell SE) does",
-                  "not help; testing against the between-sample stratum -- or,",
-                  "equivalently, a random intercept -- calibrates it, and both",
-                  "are robust to a 3-fold cell imbalance."))
+  caption = paste("Response-effect null type-I across a cell-imbalance sweep.",
+                  "Nesting alone (cell SE) does not help -- and the plain",
+                  "cell-level fixed test only worsens as imbalance grows;",
+                  "testing against the between-sample stratum, or equivalently a",
+                  "random intercept, stays calibrated all the way to 10-fold."))
 ```
 
 Two things to take from this. First, **the nesting alone is not the fix**:
 tested at the cell SE it is as anti-conservative as ignoring samples entirely
-($\approx 0.8$); it is the between-sample stratum ($S-2$ df) — exactly what the
-random intercept supplies — that calibrates it. Second, a properly-tested nested
-*fixed* model is a legitimate alternative to the random effect **for the main
-effect**, and both stay calibrated under a 3-fold cell imbalance. We nonetheless
+($\approx 0.8$, and *worse* as imbalance grows); it is the between-sample stratum
+($S-2$ df) — exactly what the random intercept supplies — that calibrates it.
+Second, a properly-tested nested *fixed* model is a legitimate alternative to the
+random effect **for the main effect**, and both stay calibrated across the entire
+1×–10× imbalance sweep. We nonetheless
 use random effects because they scale to thousands of genes with a single pooled
 $\tau^2$, borrow strength for sparse genes, handle the NB-GLM and covariates
 without hand-assembling error strata, and — the part that actually matters for

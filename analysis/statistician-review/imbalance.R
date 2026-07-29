@@ -24,29 +24,30 @@
 suppressPackageStartupMessages({ library(SpatialExperiment); library(S4Vectors) })
 QUICK <- "--quick" %in% commandArgs(trailingOnly = TRUE)
 n_samples <- 12L
-n_genes   <- if (QUICK) 60L else 200L
-seeds     <- if (QUICK) 1:2 else 1:6
+n_genes   <- if (QUICK) 60L else 150L
+seeds     <- if (QUICK) 1:2 else 1:4
 n_per     <- 90L
 SD_PAT    <- 0.7
 have_lmerTest <- requireNamespace("lmerTest", quietly = TRUE)
 
-# per-sample cell counts: 3-fold imbalance, balanced ACROSS conditions so it is
-# not confounded with the tested contrast (half of each group large, half small)
-cell_counts <- function(cond, imbalance) {
+# per-sample cell counts at a given fold: half of each condition group gets
+# fold x n_per cells, half gets n_per (balanced ACROSS conditions so the
+# imbalance is not confounded with the tested contrast). fold = 1 => balanced.
+cell_counts <- function(cond, fold) {
   n <- rep(n_per, length(cond))
-  if (imbalance) for (g in unique(cond)) {
+  if (fold > 1) for (g in unique(cond)) {
     gs <- which(cond == g)
-    n[gs[seq_len(floor(length(gs) / 2))]] <- 3L * n_per
+    n[gs[seq_len(floor(length(gs) / 2))]] <- as.integer(fold) * n_per
   }
   n
 }
 
-simulate_null <- function(seed, imbalance) {
+simulate_null <- function(seed, fold) {
   set.seed(seed)
   cts <- c("A", "B", "C"); gn <- sprintf("G%d", seq_len(n_genes))
   sids <- sprintf("S%d", seq_len(n_samples))
   cond <- rep(c("Responder", "Non-responder"), length.out = n_samples)
-  nps <- cell_counts(cond, imbalance)
+  nps <- cell_counts(cond, fold)
   cd <- do.call(rbind, lapply(seq_along(sids), function(i) {
     ct <- sample(cts, nps[i], replace = TRUE)
     data.frame(sample_id = sids[i], condition = cond[i], cell_type = ct,
@@ -104,19 +105,18 @@ arms_type1 <- function(sim) {
   colMeans(p < 0.05, na.rm = TRUE)
 }
 
-cat(sprintf("Task 2: nested contr.sum fixed vs RE, balanced vs 3-fold imbalance\n"))
-cat(sprintf("  S=%d, n_genes=%d, seeds=%s, n_per=%d (imbalanced: %d vs %d)\n\n",
-            n_samples, n_genes, paste(range(seeds), collapse = "-"), n_per,
-            n_per, 3L * n_per))
-res <- list()
-for (imb in c(FALSE, TRUE)) {
+folds <- if (QUICK) c(1L, 3L, 10L) else 1:10
+cat(sprintf("Task: nested contr.sum fixed vs RE, cell-imbalance sweep 1x-10x\n"))
+cat(sprintf("  S=%d, n_genes=%d, seeds=%s; large samples get fold x %d cells\n\n",
+            n_samples, n_genes, paste(range(seeds), collapse = "-"), n_per))
+res <- do.call(rbind, lapply(folds, function(fold) {
   acc <- NULL
-  for (s in seeds) acc <- rbind(acc, arms_type1(simulate_null(s, imb)))
+  for (s in seeds) acc <- rbind(acc, arms_type1(simulate_null(s, fold)))
   m <- colMeans(acc)
-  res[[if (imb) "3-fold imbalance" else "balanced"]] <- m
-  cat(sprintf("%-16s  fixed-cell=%.3f  nested-cell=%.3f  nested-between=%.3f  RE-lmer=%.3f\n",
-              if (imb) "3-fold imbal:" else "balanced:",
-              m["fixed-cell"], m["nested-cell"], m["nested-between"], m["RE-lmer"]))
-}
+  cat(sprintf("  fold %2dx:  fixed-cell=%.3f  nested-cell=%.3f  nested-between=%.3f  RE-lmer=%.3f\n",
+              fold, m["fixed-cell"], m["nested-cell"], m["nested-between"],
+              m["RE-lmer"]))
+  data.frame(fold = fold, as.list(m), check.names = FALSE)
+}))
 saveRDS(res, "analysis/statistician-review/imbalance_results.rds")
 cat("\nwrote analysis/statistician-review/imbalance_results.rds\n")
