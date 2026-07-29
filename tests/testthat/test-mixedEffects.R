@@ -1,7 +1,7 @@
 # Tests for the mixed-effects (random-effects via ridge) correction for
 # cell-level pseudo-replication. See R/fitSpiDE.R (.fitNBmixed) and R/inference.R.
 
-test_that("random='none' is unchanged: no RE slots, results identical", {
+test_that("random='none' has no RE slots; mixed fits populate them (+ satterthwaite @df vector)", {
   spe <- buildNiches(.toySPE(), sigma = 20)
   a <- fitSpiDE(spe, "condition", sigma = 20, verbose = FALSE)
   fa <- fits(a)[[1]]
