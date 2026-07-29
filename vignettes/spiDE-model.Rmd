@@ -237,6 +237,50 @@ amount that depends on how reliable its own data is relative to $\tau^2$. The
 rest of this section makes that precise and shows it happening on real
 numbers.
 
+### An aside: nesting the samples, and does cell imbalance matter?
+
+The collinearity above is an artefact of coding each sample as a *free,
+independent* effect. You can instead **nest** the samples within their
+condition group — code them with `contr.sum` inside each group — and then the
+response contrast *is* estimable: with $S$ samples you fit $S-2$ within-group
+contrasts plus `resp`, rather than $S-1$ collinear dummies. So estimability was
+never the real obstacle.
+
+The real obstacle is the **error stratum**: making `resp` estimable does not by
+itself make its test honest. On the page-5 null (per-sample intercepts, no
+response effect) we test `resp` four ways, and — because unequal cell counts are
+an obvious worry — repeat it under a **3-fold cell imbalance** (90 vs 270
+cells/sample, balanced across conditions). Response-effect null type-I at
+$\alpha = 0.05$ (should be $\approx 0.05$; full script in
+`analysis/statistician-review/imbalance.R`):
+
+```{r nested_imbalance_table, echo = FALSE}
+knitr::kable(
+  data.frame(
+    design = c("balanced", "3-fold imbalance"),
+    `fixed (cell SE)` = c(0.762, 0.852),
+    `nested, cell SE` = c(0.809, 0.823),
+    `nested, between-sample df` = c(0.035, 0.037),
+    `random intercept` = c(0.040, 0.041),
+    check.names = FALSE),
+  caption = paste("Response-effect null type-I. Nesting alone (cell SE) does",
+                  "not help; testing against the between-sample stratum -- or,",
+                  "equivalently, a random intercept -- calibrates it, and both",
+                  "are robust to a 3-fold cell imbalance."))
+```
+
+Two things to take from this. First, **the nesting alone is not the fix**:
+tested at the cell SE it is as anti-conservative as ignoring samples entirely
+($\approx 0.8$); it is the between-sample stratum ($S-2$ df) — exactly what the
+random intercept supplies — that calibrates it. Second, a properly-tested nested
+*fixed* model is a legitimate alternative to the random effect **for the main
+effect**, and both stay calibrated under a 3-fold cell imbalance. We nonetheless
+use random effects because they scale to thousands of genes with a single pooled
+$\tau^2$, borrow strength for sparse genes, handle the NB-GLM and covariates
+without hand-assembling error strata, and — the part that actually matters for
+the niche interactions — supply the per-coefficient degrees of freedom (see
+*Per-coefficient degrees of freedom* below), not because nesting fails.
+
 ## The model
 
 We add **patient-level random effects** that soak up the between-patient variability the fixed-effects model wrongly attributes to residual (cell-level) noise. Crucially, we add them only for the *response-related* effects — the only ones we do inference on — by giving each response coefficient its patient-level random counterpart:
