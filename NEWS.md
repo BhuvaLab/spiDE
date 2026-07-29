@@ -1,3 +1,17 @@
+# spiDE 0.99.6
+
+* `fitSpiDE()` / `spiDE()` gain a `df.method` argument for the mixed-effects fit
+  (`random != "none"`). The default `"between"` keeps the single between-patient
+  `S - 2` reference df (back-compatible). The new `"satterthwaite"` computes a
+  **per-coefficient** Satterthwaite reference df, so the response-niche
+  interactions — which carry within-patient information and were over-conservative
+  under a flat `S - 2` — get their larger effective df, while the response main
+  effect stays at `~ S - 2` by construction. `SpiDEFit@df` is accordingly a scalar
+  under `"between"` or a named per-tested-coefficient vector under
+  `"satterthwaite"`. The df is invariant to the per-gene dispersion, so it is
+  computed once per bandwidth and adds nothing to the per-gene inference loop. See
+  the *spiDE model* and *Speeding up the mixed-effects fit* vignettes.
+
 # spiDE 0.99.5
 
 * `mergeNiches()` now records the merged niche group membership on the object,

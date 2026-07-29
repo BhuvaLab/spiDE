@@ -589,7 +589,17 @@ With the random effects in place, three things change relative to the fixed-effe
     rescale it by how much residual scatter this particular fit actually
     shows," now applied on top of the random-effects model rather than a
     plain GLM.
-3.  **Reference distribution** is a $t$ with a **between-patient** degrees of freedom $S - 2$, not a normal — the "$-2$" is the same bookkeeping as an ordinary two-sample $t$-test (Responder vs. non-Responder) at the *patient* level: two group means are estimated from the between-patient information, leaving $S-2$ residual df, regardless of how many niche coefficients are simultaneously tested.
+3.  **Reference distribution** is a $t$, not a normal. The default df
+    (`df.method = "between"`) is a **between-patient** $S - 2$ — the same
+    bookkeeping as an ordinary two-sample $t$-test (Responder vs. non-Responder)
+    at the *patient* level: two group means estimated from the between-patient
+    information leave $S-2$ residual df. This is exactly right for the response
+    **main** effect $\eta_g$, a pure between-patient contrast. It is *too*
+    conservative for the response–niche coefficients $\beta_{g,t,t'}$, which also
+    draw on *within*-patient variation in the niche covariate and so carry a
+    larger effective sample size — one $S-2$ cannot be right for both.
+    `df.method = "satterthwaite"` replaces it with a **per-coefficient** df that
+    adapts to each contrast (see *Per-coefficient degrees of freedom* below).
 
 Together these test each response contrast against patient-level variability,
 not cell-level variability. Compare the null calibration of the two fits (the
@@ -617,6 +627,100 @@ ggplot(qq_df, aes(expected, observed, colour = mode)) +
        y = expression(-log[10]("observed p")))
 ```
 
+## Per-coefficient degrees of freedom (Satterthwaite)
+
+The single $S-2$ reference df is right for the response *main* effect but wrong
+for the response–niche interactions, and it cannot be right for both. $\eta_g$
+is a pure between-patient contrast (the condition is a patient-level label), so
+its effective df genuinely is $\approx S-2$. Each $\beta_{g,t,t'}$, by contrast,
+multiplies a niche covariate that varies *within* a patient, so it is informed
+by far more than $S$ independent pieces of information — on real data the
+per-coefficient effective sample size can span three orders of magnitude across
+the tested columns. Referencing all of them against $S-2$ leaves the interaction
+tests badly over-conservative.
+
+`df.method = "satterthwaite"` (on `fitSpiDE()` / `spiDE()`) gives each tested
+coefficient $j$ its own **Satterthwaite** degrees of freedom,
+$$
+\nu_j \;=\; \frac{2\,\big(\widehat{\mathrm{Var}}\,\hat\theta_j\big)^2}
+                 {\mathrm{Var}\!\big(\widehat{\mathrm{Var}}\,\hat\theta_j\big)},
+$$
+the classical "how many independent variances is this SE really worth" ratio —
+the same device `lmerTest` / `pbkrtest` use for small-sample linear mixed
+models, here applied to the PQL working model. The denominator propagates (by
+the delta method) the uncertainty in the *variance parameters* $\theta =
+(\varphi,\ \tau^2_\text{int},\ \tau^2_\text{slope})$ through the SE, using their
+covariance $\widehat{\mathrm{Cov}}(\hat\theta)$ — a small
+$(1+\#\text{groups})$-square matrix from the reduced-form REML information of the
+working model, built entirely from the $p\times p$ penalised inverse $M^{-1} =
+(\tilde W^\top \bar D\,\tilde W + \Lambda)^{-1}$ (never an $n\times n$ matrix).
+
+Two facts make this both cheap and safe:
+
+-   **It is invariant to the per-gene dispersion $\varphi_g$.** The SE and every
+    term of its variance scale identically in $\varphi$, so $\varphi$ cancels in
+    the ratio $\nu_j$. What remains depends only on the *shared* working weights
+    and variance components, so a single per-coefficient df vector — computed
+    once per bandwidth from the representative penalised inverse — serves every
+    gene, exactly as one shared $\tau^2$ does. Nothing is added to the per-gene
+    inference loop.
+-   **The main effect is preserved, by construction.** For the between-patient
+    contrast $\eta_g$, $\widehat{\mathrm{Var}}\,\hat\eta_g$ is dominated by the
+    $\tau^2_\text{int}$ direction, whose uncertainty is governed by the $\approx
+    S$ patients — so $\nu$ returns to $\approx S-2$. The $S-2$ df is thus the
+    *special case for the main effect*, not a global constant; the niche
+    interactions move toward the (much larger) residual df.
+
+Both are visible on the toy fit ($S=10$ patients, so $S-2=8$):
+
+```{r satterthwaite, message = FALSE}
+fs <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+               df.method = "satterthwaite", verbose = FALSE)
+ff <- fits(fs)[[1]]
+ct <- as.character(ff$covtype)
+resp  <- ff$coefmap$covariate[ct == "Response"]
+niche <- ff$coefmap$covariate[ct == "ResponseNiche"]
+c(Response = unname(ff$df[resp]),
+  ResponseNiche.median = round(median(ff$df[niche]), 1))
+```
+
+The `Response` df sits at $\approx S-2 = 8$ (the $0.99\times$-calibrated main
+effect is left alone), while the niche-interaction df is much larger — the
+coefficients the flat $S-2$ was over-penalising. `@df` is now a **named vector**,
+one entry per tested (`Response` / `ResponseNiche`) column, aligned to the
+columns of `@t_stat` / `@se`; under the default `df.method = "between"` it stays
+the scalar $S-2$.
+
+## The testing framework
+
+How do we know the per-coefficient df is *calibrated* rather than merely
+plausible? The check is a **null-simulation type-I study**: simulate data with
+genuine between-patient clustering but *no* response effect ($\beta = 0$), fit
+each `random =` / `df.method` combination, and record the fraction of response
+tests significant at $\alpha = 0.05$, which should be $\approx 0.05$ for an
+honest test. Two properties matter, and they pull in opposite directions:
+
+-   **The main effect must stay $\approx$ nominal.** It calibrates at $\approx
+    0.99\times$ nominal under `"between"`, and — since $\nu \approx S-2$ there by
+    construction — `"satterthwaite"` must *not* move it. This is the
+    load-bearing regression: whatever the df change does to the niche
+    coefficients, it must leave the main effect exactly where it was.
+-   **The response–niche tests should approach nominal from below.** Under
+    `"between"` they are over-conservative (type-I well under $0.05$ once there
+    are enough patients); `"satterthwaite"`'s larger df should raise them
+    *toward* $0.05$ without overshooting into anti-conservatism. An overshoot
+    would mean the residual miscalibration lives in the covariance itself, and
+    the principled next step would be a Kenward–Roger bias-correction of
+    $\widehat{\mathrm{Cov}}(\hat\theta_\text{resp})$ — a heavier, second-order
+    correction not enabled here.
+
+This study is run at realistic scale (thousands of cells over tens of patients)
+in the package's benchmark harness (`research/`); the *Speeding up the
+mixed-effects fit* companion vignette shows the resulting calibration figure. On
+a small toy fixture the response–niche null is too noisy to read as a
+calibration — the main-effect preservation above is the part that is robust at
+toy scale.
+
 ## Interpreting a mixed `SpiDEFit`
 
 A fit made with `random != "none"` populates three extra slots on each
@@ -626,12 +730,14 @@ fixed-effects fit:
 | slot | what it holds | how to read it |
 |---|---|---|
 | `@tau2` | the fitted variance component(s), named `SampleInt` (and `SampleSlope` under `random = "slope"`) | on the **log-mean scale**: a patient with $u_s = +\hat\tau$ has roughly $e^{\hat\tau}$-fold higher baseline expression than average. If `@tau2` is tiny, patients barely differ beyond sampling noise (the mixed fit will look similar to, but always slightly more conservative than, the fixed fit); if it is large relative to the within-patient (Poisson/NB) noise, a sizeable share of what a fixed-effects fit reported as "response signal" was actually between-patient noise leaking through |
-| `@df` | the between-patient reference degrees of freedom, $S - 2$ | small `@df` (few patients) means a wide-tailed $t$ reference and hence conservative p-values *even for a real effect* — this is expected, not a bug, and improves with more patients |
+| `@df` | the Wald reference degrees of freedom: a scalar between-patient $S - 2$ under `df.method = "between"` (default), or a **named per-coefficient vector** under `df.method = "satterthwaite"` (`Response` $\approx S-2$, niche interactions larger) | small df (few patients) means a wide-tailed $t$ and hence conservative p-values *even for a real effect* — expected, not a bug; `"satterthwaite"` relieves this for the within-patient-informed niche coefficients while leaving the between-patient main effect untouched |
 | `@penalty` | the per-column ridge penalty actually used ($0$ on fixed columns, $1/\hat\tau^2_k$ on random ones) | mostly a diagnostic: a very small penalty on a random block means that group's $\hat\tau^2$ converged large, i.e. that source of between-patient variation is real and substantial |
 
 For the toy fit above, `mixed$fit$tau2` pooled across 300 genes should sit
-close to the simulated $0.49$; `mixed$fit$df` should read `10` ($S=12$
-patients).
+close to the simulated $0.49$; and because `mixed` uses the default
+`df.method = "between"`, `mixed$fit$df` is the scalar $S-2 = 8$ ($S=10$
+patients). The `df.method = "satterthwaite"` fit `fs` from the previous section
+instead carries a per-coefficient df vector.
 
 ## Usage and caveats
 
@@ -645,7 +751,7 @@ res <- spiDE(spe, condition = "condition", sigma = c(10, 30, 50),
 -   **Sample-level covariates.** A per-sample random intercept already adjusts for *all* between-sample nuisance variation, so it is confounded with measured sample-level covariates (Age, Sex, Stage) — exactly the collinearity demonstrated at the top of this section. `spiDE` therefore errors if such a covariate is passed together with `random != "none"` — drop it; the random intercept subsumes it.
 -   **Number of samples.** The correction is only as good as the between-sample information: with very few samples the variance components (and the $S-2$ reference df) are unstable, and a warning is issued.
 -   **Correct, not merely "fixed with extras".** The mixed fit does more than add a between-patient variance component: it also replaces the default's NB dispersion scaling and sub-design covariance with the correct **working (quasi-NB) dispersion** and **full penalised covariance**. So even when $\tau^2 \to 0$ (no genuine clustering) the mixed fit does *not* reproduce the default fit — it gives the correctly-scaled, and hence more conservative, standard errors. This is deliberate: the default fit is known to be anti-conservative, so its larger apparent "power" is partly spurious.
--   **Power needs samples and effect size.** Because the test is now honest, a real response-niche effect must be visible *between patients* to be declared. With few patients, or an effect seen in only a handful of responders, the between-patient df ($S-2$) and the inflated SEs will (correctly) leave it non-significant. Larger sample sizes restore power.
+-   **Power needs samples and effect size.** Because the test is now honest, a real response-niche effect must be visible *between patients* to be declared. With few patients, or an effect seen in only a handful of responders, the between-patient df and the inflated SEs will (correctly) leave it non-significant. `df.method = "satterthwaite"` recovers legitimate power for niche coefficients that carry within-patient information — giving them their larger effective df instead of the flat $S-2$ — without touching the honest between-patient df of the main effect; larger sample sizes restore power further.
 
 # Session info
 

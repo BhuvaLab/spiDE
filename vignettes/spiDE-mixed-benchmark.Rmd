@@ -169,6 +169,46 @@ if (!is.null(tm) && nrow(tm) > 0) {
 }
 ```
 
+# Null calibration and the reference degrees of freedom
+
+The mixed-effects fit corrects the fixed-effects anti-conservatism, but the
+*reference degrees of freedom* it then uses decides how conservative the
+corrected response-niche test is. The benchmark's `null` scenario (genuine
+between-patient clustering, no planted effect) measures the type-I error of the
+response-niche test across sample sizes for each `random =` mode; the figure
+reads its shipped summary.
+
+```{r calibration, fig.height = 4, fig.cap = "Null type-I error of the response-niche test across sample size S, per random-effects mode (gradient layout). Under the between-patient reference df, the mixed modes are over-conservative at small-to-moderate S, approaching the nominal 0.05 (dashed) only as S grows. Re-running the null study with df.method = 'satterthwaite' (the research null scenario now sweeps both) adds a per-mode arm whose per-coefficient df lifts these curves toward nominal."}
+cal <- bench("null_type1.csv")
+if (!is.null(cal)) {
+  cal <- cal[cal$layout == "gradient", , drop = FALSE]
+  # older summaries predate the df.method sweep; treat them as the between arm
+  if (is.null(cal$df.method)) cal$df.method <- "between"
+  cal$arm <- interaction(cal$method, cal$df.method, drop = TRUE, sep = " / ")
+  ggplot(cal, aes(S, type1, colour = arm)) +
+    geom_hline(yintercept = 0.05, linetype = 2, colour = spide_pal$ref) +
+    geom_line(linewidth = 0.7) + geom_point(size = 2) +
+    labs(x = "samples (S)", y = "response-niche type-I error", colour = NULL,
+         title = "Null calibration of the response-niche test")
+} else {
+  cat("*(Null calibration summary not found; run the benchmark study in",
+      "`research/`.)*")
+}
+```
+
+Under the default between-patient reference (`df.method = "between"`) the mixed
+modes are markedly **over-conservative** at small-to-moderate $S$: at $S=4$ the
+$S-2=2$ reference df crushes the response-niche type-I to $\approx 0.001$, and it
+climbs toward the nominal $0.05$ only as $S$ grows past $\sim 30$. That is the
+symptom the per-coefficient df targets — the niche coefficients carry more
+information than $S-2$ credits them with, most acutely when patients are few.
+Re-running this study with `df.method = "satterthwaite"` (the `research/` null
+scenario now sweeps both references on identically seeded data) adds a second arm
+per mode whose df adapts per coefficient, lifting the conservative small-$S$
+curves toward nominal while — by construction — leaving the response *main*
+effect at its $\approx 0.99\times$ calibration. See *The spiDE model* vignette
+for the statistics behind the per-coefficient df.
+
 # Summary
 
 * Subsampling cells for the PQL loop (`re.prop < 1`) plus a single inner
