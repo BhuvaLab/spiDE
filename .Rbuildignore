@@ -3,6 +3,7 @@
 ^data-raw$
 ^research$
 ^specs$
+^analysis$
 ^_pkgdown\.yml$
 ^docs$
 ^\.github$
