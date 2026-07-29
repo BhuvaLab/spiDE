@@ -174,7 +174,7 @@
   I <- matrix(0, Mn + 1L, Mn + 1L)
   ML <- minv * rep(pen, each = p)          # M^{-1} Lambda (scale columns by pen)
   I[1, 1] <- 0.5 * (ncells - p + sum(ML * t(ML)))   # tr((M^{-1}Lambda)^2)
-  minvLminv <- minv %*% ML                 # M^{-1} Lambda M^{-1}
+  minvLminv <- ML %*% minv                 # M^{-1} Lambda M^{-1}
   for (a in seq_len(Mn)) {
     ca <- gcols[[a]]
     Aa <- A[, ca, drop = FALSE]            # U_a = A[, group a]

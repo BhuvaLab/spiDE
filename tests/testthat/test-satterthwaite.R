@@ -60,3 +60,55 @@ test_that(".satterthwaiteDF gives large df for a within-group contrast, small fo
   expect_gt(df[["xin"]], 5 * df[["xbtw"]])           # within >> between
   expect_lt(df[["xbtw"]], n_g)                        # between ~ O(n_g), not O(n)
 })
+
+test_that(".satterthwaiteDF matches lmerTest with a random slope", {
+  skip_if_not_installed("lmerTest"); skip_if_not_installed("lme4")
+  set.seed(3)
+  n_g <- 30L; n_per <- 12L; n <- n_g * n_per
+  g <- factor(rep(seq_len(n_g), each = n_per))
+  x <- rnorm(n)
+  u0 <- rnorm(n_g, 0, 0.7); u1 <- rnorm(n_g, 0, 0.5)
+  y <- 1 + 0.4 * x + u0[as.integer(g)] + u1[as.integer(g)] * x + rnorm(n, 0, 1)
+  m <- lmerTest::lmer(y ~ x + (1 + x || g), REML = TRUE)   # independent int+slope
+  df_lmer <- summary(m)$coefficients["x", "df"]
+  vc <- as.data.frame(lme4::VarCorr(m))
+  t_int <- vc$vcov[vc$grp == "g" & is.na(vc$var2) & vc$var1 == "(Intercept)"]
+  t_slp <- vc$vcov[grepl("g", vc$grp) & vc$var1 == "x"]
+  sig2  <- vc$vcov[vc$grp == "Residual"]
+  Zi <- stats::model.matrix(~ 0 + g); Zs <- Zi * x
+  W  <- cbind(`(Intercept)` = 1, x = x, Zi, Zs)
+  reg <- c(NA, NA, rep("SampleInt", ncol(Zi)), rep("SampleSlope", ncol(Zs)))
+  wbar <- rep(1 / sig2, n)
+  pen  <- c(0, 0, rep(1 / t_int, ncol(Zi)), rep(1 / t_slp, ncol(Zs)))
+  A <- crossprod(W * sqrt(wbar)); minv <- SpaNorm::invert_mat(A + diag(pen))
+  df_s <- spiDE:::.satterthwaiteDF(A, minv, pen, reg,
+            c(SampleInt = t_int, SampleSlope = t_slp),
+            tested = 2L, ncells = n, tested_names = "x")
+  expect_equal(unname(df_s), unname(df_lmer), tolerance = 0.08)
+})
+
+test_that(".varParamCov matches a brute-force n x n REML information (2 RE groups)", {
+  set.seed(3)
+  n_g <- 12L; n_per <- 8L; n <- n_g * n_per
+  g <- factor(rep(seq_len(n_g), each = n_per)); x <- rnorm(n)
+  Zi <- stats::model.matrix(~ 0 + g); Zs <- Zi * x
+  W <- cbind(`(Intercept)` = 1, x = x, Zi, Zs)
+  reg <- c(NA, NA, rep("SampleInt", ncol(Zi)), rep("SampleSlope", ncol(Zs)))
+  t_int <- 0.5; t_slp <- 0.3; sig2 <- 1
+  wbar <- rep(1 / sig2, n)
+  pen <- c(0, 0, rep(1 / t_int, ncol(Zi)), rep(1 / t_slp, ncol(Zs)))
+  A <- crossprod(W * sqrt(wbar)); minv <- SpaNorm::invert_mat(A + diag(pen))
+  vp <- spiDE:::.varParamCov(A, minv, pen, reg, n)
+  # brute-force REML expected information I_ab = 0.5 tr(P V_a P V_b), phi = 1,
+  # P = W-bar - W-bar C minv C' W-bar; param order (phi, groups...)
+  Wd <- diag(wbar)
+  P <- Wd - Wd %*% W %*% minv %*% t(W) %*% Wd
+  Vlist <- c(list(diag(1 / wbar)),
+             lapply(vp$groups, function(gr) {
+               Z <- W[, which(reg == gr), drop = FALSE]; Z %*% t(Z)
+             }))
+  K <- length(Vlist); Ibrute <- matrix(0, K, K)
+  for (a in seq_len(K)) for (b in seq_len(K))
+    Ibrute[a, b] <- 0.5 * sum(diag(P %*% Vlist[[a]] %*% P %*% Vlist[[b]]))
+  expect_equal(unname(vp$cov), unname(solve(Ibrute)), tolerance = 1e-6)
+})
