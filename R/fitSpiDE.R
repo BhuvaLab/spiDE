@@ -158,6 +158,66 @@
   c(fit, list(penalty = pen, tau2 = tau2, df = df))
 }
 
+#' Covariance of the working-model variance parameters (phi, tau2_groups)
+#'
+#' Reduced-form REML expected (Fisher) information at phi = 1 for the working
+#' linear mixed model V = W-bar^{-1} + Z G Z', built entirely from p x p M^{-1}
+#' sub-blocks (never an n x n matrix). Parameter order is (phi, groups...). The
+#' phi-phi entry reduces to 0.5*(ncells - p + tr((M^{-1} Lambda)^2)); the
+#' group entries use B_{a,b} = A[ca,cb] - A[ca,] M^{-1} A[,cb] = Z_a' P Z_b.
+#' @noRd
+.varParamCov <- function(A, minv, pen, re_group, ncells) {
+  p <- ncol(A)
+  groups <- unique(re_group[!is.na(re_group)])
+  Mn <- length(groups)
+  gcols <- lapply(groups, function(gr) which(re_group == gr))
+  I <- matrix(0, Mn + 1L, Mn + 1L)
+  ML <- minv * rep(pen, each = p)          # M^{-1} Lambda (scale columns by pen)
+  I[1, 1] <- 0.5 * (ncells - p + sum(ML * t(ML)))   # tr((M^{-1}Lambda)^2)
+  minvLminv <- minv %*% ML                 # M^{-1} Lambda M^{-1}
+  for (a in seq_len(Mn)) {
+    ca <- gcols[[a]]
+    Aa <- A[, ca, drop = FALSE]            # U_a = A[, group a]
+    MinvAa <- minv %*% Aa
+    for (b in seq_len(a)) {
+      cb <- gcols[[b]]
+      Bab <- A[ca, cb, drop = FALSE] - crossprod(Aa, minv %*% A[, cb, drop = FALSE])
+      I[a + 1L, b + 1L] <- I[b + 1L, a + 1L] <- 0.5 * sum(Bab * Bab)  # 0.5||B||_F^2
+    }
+    tr_Baa <- sum(diag(A)[ca]) - sum(MinvAa * Aa)
+    tr_UMU <- sum((minvLminv %*% Aa) * Aa)
+    I[1, a + 1L] <- I[a + 1L, 1] <- 0.5 * (tr_Baa - tr_UMU)
+  }
+  cov <- tryCatch(solve(I),
+                  error = function(e) SpaNorm::invert_mat(I))
+  list(cov = cov, groups = groups, gcols = gcols)
+}
+
+#' Per-coefficient Satterthwaite degrees of freedom (shared across genes)
+#'
+#' df_j = 2 v_jj^2 / (d_j' Cov(theta-hat) d_j), with v_jj = [M^{-1}]_jj, gradient
+#' d_j = (v_jj, g_j1, ..., g_jM) and g_jm = (pen_m / tau2_m) * sum_{k in m} M^{-1}_{jk}^2.
+#' Invariant to the per-gene dispersion phi (spec), hence one shared vector.
+#' @noRd
+.satterthwaiteDF <- function(A, minv, pen, re_group, tau2, tested, ncells,
+                             tested_names) {
+  vp <- .varParamCov(A, minv, pen, re_group, ncells)
+  Vt  <- minv[tested, , drop = FALSE]      # k x p
+  vjj <- diag(minv)[tested]                # k
+  grad <- matrix(0, length(tested), length(vp$groups) + 1L)
+  grad[, 1] <- vjj
+  for (a in seq_along(vp$groups)) {
+    gc <- vp$gcols[[a]]
+    pen_m <- pen[gc[1]]                     # constant within a group
+    Sm <- rowSums(Vt[, gc, drop = FALSE]^2)
+    grad[, a + 1L] <- (pen_m / tau2[[vp$groups[a]]]) * Sm
+  }
+  varse2 <- rowSums((grad %*% vp$cov) * grad)
+  df <- 2 * vjj^2 / varse2
+  df <- pmin(pmax(df, 1), ncells)
+  stats::setNames(df, tested_names)
+}
+
 #' Fit the spiDE negative binomial GLM for one bandwidth
 #'
 #' @return a SpiDEFit with the fit populated and inference slots empty.

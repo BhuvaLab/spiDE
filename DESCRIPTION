@@ -58,7 +58,9 @@ Suggests:
     patchwork,
     scales,
     MASS,
-    nlme
+    nlme,
+    lme4,
+    lmerTest
 Remotes:
     bhuvad/SpaNorm
 URL: https://github.com/bhuvad/spiDE
