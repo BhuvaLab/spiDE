@@ -9,3 +9,4 @@ docs
 !.claude/skills/deploy-bioc
 !.claude/skills/hpc-job-sizing
 .DS_Store
+specs/
