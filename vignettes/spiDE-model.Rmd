@@ -276,12 +276,16 @@ tested at the cell SE it is as anti-conservative as ignoring samples entirely
 ($S-2$ df) — exactly what the random intercept supplies — that calibrates it.
 Second, a properly-tested nested *fixed* model is a legitimate alternative to the
 random effect **for the main effect**, and both stay calibrated across the entire
-1×–10× imbalance sweep. We nonetheless
-use random effects because they scale to thousands of genes with a single pooled
-$\tau^2$, borrow strength for sparse genes, handle the NB-GLM and covariates
-without hand-assembling error strata, and — the part that actually matters for
-the niche interactions — supply the per-coefficient degrees of freedom (see
-*Per-coefficient degrees of freedom* below), not because nesting fails.
+1×–10× imbalance sweep — so the choice between them is not about calibration. The
+random effect's one statistical edge is that it pools the between-sample variance
+across genes (a single $\tau^2$) and so borrows strength for the genes measured
+least reliably; that advantage is largest with **few patients** and fades as the
+cohort grows (each gene's own between-sample variance then has ample $S-2$ df).
+We use the random-effects model because it delivers that pooling and — the part
+that actually matters for the niche interactions — the per-coefficient degrees of
+freedom (see *Per-coefficient degrees of freedom* below), and because it handles
+the NB-GLM and covariates without hand-assembling error strata; not because a
+nested fixed model fails.
 
 ## The model
 
