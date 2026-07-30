@@ -63,8 +63,8 @@ Suggests:
     lmerTest
 Remotes:
     bhuvad/SpaNorm
-URL: https://github.com/bhuvad/spiDE
-BugReports: https://github.com/bhuvad/spiDE/issues
+URL: https://github.com/BhuvaLab/spiDE
+BugReports: https://github.com/BhuvaLab/spiDE/issues
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 LazyData: false
