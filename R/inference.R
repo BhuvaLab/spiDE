@@ -108,13 +108,15 @@
   if (is.null(W_full)) {
     # fixed-effects fit: covariance from the tested sub-design, normal reference
     varcov <- SpaNorm::invert_mat(crossprod(Wsub * wt_g, Wsub))
-    ptail <- function(t, lower.tail) .ptByCol(t, NULL, lower.tail)
   } else {
     # mixed-effects fit: full penalised information (X'WX + Lambda), then the
     # fixed-effect (Response/ResponseNiche) block -> larger, between-sample SEs
     info <- crossprod(W_full * wt_g, W_full) + diag(penalty)
     varcov <- SpaNorm::invert_mat(info)[sel, sel, drop = FALSE]
-    ptail <- function(t, lower.tail) .ptByCol(t, df, lower.tail)
+  }
+  # NULL df -> normal reference (fixed fit); scalar/vector df -> t (mixed fit)
+  ptail <- function(t, lower.tail) {
+    .ptByCol(t, if (is.null(W_full)) NULL else df, lower.tail)
   }
   se <- sqrt(psi_g * diag(varcov))
   t_stat <- alpha_g / se
