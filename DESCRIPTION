@@ -60,7 +60,8 @@ Suggests:
     MASS,
     nlme,
     lme4,
-    lmerTest
+    lmerTest,
+    withr
 Remotes:
     bhuvad/SpaNorm
 URL: https://github.com/BhuvaLab/spiDE

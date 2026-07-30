@@ -414,8 +414,15 @@ bench_dir <- system.file("extdata", "benchmark", package = "spiDE")
 bench <- function(f) {
   path <- file.path(bench_dir, f)
   if (!file.exists(path)) return(NULL)
-  if (grepl("\\.rds$", f)) readRDS(path) else
+  d <- if (grepl("\\.rds$", f)) readRDS(path) else
     utils::read.csv(path, check.names = FALSE)
+  # This report compares inference *modes* (fixed/intercept/slope), not
+  # df.method (between/satterthwaite -- that comparison is
+  # spiDE-mixed-benchmark.Rmd's). Collapse to the legacy "between" arm so
+  # every (method, S, ...) lookup below keeps matching exactly one row, as it
+  # did before the df.method sweep added a second arm to these tables.
+  if (!is.null(d) && !is.null(d$df.method)) d <- d[d$df.method == "between", ]
+  d
 }
 se_of <- function(df, m) {
   sd <- df[[paste0(m, "_sd")]]; n <- df[[paste0(m, "_n")]]
@@ -524,8 +531,15 @@ bench_dir <- system.file("extdata", "benchmark", package = "spiDE")
 bench <- function(f) {
   path <- file.path(bench_dir, f)
   if (!file.exists(path)) return(NULL)
-  if (grepl("\\.rds$", f)) readRDS(path) else
+  d <- if (grepl("\\.rds$", f)) readRDS(path) else
     utils::read.csv(path, check.names = FALSE)
+  # This report compares inference *modes* (fixed/intercept/slope), not
+  # df.method (between/satterthwaite -- that comparison is
+  # spiDE-mixed-benchmark.Rmd's). Collapse to the legacy "between" arm so
+  # every (method, S, ...) lookup below keeps matching exactly one row, as it
+  # did before the df.method sweep added a second arm to these tables.
+  if (!is.null(d) && !is.null(d$df.method)) d <- d[d$df.method == "between", ]
+  d
 }
 
 # Every summary table carries, for each metric `m`, the mean (bare column `m`)

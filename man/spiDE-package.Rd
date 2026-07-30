@@ -16,8 +16,8 @@ FDR (\code{\link[=testSpiDE]{testSpiDE()}}). \code{\link[=spiDE]{spiDE()}} wraps
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/bhuvad/spiDE}
-  \item Report bugs at \url{https://github.com/bhuvad/spiDE/issues}
+  \item \url{https://github.com/BhuvaLab/spiDE}
+  \item Report bugs at \url{https://github.com/BhuvaLab/spiDE/issues}
 }
 
 }
