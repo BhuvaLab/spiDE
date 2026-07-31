@@ -3,8 +3,16 @@
 #' Extract the tidy spiDE results table
 #'
 #' @param object a [SpiDEResults] object.
-#' @return a data.frame of significant neighbourhood-dependent DE calls, keyed
-#'   by (gene, ct_index, ct_niche, bandwidth). Empty until [testSpiDE()] is run.
+#' @param type which response result to return. "niche" (default) gives the
+#'   neighbourhood-dependent calls keyed by (gene, ct_index, ct_niche,
+#'   bandwidth), gated by the 3-level gene -> index -> niche cascade.
+#'   "celltype" gives cell-type-specific response calls keyed by
+#'   (gene, ct_index), gated by a 2-level gene -> cell type cascade.
+#'   "patient" gives one abundance-weighted response contrast per gene.
+#'   The latter two are empty unless the design carries a CellType:condition
+#'   block.
+#' @return a data.frame of significant calls; see \code{type}. Empty until
+#'   [testSpiDE()] is run.
 #' @examples
 #' data(toySpiDE)
 #' spe <- buildNiches(toySpiDE, sigma = 20)
@@ -12,7 +20,14 @@
 #' head(results(res))
 #' @rdname results
 #' @export
-setMethod("results", "SpiDEResults", function(object) object@results)
+setMethod("results", "SpiDEResults",
+          function(object, type = c("niche", "celltype", "patient"), ...) {
+  type <- match.arg(type)
+  switch(type,
+    niche    = object@results,
+    celltype = object@results.celltype,
+    patient  = object@results.patient)
+})
 
 #' Extract per-bandwidth fits
 #'

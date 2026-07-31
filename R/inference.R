@@ -103,7 +103,7 @@
 .waldBrownGene <- function(alpha_g, Wsub, wt_g, psi_g, cov_niche, index_ct,
                            uniq_index, combine = c("cauchy", "brown"),
                            W_full = NULL, penalty = NULL,
-                           sel = NULL, df = NULL) {
+                           sel = NULL, df = NULL, w_rc = NULL) {
   combine <- match.arg(combine)
   if (is.null(W_full)) {
     # fixed-effects fit: covariance from the tested sub-design, normal reference
@@ -156,7 +156,13 @@
     c(Gene = p_gene, p_ct)
   })
 
-  list(t_stat = t_stat, se = se, p.pos = dirs$p.pos, p.neg = dirs$p.neg)
+  # patient-level contrast SE: sqrt(psi * w'Vw). beta = w'alpha is recovered
+  # from the coefficients outside, so only the variance needs V.
+  se_pat <- if (is.null(w_rc)) NA_real_ else {
+    sqrt(psi_g * as.numeric(crossprod(w_rc, varcov %*% w_rc)))
+  }
+  list(t_stat = t_stat, se = se, p.pos = dirs$p.pos, p.neg = dirs$p.neg,
+       se_pat = se_pat)
 }
 
 #' Select rows of a matrix or a torch tensor
@@ -271,6 +277,23 @@
 #' @param varcov a \code{(block, p, p)} array or torch tensor.
 #' @return a \code{block x p} matrix (or torch tensor) of diagonals.
 #' @noRd
+#' Per-slice quadratic form w'Vw of a (block, p, p) array/tensor
+#'
+#' Needed for the patient-level contrast: the weighted-average response effect
+#' across cell types is w'alpha, whose variance is w'Vw. V exists inside the
+#' Wald block but only its diagonal is retained, so the quadratic form must be
+#' formed here before V is discarded.
+#' @noRd
+.batchQuad <- function(varcov, w) {
+  if (SpaNorm::is_torch_tensor(varcov)) {
+    wt <- torch::torch_tensor(as.numeric(w), dtype = varcov$dtype,
+                              device = varcov$device)
+    vw <- torch::torch_matmul(varcov, wt$unsqueeze(1)$unsqueeze(3))
+    return(as.numeric(torch::torch_sum(vw$squeeze(3) * wt$unsqueeze(1), dim = 2)))
+  }
+  apply(varcov, 1, function(V) as.numeric(crossprod(w, V %*% w)))
+}
+
 .batchDiag <- function(varcov) {
   if (SpaNorm::is_torch_tensor(varcov)) {
     return(torch::torch_diagonal(varcov, dim1 = 2, dim2 = 3))
@@ -318,7 +341,8 @@
 #'   \code{.waldBrownGene()}'s per-gene output over the block.
 #' @noRd
 .waldCauchyBlock <- function(alpha_block, Wsub, wtb, scale_block, cov_niche,
-                             index_ct, uniq_index, Wgram, W_full = NULL,
+                             index_ct, uniq_index, Wgram, w_rc = NULL,
+                             W_full = NULL,
                              penalty = NULL, sel = NULL, df = NULL,
                              backend = "cpu", cov.batch = NULL) {
   b <- nrow(alpha_block)
@@ -331,6 +355,8 @@
   # accumulated. This is what bounds peak memory for wide mixed-effects
   # designs independently of the caller's gene block.size.
   diagB <- matrix(0, nrow = b, ncol = ncol(Wsub))
+  # patient-level contrast variance w'Vw, accumulated while V exists
+  quadB <- rep(0, b)
   on_cpu <- !SpaNorm::is_torch_tensor(wtb)
   if (on_cpu && !is.null(cov.batch) && as.integer(cov.batch) == 1L) {
     # Very wide designs (large p) can only afford one gene per sub-batch, and
@@ -344,8 +370,10 @@
     for (g in seq_len(b)) {
       info <- crossprod(Wgram * wtb[g, ], Wgram)
       if (!is.null(pen_mat)) info <- info + pen_mat
-      vc_diag <- diag(SpaNorm::invert_mat(info))
-      diagB[g, ] <- if (is.null(W_full)) vc_diag else vc_diag[sel]
+      vcg <- SpaNorm::invert_mat(info)
+      if (!is.null(W_full)) vcg <- vcg[sel, sel, drop = FALSE]
+      diagB[g, ] <- diag(vcg)
+      if (!is.null(w_rc)) quadB[g] <- as.numeric(crossprod(w_rc, vcg %*% w_rc))
     }
   } else {
     for (ii in .chunkGenes(b, cov.batch)) {
@@ -356,6 +384,7 @@
         vc <- .subsetBatch(vc, sel)
       }
       diagB[ii, ] <- SpaNorm::toRMatrix(.batchDiag(vc))
+      if (!is.null(w_rc)) quadB[ii] <- .batchQuad(vc, w_rc)
     }
   }
   scale_block <- as.numeric(SpaNorm::toRMatrix(scale_block))
@@ -386,7 +415,13 @@
     cbind(Gene = p_gene, p_ct)
   })
 
-  list(t_stat = t_stat, se = se, p.pos = dirs$p.pos, p.neg = dirs$p.neg)
+  # patient-level contrast SE: sqrt(psi * w'Vw). beta = w'alpha is recovered
+  # from the coefficients outside, so only the variance needs V.
+  se_pat <- if (is.null(w_rc)) rep(NA_real_, b) else {
+    sqrt(scale_block * quadB)
+  }
+  list(t_stat = t_stat, se = se, p.pos = dirs$p.pos, p.neg = dirs$p.neg,
+       se_pat = se_pat)
 }
 
 #' Number of genes per inference block under a GPU memory budget
@@ -543,6 +578,21 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
   index_ct <- coefmap_sub$index[cov_niche]
   uniq_index <- unique(index_ct)
 
+  # Patient-level contrast weights. The CellType:condition block is cell-means
+  # coded (one coefficient per cell type), so the tissue-level response effect
+  # is the ABUNDANCE-WEIGHTED average of those coefficients: w_c proportional to
+  # the number of cells of that type, summing to 1, and zero on every other
+  # tested column. Absent that block (released design) w_rc stays NULL and the
+  # patient-level outputs are NA.
+  cov_rc <- covtype[cols_gene] == "ResponseCellType"
+  w_rc <- NULL
+  if (any(cov_rc)) {
+    ct_of_col <- coefmap_sub$index[cov_rc]
+    n_cells <- colSums(W_full[, paste0("CellType", ct_of_col), drop = FALSE] != 0)
+    w_rc <- numeric(sum(cols_gene))
+    w_rc[cov_rc] <- n_cells / sum(n_cells)
+  }
+
   # mixed-effects fit: use the full penalised information, the working (Pearson)
   # dispersion, and a between-patient t reference
   has_re <- !is.null(fit@penalty)
@@ -636,7 +686,7 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
     if (combine == "cauchy") {
       res <- .waldCauchyBlock(alpha_block[, cols_gene, drop = FALSE], Wsub,
                               wtb, scale_block, cov_niche, index_ct,
-                              uniq_index, Wgram,
+                              uniq_index, Wgram, w_rc = w_rc,
                               W_full = if (has_re) W_full else NULL,
                               penalty = penalty, sel = sel, df = re_df,
                               backend = backend, cov.batch = cov_batch)
@@ -650,13 +700,14 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
       .waldBrownGene(alpha_block[i, cols_gene], Wsub, wtb_r[i, ],
                      scale_block[i], cov_niche, index_ct, uniq_index,
                      combine = "brown", W_full = if (has_re) W_full else NULL,
-                     penalty = penalty, sel = sel, df = re_df)
+                     penalty = penalty, sel = sel, df = re_df, w_rc = w_rc)
     })
     list(
       t_stat = do.call(rbind, lapply(per_gene, `[[`, "t_stat")),
       se = do.call(rbind, lapply(per_gene, `[[`, "se")),
       p.pos = do.call(rbind, lapply(per_gene, `[[`, "p.pos")),
       p.neg = do.call(rbind, lapply(per_gene, `[[`, "p.neg")),
+      se_pat = vapply(per_gene, `[[`, numeric(1), "se_pat"),
       loglik = loglikb
     )
   }, BPPARAM = BPPARAM)
@@ -667,12 +718,15 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
   p.pos <- bind("p.pos")
   p.neg <- bind("p.neg")
   loglik <- unlist(lapply(block_res, `[[`, "loglik"), use.names = FALSE)
+  se_pat <- unlist(lapply(block_res, `[[`, "se_pat"), use.names = FALSE)
 
   gnames <- rownames(alpha_full)
   rownames(t_stat) <- rownames(se) <- gnames
   rownames(p.pos) <- rownames(p.neg) <- gnames
   names(loglik) <- gnames
+  if (length(se_pat) == length(gnames)) names(se_pat) <- gnames else se_pat <- numeric(0)
 
+  fit@se_patient <- se_pat
   fit@t_stat <- t_stat
   fit@se <- se
   fit@p.combined.pos <- p.pos

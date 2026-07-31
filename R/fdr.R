@@ -187,3 +187,98 @@
   rownames(out) <- NULL
   out
 }
+
+# ---------------------------------------------------------------------------
+# E2: response results that are NOT niche-dependent.
+#
+# The CellType:condition block is cell-means coded, so with k cell types there
+# are k free response coefficients. A free global term PLUS all k would be
+# over-parameterised, so the patient-level effect is derived as a contrast:
+# the abundance-weighted average w'alpha, variance w'Vw (formed in the Wald
+# block, where V still exists).
+#
+# Both cascades mirror .hierarchicalFDR(): Up and Down are tested separately at
+# fdr/2 and merged, so a gene significant in both directions is "Both".
+# ---------------------------------------------------------------------------
+
+#' Direction-split BH, shared by the cell-type and patient cascades
+#' @noRd
+.dirBH <- function(p_pos, p_neg, fdr) {
+  q_pos <- stats::p.adjust(p_pos, "BH")
+  q_neg <- stats::p.adjust(p_neg, "BH")
+  sig_pos <- q_pos < fdr / 2
+  sig_neg <- q_neg < fdr / 2
+  list(
+    q = pmin(q_pos, q_neg),
+    sig = sig_pos | sig_neg,
+    direction = ifelse(sig_pos & sig_neg, "Both",
+                       ifelse(sig_pos, "Up", ifelse(sig_neg, "Down", NA_character_)))
+  )
+}
+
+#' Two-step cell-type cascade: gene level, then cell type within surviving genes
+#'
+#' @param tmat genes x k matrix of CellType:condition t-statistics.
+#' @param dfv per-column df (or scalar/NULL for a normal reference).
+#' @param cts cell type of each column.
+#' @param fdr the FDR threshold.
+#' @return a data.frame keyed by (gene, ct_index).
+#' @noRd
+.cellTypeFDR <- function(tmat, dfv, cts, fdr) {
+  genes <- rownames(tmat)
+  p_pos <- .ptByCol(tmat, dfv, lower.tail = FALSE)
+  p_neg <- .ptByCol(tmat, dfv, lower.tail = TRUE)
+  eps <- 1e-15
+  clamp <- function(x) pmin(pmax(x, eps), 1 - eps)
+
+  # step 1: gene level -- combine the k cell types within a gene.
+  #
+  # KNOWN LIMITATION, inherited from the niche cascade (see inference.R, where
+  # combineP() is likewise applied to one-sided p-values). ACAT maps p -> 1 to
+  # tan(-pi/2), a huge negative value, so a gene that is strongly UP in one cell
+  # type and strongly DOWN in another cancels: the up-combination is dragged
+  # down by the ~1 p-value of the down cell type and vice versa. Such a gene
+  # fails the gate even though step 2 would classify both cell types correctly.
+  # This is why the "Both" label is rare in practice. Combining TWO-SIDED
+  # p-values at the gene level would fix it in both cascades; that is left
+  # alone here so the two behave identically, as intended.
+  g_pos <- .cauchyCombine(clamp(p_pos))
+  g_neg <- .cauchyCombine(clamp(p_neg))
+  gene_gate <- .dirBH(g_pos, g_neg, fdr)
+  keep <- which(gene_gate$sig)
+  if (!length(keep)) {
+    return(data.frame(gene = character(0), ct_index = character(0),
+                      t = numeric(0), p = numeric(0), fdr.gene = numeric(0),
+                      fdr.celltype = numeric(0), Direction = character(0),
+                      stringsAsFactors = FALSE))
+  }
+
+  # step 2: cell type within the surviving genes
+  out <- do.call(rbind, lapply(keep, function(i) {
+    ct_gate <- .dirBH(p_pos[i, ], p_neg[i, ], fdr)
+    j <- which(ct_gate$sig)
+    if (!length(j)) return(NULL)
+    data.frame(gene = genes[i], ct_index = cts[j],
+               t = tmat[i, j], p = pmin(p_pos[i, j], p_neg[i, j]),
+               fdr.gene = gene_gate$q[i], fdr.celltype = ct_gate$q[j],
+               Direction = ct_gate$direction[j], stringsAsFactors = FALSE)
+  }))
+  if (is.null(out)) out <- data.frame()
+  rownames(out) <- NULL
+  out
+}
+
+#' Patient-level cascade: one contrast per gene, single BH
+#' @noRd
+.patientFDR <- function(beta, se, dfv, fdr) {
+  t <- beta / se
+  tm <- matrix(t, ncol = 1, dimnames = list(names(beta), "patient"))
+  p_pos <- .ptByCol(tm, dfv, lower.tail = FALSE)[, 1]
+  p_neg <- .ptByCol(tm, dfv, lower.tail = TRUE)[, 1]
+  gate <- .dirBH(p_pos, p_neg, fdr)
+  keep <- which(gate$sig)
+  data.frame(gene = names(beta)[keep], coef = beta[keep], se = se[keep],
+             t = t[keep], p = pmin(p_pos, p_neg)[keep], fdr = gate$q[keep],
+             Direction = gate$direction[keep], stringsAsFactors = FALSE,
+             row.names = NULL)
+}

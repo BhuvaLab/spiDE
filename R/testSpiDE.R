@@ -104,6 +104,33 @@ setMethod(
 
     # hierarchical FDR -> tidy results
     object@results <- .hierarchicalFDR(fits, p.pos, p.neg, gene.w, fdr)
+
+    # E2: cell-type-specific and patient-level response results. Both are
+    # niche-independent, so they are taken from the widest bandwidth's fit
+    # (the CellType:condition coefficients are the same model term in every
+    # bandwidth; they differ only through the niche columns they sit beside).
+    f1 <- fits[[length(fits)]]
+    ct1 <- as.character(f1@covtype)
+    tested <- colnames(f1@t_stat)
+    tt <- ct1[match(tested, as.character(f1@coefmap$covariate))]
+    rc <- which(tt == "ResponseCellType")
+    if (length(rc)) {
+      dfv <- if (is.null(f1@df) || length(f1@df) == 1L) f1@df else f1@df[rc]
+      cts <- f1@coefmap$index[match(tested[rc], f1@coefmap$covariate)]
+      object@results.celltype <- .cellTypeFDR(
+        f1@t_stat[, rc, drop = FALSE], dfv, cts, fdr)
+
+      if (length(f1@se_patient)) {
+        # beta_patient = w'alpha, recomputed here from the coefficients; its SE
+        # came from the Wald block, where the covariance still existed.
+        n_cells <- colSums(f1@W[, paste0("CellType", cts), drop = FALSE] != 0)
+        w <- n_cells / sum(n_cells)
+        beta <- as.numeric(f1@alpha[, tested[rc], drop = FALSE] %*% w)
+        names(beta) <- rownames(f1@alpha)
+        dfp <- if (is.null(f1@df) || length(f1@df) == 1L) f1@df else stats::median(f1@df[rc])
+        object@results.patient <- .patientFDR(beta, f1@se_patient[names(beta)], dfp, fdr)
+      }
+    }
     object@fdr <- fdr
     object
   }
