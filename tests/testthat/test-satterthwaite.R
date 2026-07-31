@@ -129,11 +129,16 @@ test_that("df.method='satterthwaite' yields a per-column @df; Response df ~ S-2"
   expect_length(ds, n_tested)
   # Response column df ~ S-2 (the 0.99x regression anchor)
   cm <- fits(fs)[[1]]@coefmap
-  resp_name <- cm$covariate[ct == "Response"]
-  expect_equal(unname(ds[resp_name]), 14, tolerance = 0.20)   # 16 samples -> ~14
-  # niche-interaction dfs are larger than the Response df (within-sample info)
+  # Under the celltype-response design the between-sample condition contrast is
+  # carried by the CellType:condition columns, one per cell type, rather than by
+  # a single "Response" main effect. The claim under test is unchanged: a
+  # between-sample contrast gets df ~ S - 2, a within-sample one gets more.
+  resp_name <- cm$covariate[ct == "ResponseCellType"]
+  expect_gt(length(resp_name), 0L)
+  expect_equal(unname(stats::median(ds[resp_name])), 14, tolerance = 0.20)
+  # niche-interaction dfs are larger (within-sample information)
   rn_names <- cm$covariate[ct == "ResponseNiche"]
-  expect_gt(stats::median(ds[rn_names]), ds[resp_name])
+  expect_gt(stats::median(ds[rn_names]), stats::median(ds[resp_name]))
 })
 
 test_that("df.method='between' is byte-identical to the pre-existing scalar df", {

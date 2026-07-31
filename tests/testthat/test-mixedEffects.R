@@ -112,7 +112,8 @@ test_that("mixed effects deflate the anti-conservative response inference", {
   resp_p <- function(random) {
     f <- fitSpiDE(spe, "condition", sigma = 30, random = random, verbose = FALSE)
     ff <- spiDE:::.blockedInference(fits(f)[[1]], Y)
-    rc <- ff@coefmap$covariate[as.character(ff@covtype) == "Response"]
+    # the condition effect now lives in the CellType:condition columns
+    rc <- ff@coefmap$covariate[as.character(ff@covtype) == "ResponseCellType"]
     t <- ff@t_stat[, rc]
     df <- if (is.null(ff@df)) Inf else ff@df
     2 * stats::pt(-abs(t), df)

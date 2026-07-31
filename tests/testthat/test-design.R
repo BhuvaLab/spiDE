@@ -2,8 +2,11 @@ test_that("nicheDesign tags covariates and drops self-interactions", {
   spe <- buildNiches(.toySPE(), sigma = 20)
   des <- nicheDesign(spe, condition = "condition", sigma = 20)
 
+  # ResponseCellType is the cell-means CellType:condition term added with the
+  # celltype-response design; the bare "Response" main effect no longer exists.
   expect_true(all(levels(des$covtype) %in%
-    c("CellType", "Niche", "Response", "ResponseNiche", "Other")))
+    c("CellType", "Niche", "Response", "ResponseCellType", "ResponseNiche",
+      "Other")))
   # no ResponseNiche/Niche column may have index == niche
   cm <- des$coefmap
   self <- !is.na(cm$index) & !is.na(cm$niche) & cm$index == cm$niche
@@ -56,7 +59,10 @@ test_that("nicheDesign drops member interactions of a merged niche", {
   expect_true(any(ac$index == "B" & ac$type == "Niche"))
   expect_true(any(ac$index == "B" & ac$type == "ResponseNiche"))
   # self B:B is still dropped
-  expect_false(any(cm$niche == "B" & cm$index == "B" & !is.na(cm$index)))
+  # CellType:condition rows carry NA niche, so the niche side needs guarding
+  # too or `any()` returns NA rather than FALSE.
+  expect_false(any(!is.na(cm$niche) & !is.na(cm$index) &
+                     cm$niche == "B" & cm$index == "B"))
 })
 
 test_that("restricting niche cell types reduces interaction columns", {

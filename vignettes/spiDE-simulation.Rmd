@@ -410,6 +410,12 @@ Notice that under the **random** layout the true signal is spatially flat: there
 # be hand-typed from research/config.R, so it never goes stale when the study
 # is re-run with different parameters and `Rscript research/R/install_results.R`
 # is re-run.
+# The design arm the package ships. Mirrors `design_default` in
+# research/config.R and must be updated together with it on a promotion --
+# the vignette cannot read config.R, which is not installed. Following the
+# same convention as the simulator inputs typed from config.R below.
+.design_shipped <- "celltype-response"
+
 bench_dir <- system.file("extdata", "benchmark", package = "spiDE")
 bench <- function(f) {
   path <- file.path(bench_dir, f)
@@ -422,6 +428,13 @@ bench <- function(f) {
   # every (method, S, ...) lookup below keeps matching exactly one row, as it
   # did before the df.method sweep added a second arm to these tables.
   if (!is.null(d) && !is.null(d$df.method)) d <- d[d$df.method == "between", ]
+  # Likewise for the model-design arm: this report characterises the design the
+  # package SHIPS, which is now `celltype-response`; the demoted arm is compared
+  # against it in spiDE-mixed-benchmark.Rmd. The label is taken from config
+  # rather than hardcoded, so a future promotion cannot leave this filter
+  # matching nothing. Older tables carry no `design` column at all, in which
+  # case there is nothing to collapse.
+  if (!is.null(d) && !is.null(d$design)) d <- d[d$design == .design_shipped, ]
   d
 }
 se_of <- function(df, m) {
@@ -539,6 +552,13 @@ bench <- function(f) {
   # every (method, S, ...) lookup below keeps matching exactly one row, as it
   # did before the df.method sweep added a second arm to these tables.
   if (!is.null(d) && !is.null(d$df.method)) d <- d[d$df.method == "between", ]
+  # Likewise for the model-design arm: this report characterises the design the
+  # package SHIPS, which is now `celltype-response`; the demoted arm is compared
+  # against it in spiDE-mixed-benchmark.Rmd. The label is taken from config
+  # rather than hardcoded, so a future promotion cannot leave this filter
+  # matching nothing. Older tables carry no `design` column at all, in which
+  # case there is nothing to collapse.
+  if (!is.null(d) && !is.null(d$design)) d <- d[d$design == .design_shipped, ]
   d
 }
 

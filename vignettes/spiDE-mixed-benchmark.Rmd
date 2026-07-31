@@ -232,6 +232,81 @@ above. By construction it leaves the response *main* effect at its
 $\approx 0.99\times$ calibration. See *The spiDE model* vignette for the
 statistics behind the per-coefficient df.
 
+
+# Model design: does `CellType:condition` change calibration or power?
+
+The released niche design is
+
+```
+~ 0 + covariates + CellType + condition * CellType:(niches) + niches
+```
+
+which expands to `condition` + `CellType:niches` + `condition:CellType:niches`
+but carries **no `CellType:condition`** term. A cell-type-specific response
+*intercept* shift therefore has nowhere to go: the single global `condition`
+column captures only the average, and the per-sample random intercept absorbs a
+per-sample scalar. Because the niche covariates are not centred, the tested
+three-way coefficient can and does absorb the missing shift, scaled by the mean
+niche density.
+
+The alternate design adds that term, cell-means coded (the `condition` main
+effect is dropped, so there is one coefficient per cell type, each the
+tested-level shift *within* that cell type, readable without forming a
+contrast). The benchmark runs both as a `design` arm, over the families that can
+discriminate between them — null calibration, power, and the combiner
+comparison. `pql`, `timing` and `spatial` probe the random-effect machinery and
+the layouts, which the design change does not touch, so they run once.
+
+```{r design-cal, fig.height = 4, fig.cap = "Null type-I error of the response-niche test by sample size, for the released design and the design with CellType:condition restored (gradient layout, satterthwaite df). Restoring the term costs ~k degrees of freedom out of several hundred, so calibration should be unchanged; a visible gap would mean the added block is absorbing signal rather than nuisance."}
+cal <- bench("null_type1.csv")
+if (!is.null(cal) && !is.null(cal$design) &&
+      length(unique(cal$design)) > 1) {
+  d <- cal[cal$layout == "gradient", , drop = FALSE]
+  if (!is.null(d$df.method)) d <- d[d$df.method == "satterthwaite", , drop = FALSE]
+  d$arm <- interaction(d$method, d$design, drop = TRUE, sep = " / ")
+  ggplot(d, aes(S, type1, colour = arm)) +
+    geom_hline(yintercept = 0.05, linetype = 2, colour = spide_pal$ref) +
+    geom_line(linewidth = 0.7) + geom_point(size = 2) +
+    labs(x = "samples (S)", y = "response-niche type-I error", colour = NULL,
+         title = "Null calibration by model design")
+} else {
+  cat("*(No `design` arm in the shipped summaries yet. Run the alternate arm:",
+      "`SPIDE_DESIGN_ARM=celltype-response SPIDE_DESIGN_LIB=<lib>",
+      "bash research/slurm/submit.sh`, then re-aggregate and reinstall.)*")
+}
+```
+
+```{r design-power, fig.height = 4, fig.cap = "True-positive rate at FDR 0.05 versus effect size, by model design. The added term spends degrees of freedom, so a small power cost is expected; a large one would argue against restoring it."}
+pw <- bench("power_fdr.csv")
+if (!is.null(pw) && !is.null(pw$design) && length(unique(pw$design)) > 1) {
+  d <- pw[pw$fdr == 0.05 & pw$sweep == "effect", , drop = FALSE]
+  if (!is.null(d$df.method)) d <- d[d$df.method == "satterthwaite", , drop = FALSE]
+  d$arm <- interaction(d$method, d$design, drop = TRUE, sep = " / ")
+  ggplot(d, aes(beta, tpr, colour = arm)) +
+    geom_line(linewidth = 0.7) + geom_point(size = 2) +
+    labs(x = expression(paste("planted effect ", beta)),
+         y = "TPR at FDR 0.05", colour = NULL,
+         title = "Power by model design")
+} else {
+  cat("*(No `design` arm in the shipped power summaries yet.)*")
+}
+```
+
+**What the arm actually varies.** Because `design` selects a whole package
+build, the alternate arm bundles two changes that ship together: the added
+`CellType:condition` block, *and* two-sided p-value combination under
+`combine = "cauchy"` (Brown keeps one-sided input). Differences between the arms
+in the figures above are therefore attributable to the pair, not to the design
+term alone. That is deliberate — the two are intended to ship together — but it
+means these panels answer "is the new build calibrated and no less powerful?"
+rather than "what does `CellType:condition` do in isolation".
+
+Sidedness is characterised on its own in
+`vignette("spiDE-cauchy-vs-brown")`, which derives why one-sided ACAT cancels
+on genes with opposing niche effects and shows it costs nothing where the
+one-sided convention was already safe. The combiner table below carries both
+`combine` and `design`, so the combiner axis can still be read within an arm.
+
 # Summary
 
 * Subsampling cells for the PQL loop (`re.prop < 1`) plus a single inner
