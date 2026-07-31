@@ -115,6 +115,15 @@
       type <- if (has_resp) "ResponseNiche" else "Niche"
       return(c(type = type, index = index, niche = niche))
     }
+    # E2 fix: CellType x condition with no niche token. Tagged "ResponseCellType"
+    # deliberately -- fitSpiDE selects tested columns with
+    # grepl("Response", covtype), so these DO receive standard errors and
+    # t-statistics, while .nicheRecords() subsets on covtype == "ResponseNiche"
+    # exactly, so they are excluded from the 3-level triplet FDR cascade and
+    # leave it unchanged.
+    if (length(ct_tok) == 1 && length(niche_tok) == 0 && has_resp) {
+      return(c(type = "ResponseCellType", index = index, niche = NA_character_))
+    }
     c(type = "Other", index = NA_character_, niche = NA_character_)
   }
 
@@ -185,10 +194,21 @@
 
   # formula: 0 + covariates + CellType + condition*CellType:(niches) + niches
   niche_f <- paste(niche_cols, collapse = " + ")
+  # E2 fix: the released formula expands to condition + CellType:niches +
+  # condition:CellType:niches but NO CellType:condition, so a cell-type-specific
+  # response INTERCEPT shift aliases onto the three-way term (the niche
+  # covariates are uncentred, so a coefficient there can mimic a constant).
+  # Writing the terms explicitly and OMITTING the condition main effect makes the
+  # CellType:condition block cell-means coded: one coefficient per cell type,
+  # each the responder-vs-non-responder shift WITHIN that cell type, readable
+  # without a contrast. Keeping the main effect would instead give k-1
+  # treatment-coded columns requiring condition + CellType_x:condition.
   terms <- c(
     covariates,
     "CellType",
-    sprintf("%s * CellType:(%s)", condition, niche_f),
+    sprintf("CellType:%s", condition),
+    sprintf("CellType:(%s)", niche_f),
+    sprintf("CellType:%s:(%s)", condition, niche_f),
     niche_f
   )
   f <- stats::as.formula(paste("~ 0 +", paste(terms, collapse = " + ")))
@@ -234,7 +254,10 @@
     re_group <- c(re_group, re$re_group)
   }
 
-  lvls <- c("CellType", "Niche", "Response", "ResponseNiche", "Other")
+  # E2 fix: "ResponseCellType" must be a declared level, otherwise factor()
+  # silently maps the new columns to NA and cols_tested becomes NA for them.
+  lvls <- c("CellType", "Niche", "Response", "ResponseNiche",
+            "ResponseCellType", "Other")
   if (random != "none") lvls <- c(lvls, "Random")
   covtype <- factor(coefmap$type, levels = lvls)
 
