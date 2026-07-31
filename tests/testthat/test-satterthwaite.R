@@ -136,6 +136,21 @@ test_that("df.method='satterthwaite' yields a per-column @df; Response df ~ S-2"
   expect_gt(stats::median(ds[rn_names]), ds[resp_name])
 })
 
+test_that("satterthwaite is the df.method default", {
+  # guards the 0.99.7 behaviour change: an unqualified mixed fit must produce
+  # the per-tested-column df vector, not the legacy scalar S - 2. Other test
+  # files pin df.method = "between" for speed, so this is the only place the
+  # default itself is checked.
+  spe <- buildNiches(spiDE:::.toyClustered(n_samples = 12, sd_patient = 0.7),
+                     sigma = 30)
+  fd <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+                 verbose = FALSE)
+  ff <- fits(fd)[[1]]
+  expect_gt(length(ff@df), 1L)
+  expect_equal(length(ff@df), sum(grepl("Response", as.character(ff@covtype))))
+  expect_true(all(is.finite(ff@df)))
+})
+
 test_that("df.method='between' is byte-identical to the pre-existing scalar df", {
   spe <- buildNiches(spiDE:::.toyClustered(n_samples = 12, sd_patient = 0.7),
                      sigma = 30)

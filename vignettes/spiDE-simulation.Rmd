@@ -402,6 +402,10 @@ p_cells / p_signal / p_counts
 
 Notice that under the **random** layout the true signal is spatially flat: there is nothing for `buildNiches()` to lock onto, which is exactly why it serves as the negative control. The bottom row makes the detection problem concrete: even where a real ramp or hotspot exists (gradient, clustered, multiniche), the per-cell counts are dominated by Poisson-like sampling noise on top of the signal — a single cell's log-count is a very weak clue on its own, which is why `spiDE` pools evidence across many cells and many patients rather than testing cell-by-cell.
 
+# Part 2 — Benchmarking spiDE
+
+The remainder of this report summarises a study that fits `spiDE` to many datasets drawn from the model above, sweeping the number of patient samples, the number of cells per sample, the effect size and the spatial layout, and repeating each design point over many random replicates. Each dataset is fit once and every metric is derived from that fit.
+
 ## The benchmark experiments
 
 ```{r bench-load-all, include = FALSE}
@@ -411,17 +415,21 @@ Notice that under the **random** layout the true signal is spatially flat: there
 # is re-run with different parameters and `Rscript research/R/install_results.R`
 # is re-run.
 bench_dir <- system.file("extdata", "benchmark", package = "spiDE")
-bench <- function(f) {
+bench <- function(f, keep_df_method = FALSE) {
   path <- file.path(bench_dir, f)
   if (!file.exists(path)) return(NULL)
   d <- if (grepl("\\.rds$", f)) readRDS(path) else
     utils::read.csv(path, check.names = FALSE)
-  # This report compares inference *modes* (fixed/intercept/slope), not
-  # df.method (between/satterthwaite -- that comparison is
-  # spiDE-mixed-benchmark.Rmd's). Collapse to the legacy "between" arm so
-  # every (method, S, ...) lookup below keeps matching exactly one row, as it
-  # did before the df.method sweep added a second arm to these tables.
-  if (!is.null(d) && !is.null(d$df.method)) d <- d[d$df.method == "between", ]
+  # This report compares inference *modes* (fixed/intercept/slope); df.method
+  # (between/satterthwaite) is a second, independent axis that would otherwise
+  # break every (method, S, ...) lookup below (each stops matching exactly one
+  # row once a second df.method arm is present). Collapse to the legacy
+  # "between" arm by default; the null-calibration section below passes
+  # keep_df_method = TRUE to see both arms, since that comparison is the point
+  # of that figure.
+  if (!is.null(d) && !is.null(d$df.method) && !keep_df_method) {
+    d <- d[d$df.method == "between", ]
+  }
   d
 }
 se_of <- function(df, m) {
@@ -522,40 +530,12 @@ The four families and what each varies:
 
 The `power` family now also carries the layout sweep, so its results supply the **spatial-robustness** metrics, and its per-fit wall-clock times supply the **scalability** metrics — dedicated spatial and timing families are no longer required. The `combiner` and `pql` families are reported in the two companion vignettes.
 
-# Part 2 — Benchmarking spiDE
-
-The remainder of this report summarises a study that fits `spiDE` to many datasets drawn from the model above, sweeping the number of patient samples, the number of cells per sample, the effect size and the spatial layout, and repeating each design point over many random replicates. Each dataset is fit once and every metric is derived from that fit.
-
-```{r load-bench}
-bench_dir <- system.file("extdata", "benchmark", package = "spiDE")
-bench <- function(f) {
-  path <- file.path(bench_dir, f)
-  if (!file.exists(path)) return(NULL)
-  d <- if (grepl("\\.rds$", f)) readRDS(path) else
-    utils::read.csv(path, check.names = FALSE)
-  # This report compares inference *modes* (fixed/intercept/slope), not
-  # df.method (between/satterthwaite -- that comparison is
-  # spiDE-mixed-benchmark.Rmd's). Collapse to the legacy "between" arm so
-  # every (method, S, ...) lookup below keeps matching exactly one row, as it
-  # did before the df.method sweep added a second arm to these tables.
-  if (!is.null(d) && !is.null(d$df.method)) d <- d[d$df.method == "between", ]
-  d
-}
-
-# Every summary table carries, for each metric `m`, the mean (bare column `m`)
-# plus `m_sd` and `m_n` across replicates. The standard error of the mean is
-# then `m_sd / sqrt(m_n)`; `se_of()` returns it, and `errbars()` adds a matching
-# error bar to any figure whose y aesthetic is the mean of metric `m`.
-se_of <- function(df, m) {
-  sd <- df[[paste0(m, "_sd")]]; n <- df[[paste0(m, "_n")]]
-  ifelse(is.finite(sd) & is.finite(n) & n > 0, sd / sqrt(n), NA_real_)
-}
-errbars <- function(df, m, width = 0) {
-  df$.lo <- df[[m]] - se_of(df, m); df$.hi <- df[[m]] + se_of(df, m)
-  geom_errorbar(data = df, aes(ymin = .lo, ymax = .hi), width = width,
-                linewidth = 0.5, show.legend = FALSE)
-}
-```
+Every summary table carries, for each metric `m`, the mean (bare column `m`)
+plus `m_sd` and `m_n` across replicates. The standard error of the mean is
+`m_sd / sqrt(m_n)`; the `se_of()` helper defined above returns it, and
+`errbars()` adds a matching error bar to any figure whose y aesthetic is the
+mean of metric `m`. Every figure below therefore shows replicate-to-replicate
+uncertainty, not just a point estimate.
 
 Throughout, three inference modes are compared:
 
@@ -573,23 +553,33 @@ The mixed-effects modes exist because a patient contributes many cells but only 
 
 **How it is computed.** From the *null* family (no planted effect, `β = 0`): for each of the `r n_reps` replicates we record the fraction of all \~`r format(n_genes_total, big.mark = ",")` genes whose two-sided ResponseNiche Wald p-value — the single index-`A` × condition × `B`-niche coefficient — falls below 0.05, then average over replicates. Two layouts (gradient, clustered) and five sample sizes are shown.
 
-```{r bench-type1, fig.height = 4, fig.cap = "Realised type-I error at alpha = 0.05 under the null, versus the number of patient samples, for two layouts. On the dashed line is calibrated; above is anti-conservative; below is conservative."}
-t1 <- bench("null_type1.csv")
+```{r bench-type1, fig.height = 4, fig.cap = "Realised type-I error at alpha = 0.05 under the null, versus the number of patient samples, for two layouts. Colour is the inference mode; linetype is the reference-df method (between-patient S-2 vs the per-coefficient Satterthwaite approximation). On the dashed line is calibrated; above is anti-conservative; below is conservative."}
+t1 <- bench("null_type1.csv", keep_df_method = TRUE)
 if (!is.null(t1)) {
   t1$method <- factor(t1$method, levels = names(spide_pal$method))
-  ggplot(t1, aes(S, type1, colour = method)) +
+  if (is.null(t1$df.method)) t1$df.method <- "between"
+  t1$df.method <- factor(t1$df.method, levels = c("between", "satterthwaite"))
+  ggplot(t1, aes(S, type1, colour = method, linetype = df.method)) +
     geom_hline(yintercept = 0.05, linetype = 2, colour = spide_pal$ref) +
     errbars(t1, "type1") +
     geom_line(linewidth = 0.8) + geom_point(size = 2) +
     facet_wrap(~ layout) +
     scale_colour_spide("method") +
+    scale_linetype_manual(values = c(between = "solid", satterthwaite = "22")) +
     labs(x = "number of patient samples (S)",
          y = "P(reject | null) at alpha = 0.05",
+         colour = "mode", linetype = "reference df",
          title = "Null calibration versus sample size")
 }
 ```
 
-**Interpretation.** With only a handful of patients there is too little between-patient information to estimate the variance components, and all modes sit *below* the line (conservative). As patients accrue, the mixed-effects modes climb to and settle around the nominal $0.05$ — they become well-calibrated. The fixed-effects mode stays low on this particular metric because the within-gene combination of many niche tests is itself conservative under a pure null; its real problem surfaces not here but in the false-discovery-rate figure below, where between-patient variance under a *real* effect makes it anti-conservative.
+**Interpretation.** The two reference-df choices behave very differently, and the gap is widest exactly where studies are smallest.
+
+Under the legacy **between-patient** reference (solid lines), the mixed modes are severely over-conservative with only a handful of patients: at $S=4$ the $S-2=2$ reference df pushes type-I error to $\approx 0.001$, a *50-fold* undershoot of the nominal $0.05$, and it climbs back toward nominal only as patients accrue. That is not free caution — the power figures below show it costs essentially all recall at small $S$.
+
+The **Satterthwaite** reference (dashed) targets precisely this, giving each coefficient the df its own information content earns rather than one flat $S-2$. It holds close to nominal across the *entire* sampled range. The honest caveat is that it does **overshoot mildly** at larger $S$ — worst measured $\approx 0.065$, a $\approx 30\%$ relative inflation — so it is slightly liberal where `between` is drastically conservative. That residual points at the covariance, and a Kenward–Roger correction is the indicated next step (see *The spiDE model*). Trading a bounded $30\%$ overshoot for a 50-fold undershoot, plus the power it unlocks, is why Satterthwaite is now the package default.
+
+The **fixed** mode has no `df.method` to vary (it never uses a between-patient reference), so it appears solid throughout and stays low here regardless — the within-gene combination of many niche tests is itself conservative under a pure null. Its real problem surfaces not here but in the false-discovery-rate figure below, where between-patient variance under a *real* effect makes it anti-conservative.
 
 A quantile–quantile (QQ) plot makes the same calibration check across the whole distribution of p-values rather than at one threshold. Because each point is an order statistic pooled over many genes and replicates rather than an independent replicate mean, there is no per-point standard error to draw here — the type-I error and FDP figures above and below are where replicate-to-replicate uncertainty is quantified.
 
@@ -610,21 +600,29 @@ if (!is.null(qq)) {
 }
 ```
 
+The Satterthwaite reference does not just fix small-$S$ calibration — it also delivers real power the between reference cannot, most dramatically where between's severe small-$S$ conservatism leaves it with almost nothing to detect. The figures below (raw power, then recall after FDR control) show this directly.
+
 ## Statistical power: what buys detection?
 
 **What is plotted.** With a real effect planted, *raw power* is the fraction of truly niche-responsive genes the test flags **before** multiple-testing correction — a measure of the per-gene test's sensitivity, **pooled across all three gene categories** (a category-resolved version follows in "Which genes are detected?" below). The three panels sweep, respectively, the number of patient **samples**, the number of **cells per sample**, and the **effect size** $\beta$. Higher is better; there is no reference line.
 
 **How it is computed.** From the *power* family, in which \~9 % of genes (900 of \~`r format(n_genes_total, big.mark = ",")`: 300 markers + 300 housekeeping + 300 background) carry the planted effect. Raw power is the fraction of those 900 true genes whose uncorrected ResponseNiche p-value is below 0.05, averaged over `r n_reps` replicates. Each panel sweeps one axis while the other two are held at their fixed values (`S = ` `r S_fixed`, `r npc_fixed` cells, `β = ` `r beta_fixed`).
 
-```{r bench-power, fig.height = 4, fig.cap = "Raw (uncorrected) power to detect the planted niche effect versus the number of patient samples, the number of cells per sample, and the effect size. Higher is better."}
-pp <- bench("power_points.csv")
+```{r bench-power, fig.height = 4, fig.cap = "Raw (uncorrected) power to detect the planted niche effect versus the number of patient samples, the number of cells per sample, and the effect size. Higher is better. Colour is the inference mode; linetype is the reference-df method (between vs Satterthwaite) -- the fixed mode has no df.method and always appears solid."}
+pp <- bench("power_points.csv", keep_df_method = TRUE)
 if (!is.null(pp)) {
   pp$method <- factor(pp$method, levels = names(spide_pal$method))
+  if (is.null(pp$df.method)) pp$df.method <- "between"
+  pp$df.method <- factor(pp$df.method, levels = c("between", "satterthwaite"))
   base <- function(df, x, xlab, title) ggplot(df, aes(.data[[x]], power_raw,
-                                                      colour = method)) +
+                                                      colour = method,
+                                                      linetype = df.method)) +
     errbars(df, "power_raw") +
     geom_line(linewidth = 0.8) + geom_point(size = 2) + ylim(0, 1) +
-    scale_colour_spide("method") + labs(x = xlab, y = "power", title = title)
+    scale_colour_spide("method") +
+    scale_linetype_manual(values = c(between = "solid", satterthwaite = "22")) +
+    labs(x = xlab, y = "power", colour = "mode", linetype = "reference df",
+         title = title)
   p1 <- base(subset(pp, sweep == "samples"), "S", "patient samples (S)",
              "vs samples")
   p2 <- base(subset(pp, sweep == "cells"), "n_per", "cells per sample",
@@ -636,7 +634,9 @@ if (!is.null(pp)) {
 }
 ```
 
-**Interpretation.** All three levers increase power, and the mixed-effects modes are uniformly *more* powerful than the fixed-effects mode — because modelling the between-patient variance correctly leaves a cleaner estimate of the effect. Two points are worth drawing out:
+**Interpretation.** All three levers increase power, and the mixed-effects modes are uniformly *more* powerful than the fixed-effects mode — because modelling the between-patient variance correctly leaves a cleaner estimate of the effect. Three points are worth drawing out:
+
+-   **The reference df is itself a power lever.** Compare the solid (`between`) and dashed (Satterthwaite) lines for the same mode: the gap is dramatic at small $S$, where the flat $S-2$ reference is so conservative that the mixed modes detect almost nothing, and narrows as patients accrue and `between` becomes less punitive. This is the power counterpart of the calibration figure above, and the reason Satterthwaite is the default — the conservatism `between` buys at small $S$ is paid for almost entirely in lost detections. Note the quoted figures in the two bullets below are for the `between` arm.
 
 -   **More patients help the most.** Power climbs steeply with the number of samples (from \~`r round(gv(pow_samples, "power_raw", method = "intercept", S = min(S_grid)), 2)` at `r min(S_grid)` patients to \~`r round(gv(pow_samples, "power_raw", method = "intercept", S = max(S_grid)), 2)` at `r max(S_grid)` for the mixed modes), because the condition contrast is fundamentally a *between-patient* comparison.
 -   **More cells also help here** — unlike a simple between-patient mean contrast, the niche effect is a *within-patient spatial gradient*, so additional cells genuinely sharpen each patient's estimate of that gradient (power rises from \~`r round(gv(pow_cells, "power_raw", method = "intercept", n_per = 100), 2)` at 100 cells to \~`r round(gv(pow_cells, "power_raw", method = "intercept", n_per = max(npc_grid)), 2)` at `r format(max(npc_grid), big.mark = ",")`). Cells are informative for the niche interaction even though they cannot manufacture independent evidence about the condition label itself.
@@ -680,17 +680,22 @@ if (!is.null(pp) && !is.null(pf)) {
 
 **What is plotted.** Recall at a fixed 5 % FDR as each experimental axis is swept in turn, for all three modes, **pooled across all three gene categories** (see "Which genes are detected?" below for the category-resolved version). Higher is better; there is no reference line.
 
-```{r bench-recall, fig.height = 4, fig.cap = "Recall at 5% FDR versus samples, cells per sample, and effect size. The same detection threshold appears on every axis: recall is near zero until the signal is strong enough, then rises."}
-pf <- bench("power_fdr.csv")
+```{r bench-recall, fig.height = 4, fig.cap = "Recall at 5% FDR versus samples, cells per sample, and effect size. The same detection threshold appears on every axis: recall is near zero until the signal is strong enough, then rises. Colour is the inference mode; linetype is the reference-df method (between vs Satterthwaite) -- the fixed mode has no df.method and always appears solid."}
+pf <- bench("power_fdr.csv", keep_df_method = TRUE)
 if (!is.null(pf)) {
   d5 <- subset(pf, fdr == 0.05)
   d5$method <- factor(d5$method, levels = names(spide_pal$method))
+  if (is.null(d5$df.method)) d5$df.method <- "between"
+  d5$df.method <- factor(d5$df.method, levels = c("between", "satterthwaite"))
   rc <- function(df, x, xlab, title) ggplot(df, aes(.data[[x]], tpr,
-                                                    colour = method)) +
+                                                    colour = method,
+                                                    linetype = df.method)) +
     errbars(df, "tpr") +
     geom_line(linewidth = 0.8) + geom_point(size = 2) + ylim(0, 1) +
     scale_colour_spide("method") +
-    labs(x = xlab, y = "recall @ 5% FDR", title = title)
+    scale_linetype_manual(values = c(between = "solid", satterthwaite = "22")) +
+    labs(x = xlab, y = "recall @ 5% FDR", colour = "mode",
+         linetype = "reference df", title = title)
   r1 <- rc(subset(d5, sweep == "samples"), "S", "patient samples (S)",
             "vs samples")
   r2 <- rc(subset(d5, sweep == "cells"), "n_per", "cells per sample",

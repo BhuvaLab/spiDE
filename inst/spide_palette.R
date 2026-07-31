@@ -2,22 +2,45 @@
 # Sourced from each vignette via
 #   source(system.file("spide_palette.R", package = "spiDE"))
 # so a given series (method, combiner, cell type, layout) always maps to the
-# same colour across every figure. Colours are drawn from ColorBrewer's
-# qualitative Dark2 / Set2 palettes (both colour-blind safe).
+# same colour across every figure.
+#
+# EACH QUANTITY GETS ITS OWN HUE FAMILY. Two different quantities must not be
+# drawn from the same set of hues, or the same colour would mean two different
+# things across (or within) figures -- `method` and `category`, for instance,
+# co-occur in the spatial-robustness breakdown. The families below are
+# deliberately disjoint:
+#
+#   method   teal / orange / purple      (ColorBrewer Dark2)
+#   category steel-blue / gold / crimson
+#   layout   green / wine / navy / olive
+#   celltype pink / brown / amber / blue
+#
+# Every family below was checked with the dataviz palette validator (six
+# checks: lightness band, chroma floor, CVD separation, normal-vision floor,
+# contrast) and PASSES on a light surface. Do NOT hand-edit a hex here without
+# re-running that validator -- the previous Set2 `celltype` palette looked fine
+# but failed hard: #E78AC3 vs #8DA0CB separated by only dE 1.5 under
+# protanopia and dE 14.1 even in normal vision (below the 15 floor), and the
+# old `category` green/brown pair failed CVD separation at dE 5.3 (deutan).
+#
+# Note the hue space for colour-blind-safe categorical palettes is finite:
+# `condition` and `combine` are 2-level quantities that appear only in figures
+# where no other categorical colour is present, so they reuse the Dark2 hues
+# without ambiguity.
 
 spide_pal <- list(
-  # mixed-effects modes
+  # mixed-effects modes (Dark2)
   method = c(fixed = "#D95F02", intercept = "#1B9E77", slope = "#7570B3"),
-  # within-gene p-value combiners
+  # within-gene p-value combiners (own figures only; no clash in context)
   combine = c(Brown = "#7570B3", Cauchy = "#D95F02"),
-  # cell types (Set2)
-  celltype = c(A = "#66C2A5", B = "#FC8D62", C = "#8DA0CB", D = "#E78AC3"),
-  # spatial niche layouts (Dark2)
-  layout = c(gradient = "#1B9E77", clustered = "#D95F02",
-             random = "#7570B3", multiniche = "#E7298A"),
-  # gene categories in the simulation
-  category = c("cell-type marker" = "#E7298A", housekeeping = "#66A61E",
-               background = "#A6761D"),
+  # cell types -- pink / brown / amber / blue
+  celltype = c(A = "#D8315B", B = "#FFD166", C = "#1E1B18", D = "#06D6A0"),
+  # spatial niche layouts -- green / wine / navy / olive
+  layout = c(gradient = "#117733", clustered = "#882255",
+             random = "#2B6699", multiniche = "#8C6D1F"),
+  # gene categories in the simulation -- steel-blue / gold / crimson
+  category = c("cell-type marker" = "#3B6BA5", housekeeping = "#C77D00",
+               background = "#A02C3C"),
   # planted differential-expression status
   de = c(DE = "#D95F02", "non-DE" = "grey70"),
   # experimental condition

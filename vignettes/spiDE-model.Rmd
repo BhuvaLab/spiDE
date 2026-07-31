@@ -154,10 +154,16 @@ and the fitted object (so later sections can reuse it instead of re-fitting):
 
 ```{r respp}
 fit_mode <- function(random) {
-  f <- fitSpiDE(spe, "condition", sigma = 30, random = random, verbose = FALSE)
+  # df.method = "between" (the scalar S - 2) is pinned here deliberately: this
+  # section is about the mixed-effects *correction*, and the between reference
+  # keeps the demo cheap to rebuild. The default "satterthwaite" per-coefficient
+  # df is demonstrated in its own section below.
+  f <- fitSpiDE(spe, "condition", sigma = 30, random = random,
+                df.method = "between", verbose = FALSE)
   res <- testSpiDE(f, spe = spe)          # populates the Wald inference slots
   ff <- fits(res)[[1]]
   rc <- ff$coefmap$covariate[as.character(ff$covtype) == "Response"]
+  # @df is NULL for a fixed fit (normal reference), else the scalar S - 2.
   df <- if (is.null(ff$df)) Inf else ff$df
   list(fit = ff, p = 2 * pt(-abs(ff$t_stat[, rc]), df))
 }
@@ -734,12 +740,17 @@ c(Response = unname(ff$df[resp]),
   ResponseNiche.median = round(median(ff$df[niche]), 1))
 ```
 
-The `Response` df sits at $\approx S-2 = 8$ (the $0.99\times$-calibrated main
-effect is left alone), while the niche-interaction df is much larger — the
-coefficients the flat $S-2$ was over-penalising. `@df` is now a **named vector**,
-one entry per tested (`Response` / `ResponseNiche`) column, aligned to the
-columns of `@t_stat` / `@se`; under the default `df.method = "between"` it stays
-the scalar $S-2$.
+The `Response` df sits at $\approx S-2 = 8$ (the well-calibrated main effect is
+left alone), while the niche-interaction df is much larger — the coefficients
+the flat $S-2$ was over-penalising. Under the default
+`df.method = "satterthwaite"`, `@df` is therefore a **named vector**, one entry
+per tested (`Response` / `ResponseNiche`) column, aligned to the columns of
+`@t_stat` / `@se`; passing `df.method = "between"` restores the scalar $S-2$.
+
+**If you consume `@df` directly**, note it is a *vector* by default. Index the
+column you are testing — `fit@df[["<covariate>"]]` — rather than passing the
+whole vector to `stats::pt()`, which would silently recycle it against your
+per-gene statistics rather than erroring.
 
 ## The testing framework
 
@@ -750,26 +761,51 @@ each `random =` / `df.method` combination, and record the fraction of response
 tests significant at $\alpha = 0.05$, which should be $\approx 0.05$ for an
 honest test. Two properties matter, and they pull in opposite directions:
 
--   **The main effect must stay $\approx$ nominal.** It calibrates at $\approx
-    0.99\times$ nominal under `"between"`, and — since $\nu \approx S-2$ there by
+-   **The main effect must stay $\approx$ nominal.** It calibrates close to
+    nominal under `"between"`, and — since $\nu \approx S-2$ there by
     construction — `"satterthwaite"` must *not* move it. This is the
     load-bearing regression: whatever the df change does to the niche
-    coefficients, it must leave the main effect exactly where it was.
+    coefficients, it must leave the main effect where it was.
 -   **The response–niche tests should approach nominal from below.** Under
-    `"between"` they are over-conservative (type-I well under $0.05$ once there
-    are enough patients); `"satterthwaite"`'s larger df should raise them
-    *toward* $0.05$ without overshooting into anti-conservatism. An overshoot
-    would mean the residual miscalibration lives in the covariance itself, and
-    the principled next step would be a Kenward–Roger bias-correction of
+    `"between"` they are over-conservative (type-I well under $0.05$); the
+    larger `"satterthwaite"` df should raise them *toward* $0.05$. Were they to
+    overshoot, the residual miscalibration would live in the covariance itself,
+    and the principled next step would be a Kenward–Roger bias-correction of
     $\widehat{\mathrm{Cov}}(\hat\theta_\text{resp})$ — a heavier, second-order
     correction not enabled here.
 
-This study is run at realistic scale (thousands of cells over tens of patients)
-in the package's benchmark harness (`research/`); the *Speeding up the
-mixed-effects fit* companion vignette shows the resulting calibration figure. On
-a small toy fixture the response–niche null is too noisy to read as a
-calibration — the main-effect preservation above is the part that is robust at
-toy scale.
+### What the study found
+
+The study has since been run at realistic scale (thousands of cells over tens of
+patients, 40 replicates per design point) in the package's benchmark harness
+(`research/`), sweeping both `df.method` arms on identically seeded data. The
+full figures are in the *Simulating realistic spatial data and benchmarking
+spiDE* vignette; the result matters enough to state here.
+
+The first criterion is met and the second is met **only partially**, which is
+worth being explicit about rather than glossing:
+
+-   `"between"` is not merely conservative, it is *severely* so when patients
+    are few: response-niche type-I error is $\approx 0.001$ at $S=4$ against a
+    nominal $0.05$ — a 50-fold undershoot — climbing to only $\approx
+    0.046$–$0.055$ by $S=30$. Power tracks it: recall is essentially zero at
+    $S \le 10$ because nothing survives genome-wide correction.
+-   `"satterthwaite"` holds type-I error in $0.042$–$0.065$ across the *whole*
+    sampled range, and buys real power for it: a mean paired gain of
+    $\approx +0.10$ TPR at 5% FDR, with observed FDP no worse.
+-   But it does **mildly overshoot** at larger $S$ — worst measured
+    $\approx 0.065$ against nominal $0.05$, a $\approx 30\%$ relative
+    inflation. By the criterion set out above, that residual bias is located in
+    the covariance, and **Kenward–Roger is therefore the indicated next step**,
+    not merely a hypothetical one.
+
+The trade is strongly favourable — a bounded $\approx 30\%$ liberal drift in
+exchange for removing a 50-fold conservative one, plus the power that comes with
+it — which is why `"satterthwaite"` is now the default. `"between"` remains
+available for back-compatibility, or where strict conservatism is worth more
+than power. On a small toy fixture the response–niche null is too noisy to read
+as a calibration; the main-effect preservation shown above is the part that is
+robust at toy scale.
 
 ## Interpreting a mixed `SpiDEFit`
 
@@ -780,14 +816,15 @@ fixed-effects fit:
 | slot | what it holds | how to read it |
 |---|---|---|
 | `@tau2` | the fitted variance component(s), named `SampleInt` (and `SampleSlope` under `random = "slope"`) | on the **log-mean scale**: a patient with $u_s = +\hat\tau$ has roughly $e^{\hat\tau}$-fold higher baseline expression than average. If `@tau2` is tiny, patients barely differ beyond sampling noise (the mixed fit will look similar to, but always slightly more conservative than, the fixed fit); if it is large relative to the within-patient (Poisson/NB) noise, a sizeable share of what a fixed-effects fit reported as "response signal" was actually between-patient noise leaking through |
-| `@df` | the Wald reference degrees of freedom: a scalar between-patient $S - 2$ under `df.method = "between"` (default), or a **named per-coefficient vector** under `df.method = "satterthwaite"` (`Response` $\approx S-2$, niche interactions larger) | small df (few patients) means a wide-tailed $t$ and hence conservative p-values *even for a real effect* — expected, not a bug; `"satterthwaite"` relieves this for the within-patient-informed niche coefficients while leaving the between-patient main effect untouched |
+| `@df` | the Wald reference degrees of freedom: a **named per-coefficient vector** under `df.method = "satterthwaite"` (the default; `Response` $\approx S-2$, niche interactions larger), or a scalar between-patient $S - 2$ under `df.method = "between"` | small df (few patients) means a wide-tailed $t$ and hence conservative p-values *even for a real effect* — expected, not a bug; the default `"satterthwaite"` relieves this for the within-patient-informed niche coefficients while leaving the between-patient main effect untouched. Index it (`@df[[col]]`) rather than passing the vector to `pt()` |
 | `@penalty` | the per-column ridge penalty actually used ($0$ on fixed columns, $1/\hat\tau^2_k$ on random ones) | mostly a diagnostic: a very small penalty on a random block means that group's $\hat\tau^2$ converged large, i.e. that source of between-patient variation is real and substantial |
 
 For the toy fit above, `mixed$fit$tau2` pooled across 300 genes should sit
-close to the simulated $0.49$; and because `mixed` uses the default
-`df.method = "between"`, `mixed$fit$df` is the scalar $S-2 = 8$ ($S=10$
-patients). The `df.method = "satterthwaite"` fit `fs` from the previous section
-instead carries a per-coefficient df vector.
+close to the simulated $0.49$. `mixed` pins `df.method = "between"` (see the
+`fit_mode()` chunk), so `mixed$fit$df` is the flat scalar $S-2 = 8$ ($S=10$
+patients). Under the package default `"satterthwaite"` it would instead be a
+per-coefficient vector — as `fs` in the previous section shows — whose
+`Response` entry sits at $\approx 8$ while the niche interactions carry more.
 
 ## Usage and caveats
 
