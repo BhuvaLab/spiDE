@@ -10,6 +10,8 @@
 #' @slot ngenes a numeric, the number of genes.
 #' @slot ncells a numeric, the number of cells/spots.
 #' @slot W a matrix, the design matrix (cells x covariates).
+#' @slot two.sided logical, TRUE when the within-gene combination used
+#'   two-sided p-values (Cauchy/ACAT); FALSE for Brown's method.
 #' @slot se_patient numeric, per-gene standard error of the abundance-weighted
 #'   patient-level response contrast; length 0 when the design has no
 #'   CellType:condition block.
@@ -61,6 +63,7 @@ setClass(
     W = "matrix",
     covtype = "factor",
     se_patient = "numeric",
+    two.sided = "logical",
     coefmap = "ANY",
     alpha = "matrix",
     gmean = "numeric",
@@ -79,7 +82,11 @@ setClass(
   prototype = list(
     re_group = NULL, tau2 = NULL, penalty = NULL, df = NULL,
     # E2: empty unless the design carries a CellType:condition block
-    se_patient = numeric(0)
+    se_patient = numeric(0),
+    # TRUE when the within-gene combination used TWO-SIDED p-values
+    # (Cauchy/ACAT). Brown's method keeps one-sided p-values, where the
+    # -2log(p) transform is bounded at 0 and cannot cancel.
+    two.sided = FALSE
   )
 )
 

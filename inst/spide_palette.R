@@ -10,6 +10,10 @@ spide_pal <- list(
   method = c(fixed = "#D95F02", intercept = "#1B9E77", slope = "#7570B3"),
   # within-gene p-value combiners
   combine = c(Brown = "#7570B3", Cauchy = "#D95F02"),
+  # one- vs two-sided input to a combiner (Brown keeps its colour; the two
+  # Cauchy variants are distinguished)
+  sided = c("Brown (1-sided)" = "#7570B3", "Cauchy (1-sided)" = "#D95F02",
+            "Cauchy (2-sided)" = "#1B9E77"),
   # cell types (Set2)
   celltype = c(A = "#66C2A5", B = "#FC8D62", C = "#8DA0CB", D = "#E78AC3"),
   # spatial niche layouts (Dark2)

@@ -103,7 +103,9 @@ setMethod(
     object@p.cauchy.neg <- p.neg
 
     # hierarchical FDR -> tidy results
-    object@results <- .hierarchicalFDR(fits, p.pos, p.neg, gene.w, fdr)
+    two_sided <- isTRUE(fits[[1]]@two.sided)
+    object@results <- .hierarchicalFDR(fits, p.pos, p.neg, gene.w, fdr,
+                                      two.sided = two_sided)
 
     # E2: cell-type-specific and patient-level response results. Both are
     # niche-independent, so they are taken from the widest bandwidth's fit

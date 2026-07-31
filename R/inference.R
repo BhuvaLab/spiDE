@@ -146,15 +146,36 @@
     }
   }
 
-  dirs <- lapply(c(p.pos = FALSE, p.neg = TRUE), function(lower.tail) {
-    x <- ptail(t_stat, lower.tail)
-    xn <- x[cov_niche]
-    p_gene <- combineP(xn)
-    p_ct <- vapply(uniq_index, function(ct) {
-      combinePsub(xn, index_ct == ct)
-    }, numeric(1))
-    c(Gene = p_gene, p_ct)
-  })
+  # Combination side. Brown/Fisher uses -2log(p), which is bounded at 0, so a
+  # p-value near 1 contributes nothing and one-sided input is safe. ACAT uses
+  # tan((0.5 - p)*pi), which diverges to -Inf as p -> 1, so a gene UP in one
+  # niche and DOWN in another cancels exactly: the opposing column's one-sided
+  # p is ~1 and its -3e14 term annihilates the signal. Verified: with a
+  # bidirectional effect the one-sided ACAT gene p sits at ~0.5 at EVERY effect
+  # size, while Brown's falls monotonically to 2e-11. So ACAT combines
+  # TWO-SIDED p-values; Brown keeps one-sided.
+  if (combine == "cauchy") {
+    p_two <- 2 * pmin(ptail(t_stat, FALSE), ptail(t_stat, TRUE))
+    p_two <- pmin(p_two, 1)
+    xn <- p_two[cov_niche]
+    comb <- c(Gene = combineP(xn),
+              vapply(uniq_index, function(ct) combinePsub(xn, index_ct == ct),
+                     numeric(1)))
+    # the same two-sided combination is returned on both sides; the cascade is
+    # told via two.sided that it must not apply the fdr/2 direction split, and
+    # direction is taken from the niche-level coefficients instead.
+    dirs <- list(p.pos = comb, p.neg = comb)
+  } else {
+    dirs <- lapply(c(p.pos = FALSE, p.neg = TRUE), function(lower.tail) {
+      x <- ptail(t_stat, lower.tail)
+      xn <- x[cov_niche]
+      p_gene <- combineP(xn)
+      p_ct <- vapply(uniq_index, function(ct) {
+        combinePsub(xn, index_ct == ct)
+      }, numeric(1))
+      c(Gene = p_gene, p_ct)
+    })
+  }
 
   # patient-level contrast SE: sqrt(psi * w'Vw). beta = w'alpha is recovered
   # from the coefficients outside, so only the variance needs V.
@@ -398,8 +419,13 @@
   }
 
   eps <- 1e-15
+  # This is the ACAT path, so combine TWO-SIDED p-values (see .waldBrownGene for
+  # why: one-sided ACAT cancels exactly on bidirectional genes). The identical
+  # combination is returned on both sides; two.sided tells the cascade not to
+  # apply the fdr/2 direction split.
+  p_two_all <- pmin(2 * pmin(ptail(t_stat, FALSE), ptail(t_stat, TRUE)), 1)
   dirs <- lapply(c(p.pos = FALSE, p.neg = TRUE), function(lower.tail) {
-    p_all <- ptail(t_stat, lower.tail)
+    p_all <- p_two_all
     p_niche <- pmin(pmax(p_all[, cov_niche, drop = FALSE], eps), 1 - eps)
     p_gene <- .cauchyCombine(p_niche)
     p_ct <- vapply(uniq_index, function(ct) {
@@ -726,6 +752,7 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
   names(loglik) <- gnames
   if (length(se_pat) == length(gnames)) names(se_pat) <- gnames else se_pat <- numeric(0)
 
+  fit@two.sided <- identical(combine, "cauchy")
   fit@se_patient <- se_pat
   fit@t_stat <- t_stat
   fit@se <- se
