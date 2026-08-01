@@ -1,7 +1,7 @@
 # Tests for the mixed-effects (random-effects via ridge) correction for
 # cell-level pseudo-replication. See R/fitSpiDE.R (.fitNBmixed) and R/inference.R.
 
-test_that("random='none' has no RE slots; mixed fits populate them (+ satterthwaite @df vector)", {
+test_that("random='none' has no RE slots; mixed fits populate them", {
   spe <- buildNiches(.toySPE(), sigma = 20)
   a <- fitSpiDE(spe, "condition", sigma = 20, verbose = FALSE)
   fa <- fits(a)[[1]]
@@ -10,18 +10,18 @@ test_that("random='none' has no RE slots; mixed fits populate them (+ satterthwa
   expect_null(fa@penalty)
   expect_null(fa@df)
   # a random fit adds the Random covtype and populates the slots
-  b <- fitSpiDE(spe, "condition", sigma = 20, random = "slope", verbose = FALSE)
+  # df.method = "between" here purely for speed: the satterthwaite default adds
+  # a p x p penalised inverse and the variance-parameter covariance to every
+  # mixed fit, which this test does not exercise. df.method behaviour (including
+  # that satterthwaite IS the default) is covered in test-satterthwaite.R.
+  b <- fitSpiDE(spe, "condition", sigma = 20, random = "slope",
+                df.method = "between", verbose = FALSE)
   fb <- fits(b)[[1]]
   expect_true("Random" %in% levels(fb@covtype))
   expect_true(all(c("SampleInt", "SampleSlope") %in% fb@re_group))
   expect_equal(length(fb@penalty), ncol(fb@W))
+  expect_length(fb@df, 1L)
   expect_true(is.finite(fb@df))
-  # a satterthwaite fit populates @df as a per-tested-column vector
-  bs <- fitSpiDE(spe, "condition", sigma = 20, random = "slope",
-                 df.method = "satterthwaite", verbose = FALSE)
-  fbs <- fits(bs)[[1]]
-  expect_gt(length(fbs@df), 1L)
-  expect_equal(length(fbs@df), sum(grepl("Response", as.character(fbs@covtype))))
 })
 
 test_that("random-effect design targets the response-related effects", {
@@ -87,18 +87,21 @@ test_that("re.prop is validated and small strata are taken whole", {
   )
   # the toy strata (~27 cells) are below the 100-cell floor, so re.prop must not
   # change the fit relative to using all cells
+  # df.method = "between" for speed (this test is about re.prop, not the df)
   fa <- fitSpiDE(spe, "condition", sigma = 20, random = "intercept",
-                 re.prop = 0.1, verbose = FALSE)
+                 re.prop = 0.1, df.method = "between", verbose = FALSE)
   fb <- fitSpiDE(spe, "condition", sigma = 20, random = "intercept",
-                 re.prop = 1, verbose = FALSE)
+                 re.prop = 1, df.method = "between", verbose = FALSE)
   expect_equal(fits(fa)[[1]]@tau2, fits(fb)[[1]]@tau2)
   expect_equal(fits(fa)[[1]]@alpha, fits(fb)[[1]]@alpha)
 })
 
 test_that("the mixed fit recovers the planted between-sample variance", {
   spe <- buildNiches(.toyClustered(sd_patient = 0.7), sigma = 30)
+  # df.method = "between" for speed: tau2 comes out of the PQL loop and is
+  # identical either way -- the df is computed after it, from the same fit.
   fit <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
-                  verbose = FALSE)
+                  df.method = "between", verbose = FALSE)
   tau2 <- fits(fit)[[1]]@tau2[["SampleInt"]]
   # planted variance is 0.7^2 = 0.49; Schall/PQL should land close
   expect_gt(tau2, 0.3)
@@ -109,12 +112,17 @@ test_that("mixed effects deflate the anti-conservative response inference", {
   spe <- buildNiches(.toyClustered(sd_patient = 0.7), sigma = 30)
   Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
 
+  # df.method = "between" both for speed and because the between-patient S - 2
+  # reference is precisely what this test is about. The satterthwaite arm is
+  # exercised in test-satterthwaite.R.
   resp_p <- function(random) {
-    f <- fitSpiDE(spe, "condition", sigma = 30, random = random, verbose = FALSE)
+    f <- fitSpiDE(spe, "condition", sigma = 30, random = random,
+                  df.method = "between", verbose = FALSE)
     ff <- spiDE:::.blockedInference(fits(f)[[1]], Y)
     # the condition effect now lives in the CellType:condition columns
     rc <- ff@coefmap$covariate[as.character(ff@covtype) == "ResponseCellType"]
     t <- ff@t_stat[, rc]
+    # NULL for the fixed fit (normal reference), else the scalar S - 2.
     df <- if (is.null(ff@df)) Inf else ff@df
     2 * stats::pt(-abs(t), df)
   }

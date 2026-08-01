@@ -51,7 +51,7 @@ setMethod(
                         winsor = 4, lambda.a = 0,
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         fdr = 0.05, combine = c("cauchy", "brown"),
-                        df.method = c("between", "satterthwaite"),
+                        df.method = c("satterthwaite", "between"),
                         block.size = NULL, gpu.mem.budget = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)

@@ -28,7 +28,7 @@ fitSpiDE(spe, condition, ...)
   re.prop = 1,
   re.maxit.psi = 1L,
   re.min.cells = 100L,
-  df.method = c("between", "satterthwaite"),
+  df.method = c("satterthwaite", "between"),
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
   ...
@@ -116,15 +116,26 @@ the redundant re-estimation of the barely-moving dispersion each iteration.}
 
 \item{re.min.cells}{the per-stratum floor for \code{re.prop} subsampling.}
 
-\item{df.method}{one of "between" (default) or "satterthwaite"; only used
-when \code{random != "none"}. "between" tests every Response/ResponseNiche
-coefficient against the same scalar between-sample reference df
-(\code{S - 2}), the original back-compatible behaviour. "satterthwaite"
-instead derives a separate df per tested column from the shared
-variance-component fit, distinguishing between-sample contrasts
-(Response: small df, close to "between") from within-sample contrasts
-(ResponseNiche: larger df, more power) rather than applying \code{S - 2}
-to both. Ignored when \code{random == "none"}.}
+\item{df.method}{one of "satterthwaite" (default) or "between"; only used
+when \code{random != "none"}. "satterthwaite" derives a separate df per
+tested column from the shared variance-component fit, distinguishing
+between-sample contrasts (Response: small df, close to "between") from
+within-sample contrasts (ResponseNiche: larger df, more power) rather than
+applying \code{S - 2} to both; \code{@df} is then a named per-column
+vector. "between" tests every Response/ResponseNiche coefficient against
+the same scalar between-sample reference df (\code{S - 2}), the original
+back-compatible behaviour, and \code{@df} is a scalar.
+
+The default changed to "satterthwaite" after the benchmark study
+(\code{research/}) measured both arms on identically seeded data: "between"
+is severely over-conservative when samples are few (null type-I
+\eqn{\approx 0.001} at \eqn{S = 4} against a nominal 0.05, with
+correspondingly near-zero power), while "satterthwaite" holds type-I in
+\eqn{0.042}-\eqn{0.065} across the whole sampled range and gains
+\eqn{\approx 0.10} mean TPR. The trade is a mild liberal drift at larger
+\eqn{S} (worst measured \eqn{\approx 0.065}); use "between" when strict
+conservatism matters more than power, or for back-compatibility.
+Ignored when \code{random == "none"}.}
 
 \item{BPPARAM}{a BiocParallelParam (reserved for the inference stage).}
 

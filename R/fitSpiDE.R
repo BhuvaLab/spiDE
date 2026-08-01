@@ -90,9 +90,9 @@
 #'   (NULL = all cells). The final fit always uses all cells.
 #' @param re.maxit.psi dispersion iterations (\code{maxit.psi}) for the inner
 #'   loop fits; the final fit uses full dispersion.
-#' @param df.method one of "between" (scalar \code{S - 2} residual df, the
-#'   default) or "satterthwaite" (a per-tested-column df vector via
-#'   \code{.satterthwaiteDF()}).
+#' @param df.method one of "satterthwaite" (the default: a per-tested-column df
+#'   vector via \code{.satterthwaiteDF()}) or "between" (a scalar \code{S - 2}
+#'   residual df, the back-compatible behaviour).
 #' @param cols_tested a logical over \code{colnames(W)} marking the
 #'   Response/ResponseNiche columns needing a df (only used when
 #'   \code{df.method == "satterthwaite"}).
@@ -106,7 +106,7 @@
 .fitNBmixed <- function(Y, W, re_group, lambda.a, winsor, backend, verbose,
                         re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
                         tau2.range = c(1e-8, 1e4), idx = NULL,
-                        re.maxit.psi = 1L, df.method = "between",
+                        re.maxit.psi = 1L, df.method = "satterthwaite",
                         cols_tested = NULL, ...) {
   p <- ncol(W)
   groups <- unique(re_group[!is.na(re_group)])
@@ -268,7 +268,7 @@
                              verbose, sample_id = "sample_id", random = "none",
                              re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
                              re.prop = 1, re.maxit.psi = 1L,
-                             re.min.cells = 100L, df.method = "between", ...) {
+                             re.min.cells = 100L, df.method = "satterthwaite", ...) {
   des <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
                            cell_type, name, sample_id, random)
   W <- des$W
@@ -402,15 +402,26 @@
 #'   final all-cell fit always uses full dispersion). \code{1} (default) skips
 #'   the redundant re-estimation of the barely-moving dispersion each iteration.
 #' @param re.min.cells the per-stratum floor for \code{re.prop} subsampling.
-#' @param df.method one of "between" (default) or "satterthwaite"; only used
-#'   when \code{random != "none"}. "between" tests every Response/ResponseNiche
-#'   coefficient against the same scalar between-sample reference df
-#'   (\code{S - 2}), the original back-compatible behaviour. "satterthwaite"
-#'   instead derives a separate df per tested column from the shared
-#'   variance-component fit, distinguishing between-sample contrasts
-#'   (Response: small df, close to "between") from within-sample contrasts
-#'   (ResponseNiche: larger df, more power) rather than applying \code{S - 2}
-#'   to both. Ignored when \code{random == "none"}.
+#' @param df.method one of "satterthwaite" (default) or "between"; only used
+#'   when \code{random != "none"}. "satterthwaite" derives a separate df per
+#'   tested column from the shared variance-component fit, distinguishing
+#'   between-sample contrasts (Response: small df, close to "between") from
+#'   within-sample contrasts (ResponseNiche: larger df, more power) rather than
+#'   applying \code{S - 2} to both; \code{@df} is then a named per-column
+#'   vector. "between" tests every Response/ResponseNiche coefficient against
+#'   the same scalar between-sample reference df (\code{S - 2}), the original
+#'   back-compatible behaviour, and \code{@df} is a scalar.
+#'
+#'   The default changed to "satterthwaite" after the benchmark study
+#'   (\code{research/}) measured both arms on identically seeded data: "between"
+#'   is severely over-conservative when samples are few (null type-I
+#'   \eqn{\approx 0.001} at \eqn{S = 4} against a nominal 0.05, with
+#'   correspondingly near-zero power), while "satterthwaite" holds type-I in
+#'   \eqn{0.042}-\eqn{0.065} across the whole sampled range and gains
+#'   \eqn{\approx 0.10} mean TPR. The trade is a mild liberal drift at larger
+#'   \eqn{S} (worst measured \eqn{\approx 0.065}); use "between" when strict
+#'   conservatism matters more than power, or for back-compatibility.
+#'   Ignored when \code{random == "none"}.
 #' @param BPPARAM a BiocParallelParam (reserved for the inference stage).
 #' @param verbose a logical, whether to print fitting progress.
 #' @param ... further arguments forwarded to \code{\link[SpaNorm]{fitNB}}.
@@ -438,7 +449,7 @@ setMethod(
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
                         re.prop = 1, re.maxit.psi = 1L, re.min.cells = 100L,
-                        df.method = c("between", "satterthwaite"),
+                        df.method = c("satterthwaite", "between"),
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
     random <- match.arg(random)

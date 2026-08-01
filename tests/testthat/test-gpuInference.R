@@ -60,8 +60,10 @@ test_that("GPU inference matches the CPU path (mixed effects)", {
   spe <- buildNiches(.toySPE(), sigma = 20)
   spe <- computeSizeFactors(spe, count = "nCount", area = "Area")
   set.seed(1)
+  # df.method = "between" for speed: this test compares the CPU and GPU
+  # inference paths on one shared fit, so the reference df is irrelevant to it.
   res <- fitSpiDE(spe, condition = "condition", sigma = 20,
-                  random = "intercept", verbose = FALSE)
+                  random = "intercept", df.method = "between", verbose = FALSE)
   fm <- fits(res)[[1]]
   Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
 

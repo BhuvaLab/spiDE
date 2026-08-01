@@ -1,3 +1,26 @@
+# spiDE 0.99.7
+
+* **Behaviour change:** `fitSpiDE()` / `spiDE()` now default to
+  `df.method = "satterthwaite"` (previously `"between"`). Consequently a
+  mixed-effects fit's `SpiDEFit@df` is a **named per-tested-coefficient vector**
+  by default, where it used to be the scalar `S - 2`; code that assumed a scalar
+  (e.g. `stats::pt(t, fit@df)` across genes) must now index the column it is
+  testing, or pass `df.method = "between"` explicitly to restore the old
+  behaviour. Nothing else about the fit changes — only the reference df used at
+  inference time.
+
+  The change follows the completed benchmark study (`research/`), which measured
+  both arms on identically seeded data. `"between"` is severely over-conservative
+  when samples are few — null type-I error `~0.001` at `S = 4` against a nominal
+  `0.05`, with correspondingly near-zero power — and only approaches nominal at
+  the largest sample sizes studied. `"satterthwaite"` holds type-I error within
+  `0.042`–`0.065` across the whole sampled range and gains `~0.10` mean TPR
+  (paired, FDR 0.05), with observed FDP no worse. The trade is a mild liberal
+  drift at larger `S` (worst measured `~0.065` against nominal `0.05`); a
+  Kenward–Roger bias correction of the variance-parameter covariance is the
+  indicated next step for closing it. Use `df.method = "between"` where strict
+  conservatism matters more than power, or for back-compatibility.
+
 # spiDE 0.99.6
 
 * `fitSpiDE()` / `spiDE()` gain a `df.method` argument for the mixed-effects fit

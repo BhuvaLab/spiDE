@@ -24,7 +24,7 @@ spiDE(spe, condition, ...)
   name = "Niche",
   fdr = 0.05,
   combine = c("cauchy", "brown"),
-  df.method = c("between", "satterthwaite"),
+  df.method = c("satterthwaite", "between"),
   block.size = NULL,
   gpu.mem.budget = NULL,
   BPPARAM = BiocParallel::SerialParam(),
@@ -88,15 +88,26 @@ on the accelerator, forcing a serial \code{BPPARAM} in the process).}
 \item{combine}{one of "cauchy" (default) or "brown", the within-gene combiner
 for the correlated niche p-values (passed to \code{\link[=testSpiDE]{testSpiDE()}}).}
 
-\item{df.method}{one of "between" (default) or "satterthwaite"; only used
-when \code{random != "none"}. "between" tests every Response/ResponseNiche
-coefficient against the same scalar between-sample reference df
-(\code{S - 2}), the original back-compatible behaviour. "satterthwaite"
-instead derives a separate df per tested column from the shared
-variance-component fit, distinguishing between-sample contrasts
-(Response: small df, close to "between") from within-sample contrasts
-(ResponseNiche: larger df, more power) rather than applying \code{S - 2}
-to both. Ignored when \code{random == "none"}.}
+\item{df.method}{one of "satterthwaite" (default) or "between"; only used
+when \code{random != "none"}. "satterthwaite" derives a separate df per
+tested column from the shared variance-component fit, distinguishing
+between-sample contrasts (Response: small df, close to "between") from
+within-sample contrasts (ResponseNiche: larger df, more power) rather than
+applying \code{S - 2} to both; \code{@df} is then a named per-column
+vector. "between" tests every Response/ResponseNiche coefficient against
+the same scalar between-sample reference df (\code{S - 2}), the original
+back-compatible behaviour, and \code{@df} is a scalar.
+
+The default changed to "satterthwaite" after the benchmark study
+(\code{research/}) measured both arms on identically seeded data: "between"
+is severely over-conservative when samples are few (null type-I
+\eqn{\approx 0.001} at \eqn{S = 4} against a nominal 0.05, with
+correspondingly near-zero power), while "satterthwaite" holds type-I in
+\eqn{0.042}-\eqn{0.065} across the whole sampled range and gains
+\eqn{\approx 0.10} mean TPR. The trade is a mild liberal drift at larger
+\eqn{S} (worst measured \eqn{\approx 0.065}); use "between" when strict
+conservatism matters more than power, or for back-compatibility.
+Ignored when \code{random == "none"}.}
 
 \item{block.size}{a numeric, genes per inference block (NULL = a single
 block on the CPU backend, or a memory-bounded auto-selected size on the

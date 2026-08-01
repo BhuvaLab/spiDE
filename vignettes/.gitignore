@@ -1,3 +1,5 @@
 /.quarto/
 figure/
 *.html
+
+**/*.quarto_ipynb
