@@ -230,8 +230,13 @@
   q_neg <- stats::p.adjust(p_neg, "BH")
   sig_pos <- q_pos < fdr / 2
   sig_neg <- q_neg < fdr / 2
+  # Report the DOUBLED, capped-at-1 q-value, matching .geneIndexFDR()'s
+  # convention. Testing each direction at fdr/2 and reporting the raw one-sided
+  # q would put these cascades on a different scale from the niche layer: every
+  # returned row would carry q < fdr/2, understating by 2x the FDR at which the
+  # call was actually made and making cross-layer q-values incomparable.
   list(
-    q = pmin(q_pos, q_neg),
+    q = pmin(pmin(q_pos, q_neg) * 2, 1),
     sig = sig_pos | sig_neg,
     direction = ifelse(sig_pos & sig_neg, "Both",
                        ifelse(sig_pos, "Up", ifelse(sig_neg, "Down", NA_character_)))
@@ -275,8 +280,10 @@
     ct_gate <- .dirBH(p_pos[i, ], p_neg[i, ], fdr)
     j <- which(ct_gate$sig)
     if (!length(j)) return(NULL)
+    # two-sided p, matching the two-sided-equivalent q reported alongside it
     data.frame(gene = genes[i], ct_index = cts[j],
-               t = tmat[i, j], p = pmin(p_pos[i, j], p_neg[i, j]),
+               t = tmat[i, j],
+               p = pmin(2 * pmin(p_pos[i, j], p_neg[i, j]), 1),
                fdr.gene = gene_gate$q[i], fdr.celltype = ct_gate$q[j],
                Direction = ct_gate$direction[j], stringsAsFactors = FALSE)
   }))
@@ -295,7 +302,8 @@
   gate <- .dirBH(p_pos, p_neg, fdr)
   keep <- which(gate$sig)
   data.frame(gene = names(beta)[keep], coef = beta[keep], se = se[keep],
-             t = t[keep], p = pmin(p_pos, p_neg)[keep], fdr = gate$q[keep],
+             t = t[keep],
+             p = pmin(2 * pmin(p_pos, p_neg), 1)[keep], fdr = gate$q[keep],
              Direction = gate$direction[keep], stringsAsFactors = FALSE,
              row.names = NULL)
 }

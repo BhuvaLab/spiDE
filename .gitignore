@@ -10,3 +10,5 @@ docs
 !.claude/skills/hpc-job-sizing
 .DS_Store
 specs/
+/doc/
+/Meta/

@@ -293,17 +293,16 @@
   varcov[, sel, sel, drop = FALSE]
 }
 
-#' Extract the per-slice diagonal of a (block, p, p) array/tensor
-#'
-#' @param varcov a \code{(block, p, p)} array or torch tensor.
-#' @return a \code{block x p} matrix (or torch tensor) of diagonals.
-#' @noRd
 #' Per-slice quadratic form w'Vw of a (block, p, p) array/tensor
 #'
 #' Needed for the patient-level contrast: the weighted-average response effect
 #' across cell types is w'alpha, whose variance is w'Vw. V exists inside the
 #' Wald block but only its diagonal is retained, so the quadratic form must be
 #' formed here before V is discarded.
+#'
+#' @param varcov a \code{(block, p, p)} array or torch tensor.
+#' @param w a length-\code{p} contrast vector.
+#' @return a length-\code{block} numeric vector of quadratic forms.
 #' @noRd
 .batchQuad <- function(varcov, w) {
   if (SpaNorm::is_torch_tensor(varcov)) {
@@ -315,6 +314,11 @@
   apply(varcov, 1, function(V) as.numeric(crossprod(w, V %*% w)))
 }
 
+#' Extract the per-slice diagonal of a (block, p, p) array/tensor
+#'
+#' @param varcov a \code{(block, p, p)} array or torch tensor.
+#' @return a \code{block x p} matrix (or torch tensor) of diagonals.
+#' @noRd
 .batchDiag <- function(varcov) {
   if (SpaNorm::is_torch_tensor(varcov)) {
     return(torch::torch_diagonal(varcov, dim1 = 2, dim2 = 3))

@@ -5,16 +5,25 @@
 \alias{results,SpiDEResults-method}
 \title{Extract the tidy spiDE results table}
 \usage{
-results(object)
+results(object, ...)
 
-\S4method{results}{SpiDEResults}(object)
+\S4method{results}{SpiDEResults}(object, type = c("niche", "celltype", "patient"), ...)
 }
 \arguments{
 \item{object}{a \link{SpiDEResults} object.}
+
+\item{type}{which response result to return. "niche" (default) gives the
+neighbourhood-dependent calls keyed by (gene, ct_index, ct_niche,
+bandwidth), gated by the 3-level gene -> index -> niche cascade.
+"celltype" gives cell-type-specific response calls keyed by
+(gene, ct_index), gated by a 2-level gene -> cell type cascade.
+"patient" gives one abundance-weighted response contrast per gene.
+The latter two are empty unless the design carries a CellType:condition
+block.}
 }
 \value{
-a data.frame of significant neighbourhood-dependent DE calls, keyed
-by (gene, ct_index, ct_niche, bandwidth). Empty until \code{\link[=testSpiDE]{testSpiDE()}} is run.
+a data.frame of significant calls; see \code{type}. Empty until
+\code{\link[=testSpiDE]{testSpiDE()}} is run.
 }
 \description{
 Extract the tidy spiDE results table

@@ -192,7 +192,10 @@
   tested_level <- levels(df[[condition]])[2]
   response_coef <- paste0(condition, tested_level)
 
-  # formula: 0 + covariates + CellType + condition*CellType:(niches) + niches
+  # formula: 0 + covariates + CellType + CellType:condition +
+  #          CellType:(niches) + CellType:condition:(niches) + niches
+  # Cell-means coding: no bare `condition` main effect -- the response
+  # contrast lives in the CellType:condition columns, one per cell type.
   niche_f <- paste(niche_cols, collapse = " + ")
   # E2 fix: the released formula expands to condition + CellType:niches +
   # condition:CellType:niches but NO CellType:condition, so a cell-type-specific

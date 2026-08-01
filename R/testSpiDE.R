@@ -108,9 +108,12 @@ setMethod(
                                       two.sided = two_sided)
 
     # E2: cell-type-specific and patient-level response results. Both are
-    # niche-independent, so they are taken from the widest bandwidth's fit
-    # (the CellType:condition coefficients are the same model term in every
-    # bandwidth; they differ only through the niche columns they sit beside).
+    # niche-independent as model terms, so they are taken from a single fit --
+    # the widest bandwidth's. They are NOT identical across bandwidths, though:
+    # each is estimated alongside that bandwidth's niche columns, so the
+    # estimates shift with sigma. Unlike the niche layer these are therefore
+    # not combined across bandwidths, and depend on the largest sigma
+    # requested. Documented on ?results.
     f1 <- fits[[length(fits)]]
     ct1 <- as.character(f1@covtype)
     tested <- colnames(f1@t_stat)

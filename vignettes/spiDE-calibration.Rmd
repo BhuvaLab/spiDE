@@ -129,51 +129,20 @@ which failure mode dominates:
 
 - **Many cells spread over few patients** -- cell-level pseudo-replication. The
   reduced-design Wald standard errors treat cells as independent replicates, so
-  statistics come out too *large* and $\lambda > 1$. This is the regime the
-  toy generator sits in, and the one the mixed-effects correction exists to fix
-  (see `vignette("spiDE-model")`).
+  statistics come out too *large* and $\lambda > 1$. This is what the
+  mixed-effects correction exists to fix (see `vignette("spiDE-model")`).
 - **Few cells and few patients** -- small-sample Wald conservatism. The
   asymptotics have not arrived, the variance is biased upward, statistics come
-  out too *small* and $\lambda < 1$. This is the regime sparse cell types in a
-  real cohort sit in.
+  out too *small* and $\lambda < 1$.
 
-Both resolve towards 1 as information accumulates, from opposite sides. The
-sweep below fits the same toy design while varying the number of samples and the
-number of cells per sample; because the toy has many cells per patient it
-approaches 1 **from above**.
+Both resolve towards 1 as information accumulates, from opposite sides.
 
-```{r sweep-load}
-path <- system.file("extdata", "calibration_sweep.csv", package = "spiDE")
-sweep <- if (nzchar(path)) utils::read.csv(path) else NULL
-```
-
-```{r sweep-table, eval = !is.null(sweep)}
-sweep[, c("n_samples", "n_per", "n_cells", "lambda_niche")] |>
-  transform(lambda_niche = round(lambda_niche, 3))
-```
-
-```{r sweep-plot, eval = !is.null(sweep), fig.height = 3.6, fig.cap = "Calibration improves with both cells and patients. The toy generator has many cells per patient, so pseudo-replication dominates and lambda approaches 1 from above; a sparse real-cohort compartment approaches it from below. Precomputed by research/analysis/calibration_sweep.R."}
-ggplot(sweep, aes(n_cells, lambda_niche, colour = factor(n_samples))) +
-  geom_hline(yintercept = 1, linetype = "dashed", colour = "grey40") +
-  geom_line(aes(group = factor(n_samples))) +
-  geom_point(size = 3) +
-  labs(x = "Total cells", y = expression(lambda), colour = "patients",
-       title = "Lambda converges towards 1 as information accumulates") +
-  theme_bw()
-```
-
-```{r sweep-missing, echo = FALSE, results = "asis", eval = is.null(sweep)}
-cat("*(No precomputed sweep found. Run `research/analysis/calibration_sweep.R`",
-    "to populate `inst/extdata/calibration_sweep.csv`.)*\n")
-```
-
-Each configuration is a full `fitSpiDE()` + `testSpiDE()`, which takes minutes,
-so the sweep is precomputed by `research/analysis/calibration_sweep.R` and
-shipped with the package rather than run at build time.
-
-In a real cohort the same relationship holds across the cell types *within one
-fit*, but from the other side: abundant, widely distributed compartments sit at
-$\lambda \approx 1$ while sparse ones fall well below it. A compartment with a healthy total cell count but
+The relationship is best seen across the cell types *within one real fit*, where
+compartment sizes span orders of magnitude: abundant, widely distributed
+compartments sit at $\lambda \approx 1$ while sparse ones fall well below it. A
+small simulated design cannot show this -- its variance-component estimate is
+itself unstable at small $n$, so repeated fits of the same configuration scatter
+$\lambda$ more than changing the configuration does. A compartment with a healthy total cell count but
 most of its cells concentrated in a few patients behaves like a much rarer
 population -- the cell count flatters it, the patient count does not.
 
