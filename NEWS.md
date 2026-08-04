@@ -1,18 +1,13 @@
 # spiDE 0.99.10
 
-## New Features
-
-* `interGeneCor()` returns the average inter-gene correlation of a fitted
-  model's Pearson residuals, per bandwidth. It is the variance-inflation term
-  `spiGSEA()` uses, and a model diagnostic in its own right: it says how much
-  residual variation is shared across genes, and so how far a set of `m` genes
-  falls short of carrying `m` genes' worth of independent evidence.
-
 ## Improvements
 
 * `testSpiDE()` now stores that correlation on each `SpiDEFit` (new `rho`
   slot), computed as a by-product of the gene blocks inference already loads --
-  so it costs no extra pass over the counts. `spiGSEA()` uses it by default and
+  so it costs no extra pass over the counts. Read it as `fits(res)[[i]]$rho`,
+  like any other slot. It is a useful diagnostic in its own right: it says how
+  much residual variation is shared across genes, and so how far a set of `m`
+  genes falls short of carrying `m` genes' worth of independent evidence. `spiGSEA()` uses it by default and
   therefore needs no counts pass at all, which makes its `spe` argument
   optional: a fitted result can be shared and queried against many gene-set
   collections without the counts matrix travelling with it.

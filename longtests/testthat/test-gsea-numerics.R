@@ -122,15 +122,16 @@ test_that("spiGSEA handles a SINGLE gene set", {
   expect_equal(a$z, b$z, tolerance = 1e-10)
 })
 
-test_that("interGeneCor() matches what spiGSEA computes internally", {
+test_that("testSpiDE() stores the correlation spiGSEA then applies", {
+  # The slot is reached the same way as every other: fits(res)[[i]]$rho.
   set.seed(1)
   data(toySpiDE)
   spe <- buildNiches(toySpiDE, sigma = c(20, 40))
   res <- spiDE(spe, condition = "condition", sigma = c(20, 40), verbose = FALSE)
-  rho <- interGeneCor(res, spe, rho.genes = NULL, backend = "cpu")
+  rho <- vapply(fits(res), function(f) f$rho, numeric(1))
   expect_length(rho, 2L)
   expect_true(all(rho > -1 & rho < 1))
-  out <- spiGSEA(res, spe, list(a = rownames(spe)[1:6]), min.size = 3,
-                 fdr = 1, rho = rho, verbose = FALSE)
-  expect_equal(unname(attr(out, "rho")), unname(rho), tolerance = 1e-12)
+  out <- spiGSEA(res, genesets = list(a = rownames(spe)[1:6]), min.size = 3,
+                 fdr = 1, verbose = FALSE)
+  expect_equal(unname(attr(out, "rho")), unname(rho), tolerance = 0)
 })
