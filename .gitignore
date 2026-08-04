@@ -10,3 +10,7 @@ docs
 !.claude/skills/hpc-job-sizing
 .DS_Store
 specs/
+/doc/
+/Meta/
+spiDE.BiocCheck/
+spiDE_*.tar.gz

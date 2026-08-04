@@ -1,0 +1,251 @@
+---
+title: "Is this fit calibrated? Reading lambda per cell type"
+author: "Dharmesh D. Bhuva"
+package: spiDE
+output:
+  BiocStyle::html_document:
+    toc_float: true
+vignette: >
+  %\VignetteIndexEntry{Calibration diagnostics: lambda per cell type}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, collapse = TRUE, comment = "#>", message = FALSE,
+  warning = FALSE, fig.width = 7, fig.height = 4.2, dpi = 150, fig.retina = 2
+)
+set.seed(1)
+```
+
+```{r libs}
+library(spiDE)
+library(ggplot2)
+source(system.file("spide_palette.R", package = "spiDE"))
+```
+
+# Overview
+
+A `spiDE` fit tests thousands of genes against hundreds of
+`celltype:condition:niche` coefficients, and those coefficients are **not
+equally well estimated**. A tumour compartment with tens of thousands of cells
+spread over every patient supports a very different quality of inference from a
+dendritic-cell compartment with a few hundred cells concentrated in a handful of
+patients -- yet both are reported in the same table, against the same FDR
+threshold.
+
+This vignette is about detecting that, using the genomic inflation factor
+$\lambda$, and about what to do once you have. The short version:
+
+- $\lambda$ measures whether your test statistics follow the null distribution
+  you assumed. It is a property of the **test**, not of the biology.
+- In `spiDE` it varies *within a single fit*, across cell types, because the
+  cell types differ in how many patients contribute cells.
+- $\lambda < 1$ costs **power, not validity**. A null result for a poorly
+  calibrated cell type is weak evidence of absence.
+- The right response is to restrict which coefficients you test, **not** to
+  rescale the statistics and **not** to change the model.
+
+# What lambda is
+
+For a one-degree-of-freedom test, the squared statistic $t^2$ is a $\chi^2_1$
+variate under the null. The genomic inflation factor compares the median you
+observed with the median the null predicts:
+
+$$\lambda = \frac{\mathrm{median}(t^2)}{\mathrm{median}(\chi^2_1)}
+          = \frac{\mathrm{median}(t^2)}{0.4549}$$
+
+The **median** is the important choice. A minority of true positives, however
+large their statistics, barely moves it, so $\lambda$ reads the bulk of the
+distribution -- which is overwhelmingly nulls. That is the whole design of the
+statistic: it estimates whether your *null* is the null you assumed. It comes
+from genome-wide association studies, where population stratification inflates
+every association statistic at once (Devlin and Roeder, 1999).
+
+| $\lambda$ | reading |
+|---|---|
+| $= 1$ | observed null matches the theoretical null; p-values mean what they say |
+| $> 1$ | statistics too large: confounding or anti-conservatism, **or** genuinely widespread signal |
+| $< 1$ | statistics too small: the test is conservative, p-values are too big |
+
+```{r lambda-fn}
+# lambda from any matrix or vector of t-statistics
+lambda <- function(t) stats::median(t^2, na.rm = TRUE) / stats::qchisq(0.5, 1)
+```
+
+# Lambda below 1 does not mean "there is no signal"
+
+This is the point most often got wrong, so it is worth demonstrating rather than
+asserting. Under a pure null with a correctly calibrated test, $\lambda = 1$
+**exactly**. Absence of biology gives you 1, not less than 1.
+
+```{r pure-null}
+z <- matrix(rnorm(200 * 50), 200, 50)     # pure null, perfectly calibrated
+round(lambda(z), 3)
+```
+
+So $\lambda = 0.68$ is never a statement that a cell type is quiescent. It says
+the reference distribution is wrong for the statistic's actual sampling
+behaviour -- here, that the test is conservative. Mechanically, Wald tests are
+asymptotic:
+when few patients contribute cells the asymptotics have not arrived, the
+variance is biased upward relative to the true sampling variance, and $|t|$
+comes out systematically too small.
+
+## What that costs
+
+Because $|t|$ is scaled by $\sqrt{\lambda}$, a deflated test needs a
+proportionally larger effect to clear the same bar. Take a real effect that
+deserves $p = 0.001$ and ask what a fit at each $\lambda$ actually reports:
+
+```{r cost-table}
+t_true <- stats::qnorm(1 - 0.001 / 2)          # |t| = 3.29
+lam <- c(1.00, 0.90, 0.80, 0.70, 0.60, 0.50)
+cost <- data.frame(
+  lambda      = lam,
+  t_observed  = round(t_true * sqrt(lam), 2),
+  p_reported  = signif(2 * stats::pnorm(-abs(t_true * sqrt(lam))), 2)
+)
+cost$times_worse <- round(cost$p_reported / 0.001, 1)
+cost
+```
+
+A cell type at $\lambda = 0.5$ reports a genuine $p = 0.001$ effect as roughly
+$p = 0.02$. Multiply that penalty by a multiple-testing correction over millions
+of tests and such a compartment becomes effectively unable to produce a
+discovery, however real its biology.
+
+# What drives lambda in a spiDE fit
+
+The `condition` contrast is **between patients**, and the random intercept
+already absorbs patient-level shifts. What buys precision is therefore the
+number of *patients* contributing usable cells of that type -- not the raw cell
+count. The two are correlated but they come apart, and when they do it is the
+patient count that tracks calibration.
+
+$\lambda$ can depart from 1 in **either** direction, and which way tells you
+which failure mode dominates:
+
+- **Many cells spread over few patients** -- cell-level pseudo-replication. The
+  reduced-design Wald standard errors treat cells as independent replicates, so
+  statistics come out too *large* and $\lambda > 1$. This is what the
+  mixed-effects correction exists to fix (see `vignette("spiDE-model")`).
+- **Few cells and few patients** -- small-sample Wald conservatism. The
+  asymptotics have not arrived, the variance is biased upward, statistics come
+  out too *small* and $\lambda < 1$.
+
+Both resolve towards 1 as information accumulates, from opposite sides.
+
+The relationship is best seen across the cell types *within one real fit*, where
+compartment sizes span orders of magnitude: abundant, widely distributed
+compartments sit at $\lambda \approx 1$ while sparse ones fall well below it. A
+small simulated design cannot show this -- its variance-component estimate is
+itself unstable at small $n$, so repeated fits of the same configuration scatter
+$\lambda$ more than changing the configuration does. A compartment with a healthy total cell count but
+most of its cells concentrated in a few patients behaves like a much rarer
+population -- the cell count flatters it, the patient count does not.
+
+# Diagnosing your own fit
+
+$\lambda$ should be read **per index cell type**, never as a single number for
+the fit. A global value is an abundance-weighted mixture of well- and
+poorly-calibrated compartments and hides exactly the heterogeneity you need.
+
+```{r per-celltype, eval = FALSE}
+lambda_by_celltype <- function(fit, type = "ResponseNiche") {
+  cm <- as.data.frame(fit@coefmap)
+  # `covtype` spans EVERY design column, including the random-effect block,
+  # whereas `t_stat` holds only the tested ones. A logical index built from
+  # covtype therefore overruns t_stat -- always match on column names.
+  cols <- intersect(colnames(fit@t_stat), cm$covariate[cm$type == type])
+  idx  <- cm$index[match(cols, cm$covariate)]
+  out  <- lapply(split(cols, idx), function(cc) {
+    data.frame(n_col = length(cc),
+               lambda = lambda(fit@t_stat[, cc, drop = FALSE]))
+  })
+  cbind(index = names(out), do.call(rbind, out))
+}
+
+# ff <- fits(res)[[1]]
+# lambda_by_celltype(ff)
+```
+
+Pair that with the number of patients contributing at least a handful of cells
+of each type, which is the quantity that actually predicts it:
+
+```{r patient-spread, eval = FALSE}
+tab <- table(spe$cell_type, spe$sample_id)
+data.frame(
+  index       = rownames(tab),
+  n_cells     = rowSums(tab),
+  n_patients  = rowSums(tab > 0),
+  n_pat_ge10  = rowSums(tab >= 10)
+)
+```
+
+# What to do about it
+
+## Do not rescale by lambda
+
+Classical genomic control divides every statistic by $\lambda$. **That is the
+wrong move here.** It assumes a single inflation factor applies to all tests,
+whereas in a `spiDE` fit $\lambda$ varies substantially between cell types
+*within the same fit*. A global correction deflates the well-calibrated
+compartments and still leaves the sparse ones under-powered. The heterogeneity
+is the finding, not noise to be divided out.
+
+## Do not reach for a bigger model
+
+A random slope, a different ridge penalty, or a refit will not move $\lambda$
+when the cause is small-sample conservatism. Two checks are worth running before
+concluding that the model is at fault:
+
+- **Compare a fixed-effects fit against the mixed fit.** If the mixed model were
+  over-shrinking, the fixed fit would be the better calibrated of the two. If it
+  is instead *worse*, the random effect is helping and is not the culprit.
+- **Look at the dispersion multiplier used at inference.** If its median is
+  below 1 it is *shrinking* standard errors and improving $\lambda$, so it
+  cannot be the source of deflation either.
+
+Conservatism at small $n$ is expected behaviour for a Wald test on a sparse
+negative-binomial fit. It is not a bug, and there is no model change that
+removes it.
+
+## Restrict what you test
+
+The productive response is to stop testing coefficients that cannot support
+inference, filtering on **patients contributing cells** rather than on total
+cells. This helps twice: the anti-powered tail stops consuming the
+multiple-testing budget, so the well-calibrated compartments gain power, and the
+output stops presenting uninformative nulls as though they were evidence.
+
+Whatever threshold you choose, report it, and treat a null result from an
+excluded or poorly calibrated compartment as **weak evidence of absence** rather
+than evidence of no effect.
+
+# When lambda exceeds 1
+
+$\lambda > 1$ is not automatically alarming. Because it is a median, it cannot
+be pushed up by a handful of strong hits -- moving it requires a *large fraction
+of all genes* to shift. Two situations produce that:
+
+1. **Residual confounding or anti-conservative inference.** The classical
+   concern, and the reason to check the design before interpreting.
+2. **A genuine programme-level shift.** If a compartment really does change
+   coordinately across a broad set of genes, the median moves with them and
+   $\lambda$ exceeds 1 legitimately.
+
+These are distinguishable. A confounding-driven inflation affects the null
+genes indiscriminately; a real programme shift concentrates in one compartment
+and one direction, and should reproduce in an independent contrast. Where a
+single cell type shows $\lambda > 1$ while the rest of the fit sits at or below
+1, a coordinated biological shift in that compartment is the more parsimonious
+reading -- and it argues for interpreting the result at the level of the
+programme rather than gene by gene.
+
+# Session info
+
+```{r session}
+sessionInfo()
+```

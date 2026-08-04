@@ -49,6 +49,16 @@ results table produced by \code{\link[=testSpiDE]{testSpiDE()}}.
 \item{\code{results}}{a data.frame, the tidy results table (empty until
 \code{\link[=testSpiDE]{testSpiDE()}} is run), keyed by (gene, ct_index, ct_niche, bandwidth).}
 
+\item{\code{results.celltype}}{a data.frame of cell-type-specific response calls
+keyed by (gene, ct_index), from the \code{CellType:condition} block. Empty
+unless the design carries that block. Retrieved with
+\code{results(object, type = "celltype")}.}
+
+\item{\code{results.patient}}{a data.frame of patient-level response calls, one
+abundance-weighted contrast per gene. Empty unless the design carries the
+\code{CellType:condition} block. Retrieved with
+\code{results(object, type = "patient")}.}
+
 \item{\code{fdr}}{a numeric, the FDR threshold used.}
 
 \item{\code{call}}{the matched call that produced the object.}

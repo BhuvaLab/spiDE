@@ -65,6 +65,37 @@ tab <- results(res)
 head(tab[order(tab$fdr.niche), ], 10)
 ```
 
+## Three kinds of response result
+
+`results()` returns the niche-associated calls by default, but the design also
+carries a `CellType:condition` term, which makes two further questions
+answerable from the same fit --- no refitting, no second model.
+
+```{r result-types}
+vapply(c("niche", "celltype", "patient"),
+       function(ty) nrow(results(res, type = ty)), integer(1))
+```
+
+- **`"niche"`** (default) --- does the *neighbourhood* modulate the response,
+  within an index cell type? Keyed by `(gene, ct_index, ct_niche)`.
+- **`"celltype"`** --- does the response differ *by cell type*, irrespective of
+  neighbourhood? Keyed by `(gene, ct_index)`, with a two-step hierarchical FDR
+  (gene, then cell type within gene).
+- **`"patient"`** --- does the gene respond at the *patient* level at all? One
+  test per gene, and the layer least exposed to the per-cell-type calibration
+  differences discussed in `vignette("spiDE-calibration")`.
+
+```{r result-celltype}
+ct <- results(res, type = "celltype")
+if (nrow(ct)) head(ct[order(ct$fdr.celltype), ], 5) else "no calls on this toy data"
+```
+
+On a dataset this small the two new layers are usually empty --- they are shown
+here for the interface. On a real cohort they are not redundant with the niche
+layer: they routinely recover genes the niche layer never reports, because a
+cell-type-wide response shift is not a neighbourhood effect and has nowhere to
+go in the three-way term.
+
 The planted `G1` / index A / niche B effect is recovered with a positive (up-regulated) direction:
 
 ```{r recovered}

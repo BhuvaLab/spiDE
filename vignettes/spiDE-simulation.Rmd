@@ -414,11 +414,25 @@ The remainder of this report summarises a study that fits `spiDE` to many datase
 # be hand-typed from research/config.R, so it never goes stale when the study
 # is re-run with different parameters and `Rscript research/R/install_results.R`
 # is re-run.
+# The design arm the package ships. Mirrors `design_default` in
+# research/config.R and must be updated together with it on a promotion --
+# the vignette cannot read config.R, which is not installed. Following the
+# same convention as the simulator inputs typed from config.R below.
+.design_shipped <- "celltype-response"
+
 bench_dir <- system.file("extdata", "benchmark", package = "spiDE")
 bench <- function(f, keep_df_method = FALSE) {
   path <- file.path(bench_dir, f)
+  # Large tables are shipped xz-compressed to stay inside Bioconductor's 5 MB
+  # package cap (see research/R/install_results.R), so a requested .csv may
+  # exist only as .rds. Fall back rather than silently returning NULL, which
+  # would blank the panel instead of failing.
+  if (!file.exists(path) && grepl("\\.csv$", f)) {
+    alt <- file.path(bench_dir, sub("\\.csv$", ".rds", f))
+    if (file.exists(alt)) path <- alt
+  }
   if (!file.exists(path)) return(NULL)
-  d <- if (grepl("\\.rds$", f)) readRDS(path) else
+  d <- if (grepl("\\.rds$", path)) readRDS(path) else
     utils::read.csv(path, check.names = FALSE)
   # This report compares inference *modes* (fixed/intercept/slope); df.method
   # (between/satterthwaite) is a second, independent axis that would otherwise
@@ -430,6 +444,11 @@ bench <- function(f, keep_df_method = FALSE) {
   if (!is.null(d) && !is.null(d$df.method) && !keep_df_method) {
     d <- d[d$df.method == "between", ]
   }
+  # The model-design arm is a third axis, handled the same way: this report
+  # characterises the design the package SHIPS, and the demoted arm is compared
+  # against it in spiDE-mixed-benchmark.Rmd. Older tables carry no `design`
+  # column at all, in which case there is nothing to collapse.
+  if (!is.null(d) && !is.null(d$design)) d <- d[d$design == .design_shipped, ]
   d
 }
 se_of <- function(df, m) {
@@ -536,6 +555,7 @@ plus `m_sd` and `m_n` across replicates. The standard error of the mean is
 `errbars()` adds a matching error bar to any figure whose y aesthetic is the
 mean of metric `m`. Every figure below therefore shows replicate-to-replicate
 uncertainty, not just a point estimate.
+
 
 Throughout, three inference modes are compared:
 

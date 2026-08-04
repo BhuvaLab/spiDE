@@ -10,8 +10,14 @@
 #' @slot ngenes a numeric, the number of genes.
 #' @slot ncells a numeric, the number of cells/spots.
 #' @slot W a matrix, the design matrix (cells x covariates).
+#' @slot two.sided logical, TRUE when the within-gene combination used
+#'   two-sided p-values (Cauchy/ACAT); FALSE for Brown's method.
+#' @slot se_patient numeric, per-gene standard error of the abundance-weighted
+#'   patient-level response contrast; length 0 when the design has no
+#'   CellType:condition block.
 #' @slot covtype a factor, the covariate type of each column of `W`, one of
-#'   "CellType", "Niche", "Response", "ResponseNiche", "Other", or "Random"
+#'   "CellType", "Niche", "Response", "ResponseNiche", "ResponseCellType",
+#'   "Other", or "Random"
 #'   (patient random-effect columns for the mixed-effects fit).
 #' @slot coefmap a DataFrame mapping each covariate to its index cell type,
 #'   niche cell type, and type.
@@ -56,6 +62,8 @@ setClass(
     ncells = "numeric",
     W = "matrix",
     covtype = "factor",
+    se_patient = "numeric",
+    two.sided = "logical",
     coefmap = "ANY",
     alpha = "matrix",
     gmean = "numeric",
@@ -72,7 +80,13 @@ setClass(
     sampling = "ANY"
   ),
   prototype = list(
-    re_group = NULL, tau2 = NULL, penalty = NULL, df = NULL
+    re_group = NULL, tau2 = NULL, penalty = NULL, df = NULL,
+    # E2: empty unless the design carries a CellType:condition block
+    se_patient = numeric(0),
+    # TRUE when the within-gene combination used TWO-SIDED p-values
+    # (Cauchy/ACAT). Brown's method keeps one-sided p-values, where the
+    # -2log(p) transform is bounded at 0 and cannot cancel.
+    two.sided = FALSE
   )
 )
 
@@ -128,7 +142,12 @@ validSpiDEFit <- function(object) {
     stop("'alpha' cannot have missing values")
   }
   # covtype levels
-  valid_levels <- c("CellType", "Niche", "Response", "ResponseNiche", "Other",
+  # E2 fix: "ResponseCellType" tags the CellType:condition block. The substring
+  # "Response" puts it in cols_tested (so it receives SEs and t-statistics),
+  # while the exact matches in inference.R and fdr.R keep it out of the
+  # within-gene Cauchy combination and the triplet FDR cascade.
+  valid_levels <- c("CellType", "Niche", "Response", "ResponseNiche",
+                    "ResponseCellType", "Other",
                     "Random")
   if (!all(levels(object@covtype) %in% valid_levels)) {
     stop(sprintf("'covtype' levels should be a subset of: %s", paste(valid_levels, collapse = ", ")))
@@ -160,6 +179,14 @@ setValidity("SpiDEFit", validSpiDEFit)
 #' @slot p.cauchy.neg a matrix, Cauchy-combined down-regulation p-values.
 #' @slot results a data.frame, the tidy results table (empty until
 #'   [testSpiDE()] is run), keyed by (gene, ct_index, ct_niche, bandwidth).
+#' @slot results.celltype a data.frame of cell-type-specific response calls
+#'   keyed by (gene, ct_index), from the `CellType:condition` block. Empty
+#'   unless the design carries that block. Retrieved with
+#'   `results(object, type = "celltype")`.
+#' @slot results.patient a data.frame of patient-level response calls, one
+#'   abundance-weighted contrast per gene. Empty unless the design carries the
+#'   `CellType:condition` block. Retrieved with
+#'   `results(object, type = "patient")`.
 #' @slot fdr a numeric, the FDR threshold used.
 #' @slot call the matched call that produced the object.
 #'
@@ -184,8 +211,16 @@ setClass(
     p.cauchy.pos = "ANY",
     p.cauchy.neg = "ANY",
     results = "data.frame",
+    # E2: response results that are not niche-dependent. Empty unless the
+    # design carries a CellType:condition block.
+    results.celltype = "data.frame",
+    results.patient = "data.frame",
     fdr = "numeric",
     call = "ANY"
+  ),
+  prototype = list(
+    results.celltype = data.frame(),
+    results.patient = data.frame()
   )
 )
 

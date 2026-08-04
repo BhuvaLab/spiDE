@@ -209,6 +209,136 @@ line as more true genes accumulate. Both combiners inherit their absolute FDP
 level from the underlying mixed-effects fit; this comparison holds that fit fixed
 and isolates the combination step, and on that axis Cauchy is clearly preferable.
 
+
+# Sidedness: why Cauchy needs two-sided input
+
+Everything above combines **one-sided** p-values, testing each direction
+separately at `fdr/2` so that a gene can be labelled Up, Down or Both. That
+convention is safe for Brown's method but **not** for Cauchy combination, and the
+reason is the transform each uses.
+
+| combiner | transform | value as $p \to 1$ |
+|---|---|---|
+| Brown / Fisher | $-2\log p$ | $\to 0$ — contributes nothing |
+| Cauchy / ACAT | $\tan((0.5 - p)\pi)$ | $\to -\infty$ — cancels the signal |
+
+Consider a gene that is strongly **up** near one niche cell type and strongly
+**down** near another. In the up-direction combination the down coefficient
+contributes a one-sided $p \approx 1$. Fisher's transform maps that to
+$\approx 0$, so it is simply ignored. Cauchy's maps it to a large *negative*
+number that annihilates the large positive contribution from the genuine signal.
+
+```{r sided-terms}
+d_grid <- c(3, 8, 15, 25)
+data.frame(
+  `effect (t)` = d_grid,
+  `opposing one-sided p` = signif(pt(-d_grid, 50, lower.tail = FALSE), 4),
+  `Cauchy term` = signif(tan((0.5 - pmin(pt(-d_grid, 50, lower.tail = FALSE),
+                                         1 - 1e-15)) * pi), 3),
+  `Fisher term` = signif(-2 * log(pmin(pt(-d_grid, 50, lower.tail = FALSE),
+                                       1 - 1e-15)), 3),
+  check.names = FALSE
+)
+```
+
+The consequence is not subtle: the stronger the opposing signal, the more
+completely Cauchy discards the gene.
+
+```{r sided-sim}
+k <- 5; df_t <- 50; nsim_s <- 2000
+# gene-level p as the pipeline forms it: one-sided combiners test each direction
+# and pay a factor-2 direction-split correction; the two-sided combiner does not.
+gene_p <- function(tstat) {
+  pp <- pt(tstat, df_t, lower.tail = FALSE)
+  pn <- pt(tstat, df_t, lower.tail = TRUE)
+  p2 <- pmin(2 * pmin(pp, pn), 1)
+  R  <- diag(k)
+  data.frame(
+    `Brown (1-sided)`  = pmin(2 * pmin(brown_combine(pp, R),
+                                       brown_combine(pn, R)), 1),
+    `Cauchy (1-sided)` = pmin(2 * pmin(cauchy_combine(pp),
+                                       cauchy_combine(pn)), 1),
+    `Cauchy (2-sided)` = cauchy_combine(p2),
+    check.names = FALSE
+  )
+}
+draw <- function(delta, bidirectional) {
+  tstat <- matrix(rt(nsim_s * k, df_t), nsim_s, k)
+  tstat[, 1] <- tstat[, 1] + delta
+  tstat[, 2] <- tstat[, 2] + if (bidirectional) -delta else delta
+  tstat
+}
+deltas <- c(0, 2, 3, 4, 5, 6, 8, 10, 15)
+power_df <- do.call(rbind, lapply(c(TRUE, FALSE), function(bi) {
+  do.call(rbind, lapply(deltas, function(d) {
+    g <- gene_p(draw(d, bi))
+    data.frame(delta = d,
+               signal = if (bi) "bidirectional (one up, one down)"
+                        else "unidirectional (both up)",
+               method = rep(names(g), each = nsim_s),
+               detected = unlist(lapply(g, function(p) p < 0.05)))
+  }))
+}))
+power_sum <- aggregate(detected ~ delta + signal + method, power_df, mean)
+```
+
+```{r sided-power, fig.height = 4.2, fig.cap = "Detection rate at alpha = 0.05 versus effect size, for m = 5 coefficients. With unidirectional signal all three agree. With opposing signal, one-sided Cauchy collapses toward zero as the effect grows, while Brown and two-sided Cauchy both rise monotonically."}
+ggplot(power_sum, aes(delta, detected, colour = method)) +
+  geom_hline(yintercept = 0.05, linetype = 2, colour = spide_pal$ref) +
+  geom_line(linewidth = 0.8) + geom_point(size = 1.7) +
+  facet_wrap(~ signal, nrow = 1) +
+  scale_colour_spide("sided") + ylim(0, 1) +
+  labs(x = expression(paste("effect size ", delta)),
+       y = expression(paste("detection rate (", alpha, " = 0.05)")),
+       colour = NULL, title = "Sidedness matters only for opposing effects")
+```
+
+The left panel is the diagnostic one. One-sided Cauchy is **non-monotone in the
+effect size**: detection rises, peaks, and then falls back towards zero as the
+opposing coefficient's p-value approaches 1. The clearest possible biology is the
+most likely to be discarded, and silently. Brown is immune, and two-sided Cauchy
+is immune while keeping the correlation-agnostic property that made Cauchy the
+default.
+
+Two-sided input costs nothing where the one-sided convention was already safe:
+in the right-hand panel the three curves are indistinguishable, because the
+two-sided p-value's factor of 2 is exactly offset by dropping the `fdr/2`
+direction split.
+
+```{r sided-null, fig.height = 3.6, fig.cap = "Null QQ plot for the three gene-level constructions. All are calibrated; two-sided Cauchy is not anti-conservative."}
+null_sided <- gene_p(matrix(rt(nsim_s * k, df_t), nsim_s, k))
+qq_s <- do.call(rbind, lapply(names(null_sided), function(m) {
+  p <- sort(null_sided[[m]])
+  data.frame(method = m, p = p, expected = (seq_along(p) - 0.5) / length(p))
+}))
+ggplot(qq_s, aes(-log10(expected), -log10(p), colour = method)) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2, colour = spide_pal$ref) +
+  geom_line(linewidth = 0.8) +
+  scale_colour_spide("sided") +
+  labs(x = expression(-log[10]("expected")),
+       y = expression(-log[10]("observed")), colour = NULL,
+       title = "Null calibration of the gene-level p-value")
+```
+
+```{r sided-typeI}
+data.frame(
+  method = names(null_sided),
+  `type-I at 0.05` = signif(vapply(null_sided, function(p) mean(p < 0.05),
+                                   numeric(1)), 3),
+  check.names = FALSE, row.names = NULL
+)
+```
+
+## What `spiDE` does
+
+`combine = "cauchy"` combines **two-sided** p-values; `combine = "brown"` keeps
+**one-sided** p-values. When the two-sided path is used the `fdr/2` direction
+split is not applied (there is only one test), and Up / Down / Both are resolved
+from the signs of the significant niche coefficients — which is where direction
+is well defined in any case. Under the one-sided Cauchy convention the `Both`
+label was effectively unreachable, because genes with opposing effects were
+exactly the ones cancelled at the gene-level gate.
+
 # Summary
 
 On both the controlled experiment and the full pipeline, **Cauchy combination
@@ -220,6 +350,15 @@ extreme tail that FDR control depends on. For these reasons Cauchy combination i
 the **default** (`combine = "cauchy"`); Brown's method remains available
 (`combine = "brown"`) for settings where an explicit, correlation-aware combiner
 is preferred.
+
+That verdict holds **provided the Cauchy combiner is given two-sided p-values**.
+Its $\tan$ transform diverges to $-\infty$ as $p \to 1$, so with one-sided
+input a gene that is up near one niche cell type and down near another cancels
+itself out, and does so more completely the stronger the effect. Brown's
+$-2\log p$ is bounded at zero and has no such failure mode, which is why the
+directional convention inherited from the Brown era is safe there and unsafe
+here. `spiDE` therefore combines two-sided p-values under `combine = "cauchy"`
+and one-sided under `combine = "brown"`.
 
 ```{r session}
 sessionInfo()

@@ -14,13 +14,18 @@
 #'   DirectionGene, DirectionIndex (or NULL if nothing passes).
 #' @importFrom stats p.adjust
 #' @noRd
-.geneIndexFDR <- function(p.pos, p.neg, fdr) {
+.geneIndexFDR <- function(p.pos, p.neg, fdr, two.sided = FALSE) {
+  # two.sided: p.pos and p.neg hold the SAME two-sided combination (ACAT path),
+  # so the gene/index gate runs once and the *2 direction-split correction must
+  # NOT be applied. Direction is filled in later from the niche coefficients,
+  # which is where it is actually well defined.
   per_dir <- function(P, dir) {
     gene_p <- P[, 1]
     # doubled, capped-at-1 BH-adjusted p-value: the two-sided-equivalent FDR
     # for this direction, comparable directly against the user's `fdr` (which
     # ranges over (0, 1]) rather than against an uncapped fdr/2 pre-gate.
-    fdr_gene <- pmin(stats::p.adjust(gene_p, method = "BH") * 2, 1)
+    mult <- if (two.sided) 1 else 2
+    fdr_gene <- pmin(stats::p.adjust(gene_p, method = "BH") * mult, 1)
     pass <- !is.na(fdr_gene) & fdr_gene <= fdr
     if (!any(pass)) {
       return(NULL)
@@ -30,7 +35,7 @@
     fdr_index <- t(apply(idxmat, 1, stats::p.adjust, method = "BH"))
     dim(fdr_index) <- dim(idxmat)
     dimnames(fdr_index) <- dimnames(idxmat)
-    fdr_index <- pmin(fdr_index * 2, 1)
+    fdr_index <- pmin(fdr_index * mult, 1)
     keep <- which(fdr_index <= fdr, arr.ind = TRUE)
     if (nrow(keep) == 0) {
       return(NULL)
@@ -45,7 +50,9 @@
     )
   }
 
-  tab <- rbind(per_dir(p.pos, "Up"), per_dir(p.neg, "Down"))
+  tab <- if (two.sided) per_dir(p.pos, NA_character_) else {
+    rbind(per_dir(p.pos, "Up"), per_dir(p.neg, "Down"))
+  }
   if (is.null(tab) || nrow(tab) == 0) {
     return(NULL)
   }
@@ -158,7 +165,8 @@
 #' @param fdr the FDR threshold.
 #' @return the tidy results data.frame (possibly with zero rows).
 #' @noRd
-.hierarchicalFDR <- function(fits, p.pos, p.neg, gene.w, fdr) {
+.hierarchicalFDR <- function(fits, p.pos, p.neg, gene.w, fdr,
+                             two.sided = FALSE) {
   empty <- data.frame(
     gene = character(), ct_index = character(), ct_niche = character(),
     bandwidth.max = numeric(), coef = numeric(), t = numeric(),
@@ -168,7 +176,7 @@
     stringsAsFactors = FALSE
   )
 
-  gi <- .geneIndexFDR(p.pos, p.neg, fdr)
+  gi <- .geneIndexFDR(p.pos, p.neg, fdr, two.sided = two.sided)
   if (is.null(gi) || nrow(gi) == 0) {
     return(empty)
   }
@@ -183,7 +191,174 @@
     "DirectionGene", "DirectionIndex", "DirectionNiche",
     "fdr.gene", "fdr.index", "fdr.niche"
   )]
+  if (two.sided) {
+    # gene- and index-level direction from the signs of that unit's significant
+    # niche coefficients: "Both" when they disagree, which under one-sided ACAT
+    # was unreachable because such genes were cancelled at the gate.
+    sgn <- function(keys, vals) {
+      vapply(split(vals, keys), function(v) {
+        if (all(v > 0)) "Up" else if (all(v < 0)) "Down" else "Both"
+      }, character(1))
+    }
+    kg <- out$gene
+    ki <- paste(out$gene, out$ct_index, sep = "\r")
+    out$DirectionGene <- unname(sgn(kg, out$t)[kg])
+    out$DirectionIndex <- unname(sgn(ki, out$t)[ki])
+  }
   out <- out[order(out$fdr.niche, -abs(out$t)), , drop = FALSE]
   rownames(out) <- NULL
   out
+}
+
+# ---------------------------------------------------------------------------
+# E2: response results that are NOT niche-dependent.
+#
+# The CellType:condition block is cell-means coded, so with k cell types there
+# are k free response coefficients. A free global term PLUS all k would be
+# over-parameterised, so the patient-level effect is derived as a contrast:
+# the abundance-weighted average w'alpha, variance w'Vw (formed in the Wald
+# block, where V still exists).
+#
+# Both cascades mirror .hierarchicalFDR(): Up and Down are tested separately at
+# fdr/2 and merged, so a gene significant in both directions is "Both".
+# ---------------------------------------------------------------------------
+
+#' Direction-split BH, shared by the cell-type and patient cascades
+#' @noRd
+.dirBH <- function(p_pos, p_neg, fdr) {
+  q_pos <- stats::p.adjust(p_pos, "BH")
+  q_neg <- stats::p.adjust(p_neg, "BH")
+  sig_pos <- q_pos < fdr / 2
+  sig_neg <- q_neg < fdr / 2
+  # Report the DOUBLED, capped-at-1 q-value, matching .geneIndexFDR()'s
+  # convention. Testing each direction at fdr/2 and reporting the raw one-sided
+  # q would put these cascades on a different scale from the niche layer: every
+  # returned row would carry q < fdr/2, understating by 2x the FDR at which the
+  # call was actually made and making cross-layer q-values incomparable.
+  list(
+    q = pmin(pmin(q_pos, q_neg) * 2, 1),
+    sig = sig_pos | sig_neg,
+    direction = ifelse(sig_pos & sig_neg, "Both",
+                       ifelse(sig_pos, "Up", ifelse(sig_neg, "Down", NA_character_)))
+  )
+}
+
+#' Two-step cell-type cascade: gene level, then cell type within surviving genes
+#'
+#' @param tmat genes x k matrix of CellType:condition t-statistics.
+#' @param dfv per-column df (or scalar/NULL for a normal reference).
+#' @param cts cell type of each column.
+#' @param fdr the FDR threshold.
+#' @return a data.frame keyed by (gene, ct_index).
+#' @noRd
+.cellTypeFDR <- function(tmat, dfv, cts, fdr) {
+  genes <- rownames(tmat)
+  p_pos <- .ptByCol(tmat, dfv, lower.tail = FALSE)
+  p_neg <- .ptByCol(tmat, dfv, lower.tail = TRUE)
+  eps <- 1e-15
+  clamp <- function(x) pmin(pmax(x, eps), 1 - eps)
+
+  # step 1: gene level -- combine the k cell types within a gene, on TWO-SIDED
+  # p-values (this is an ACAT combination; see .waldBrownGene for why one-sided
+  # ACAT cancels on bidirectional genes). Direction is resolved at step 2, where
+  # it is well defined per cell type.
+  #
+  p_two <- pmin(2 * pmin(p_pos, p_neg), 1)
+  g_two <- .cauchyCombine(clamp(p_two))
+  q_gene <- stats::p.adjust(g_two, "BH")
+  gene_gate <- list(q = q_gene, sig = q_gene < fdr)
+  keep <- which(gene_gate$sig)
+  if (!length(keep)) {
+    return(data.frame(gene = character(0), ct_index = character(0),
+                      t = numeric(0), p = numeric(0), fdr.gene = numeric(0),
+                      fdr.celltype = numeric(0), Direction = character(0),
+                      stringsAsFactors = FALSE))
+  }
+
+  # step 2: cell type within the surviving genes
+  out <- do.call(rbind, lapply(keep, function(i) {
+    ct_gate <- .dirBH(p_pos[i, ], p_neg[i, ], fdr)
+    j <- which(ct_gate$sig)
+    if (!length(j)) return(NULL)
+    # two-sided p, matching the two-sided-equivalent q reported alongside it
+    data.frame(gene = genes[i], ct_index = cts[j],
+               t = tmat[i, j],
+               p = pmin(2 * pmin(p_pos[i, j], p_neg[i, j]), 1),
+               fdr.gene = gene_gate$q[i], fdr.celltype = ct_gate$q[j],
+               Direction = ct_gate$direction[j], stringsAsFactors = FALSE)
+  }))
+  if (is.null(out)) out <- data.frame()
+  rownames(out) <- NULL
+  out
+}
+
+#' Cell-type cascade on ALREADY-COMBINED p-values
+#'
+#' The t-statistic entry point (\code{.cellTypeFDR}) can only see one
+#' bandwidth. Once p-values have been combined across bandwidths there are no
+#' t-statistics left to work from, so the cascade takes the combined two-sided
+#' p directly. Same two steps: an ACAT gene gate across cell types, then a
+#' direction-split BH over cell types within each surviving gene.
+#'
+#' @param p_two genes x k matrix of combined TWO-SIDED p-values.
+#' @param cts cell type of each column.
+#' @param fdr the FDR threshold.
+#' @return a data.frame keyed by (gene, ct_index).
+#' @noRd
+.cellTypeFDRp <- function(p_two, cts, fdr) {
+  genes <- rownames(p_two)
+  eps <- 1e-15
+  clamp <- function(x) pmin(pmax(x, eps), 1 - eps)
+  empty <- data.frame(gene = character(0), ct_index = character(0),
+                      p = numeric(0), fdr.gene = numeric(0),
+                      fdr.celltype = numeric(0), stringsAsFactors = FALSE)
+
+  q_gene <- stats::p.adjust(.cauchyCombine(clamp(p_two)), "BH")
+  keep <- which(q_gene < fdr)
+  if (!length(keep)) return(empty)
+
+  out <- do.call(rbind, lapply(keep, function(i) {
+    # both directions already folded into the two-sided p, so BH over cell
+    # types is a single pass rather than the pos/neg split .dirBH does.
+    q <- stats::p.adjust(p_two[i, ], "BH")
+    j <- which(q < fdr)
+    if (!length(j)) return(NULL)
+    data.frame(gene = genes[i], ct_index = cts[j], p = p_two[i, j],
+               fdr.gene = q_gene[i], fdr.celltype = q[j],
+               stringsAsFactors = FALSE)
+  }))
+  if (is.null(out)) return(empty)
+  rownames(out) <- NULL
+  out
+}
+
+#' Patient-level cascade on an ALREADY-COMBINED p-value
+#'
+#' @param p_pat named vector of combined two-sided p-values, one per gene.
+#' @param beta effect size to report, from the best-supported bandwidth.
+#' @param fdr the FDR threshold.
+#' @noRd
+.patientFDRp <- function(p_pat, beta, fdr) {
+  q <- stats::p.adjust(p_pat, "BH")
+  keep <- which(q < fdr)
+  data.frame(gene = names(p_pat)[keep], coef = beta[keep], p = p_pat[keep],
+             fdr = q[keep],
+             Direction = ifelse(beta[keep] > 0, "Up", "Down"),
+             stringsAsFactors = FALSE, row.names = NULL)
+}
+
+#' Patient-level cascade: one contrast per gene, single BH
+#' @noRd
+.patientFDR <- function(beta, se, dfv, fdr) {
+  t <- beta / se
+  tm <- matrix(t, ncol = 1, dimnames = list(names(beta), "patient"))
+  p_pos <- .ptByCol(tm, dfv, lower.tail = FALSE)[, 1]
+  p_neg <- .ptByCol(tm, dfv, lower.tail = TRUE)[, 1]
+  gate <- .dirBH(p_pos, p_neg, fdr)
+  keep <- which(gate$sig)
+  data.frame(gene = names(beta)[keep], coef = beta[keep], se = se[keep],
+             t = t[keep],
+             p = pmin(2 * pmin(p_pos, p_neg), 1)[keep], fdr = gate$q[keep],
+             Direction = gate$direction[keep], stringsAsFactors = FALSE,
+             row.names = NULL)
 }

@@ -27,16 +27,26 @@ test_that(".waldBrownGene: se and t-stat match the closed form", {
     unname(alpha_g / sqrt(psi * diag(varcov))), tolerance = 1e-8)
 })
 
-test_that(".waldBrownGene: p.pos and p.neg are complementary in direction", {
+test_that(".waldBrownGene: Brown keeps p.pos and p.neg complementary", {
   set.seed(2)
   ncells <- 300
   W <- cbind(1, scale(runif(ncells)), scale(runif(ncells)))
   colnames(W) <- c("Response", "i1:B", "i2:B")
-  # strongly positive niche coefficients -> small p.pos, large p.neg
-  res <- spiDE:::.waldBrownGene(c(0, 3, 3), W, rep(1, ncells), 0.2,
+  args <- list(c(0, 3, 3), W, rep(1, ncells), 0.2,
     c(FALSE, TRUE, TRUE), c("i1", "i2"), c("i1", "i2"))
+  # Brown combines ONE-sided p-values, so strongly positive niche coefficients
+  # give a small p.pos and a large p.neg.
+  res <- do.call(spiDE:::.waldBrownGene, c(args, list(combine = "brown")))
   expect_lt(res$p.pos["Gene"], 0.05)
   expect_gt(res$p.neg["Gene"], 0.5)
+
+  # ACAT/Cauchy combines TWO-sided p-values instead -- tan((0.5 - p)*pi)
+  # diverges to -Inf as p -> 1, so one-sided input lets an opposing niche
+  # cancel the signal. Both sides therefore carry the same combined p, and
+  # direction is read off the niche-level coefficients instead.
+  cc <- do.call(spiDE:::.waldBrownGene, c(args, list(combine = "cauchy")))
+  expect_equal(unname(cc$p.pos["Gene"]), unname(cc$p.neg["Gene"]))
+  expect_lt(cc$p.pos["Gene"], 0.05)
 })
 
 test_that("inference recovers the planted neighbourhood effect", {
@@ -47,8 +57,11 @@ test_that("inference recovers the planted neighbourhood effect", {
   expect_true(all(f@p.combined.neg >= 0 & f@p.combined.neg <= 1))
   # G1 is the most significant gene for index A in the up direction
   expect_equal(names(which.min(f@p.combined.pos[, "A"])), "G1")
-  # and its A-niche effect is up, not down
-  expect_lt(f@p.combined.pos["G1", "A"], f@p.combined.neg["G1", "A"])
+  # and its A-niche effect is up, not down. .blockedInference defaults to
+  # Cauchy, which is two-sided, so direction is asserted on the one-sided
+  # Brown path.
+  fb <- spiDE:::.blockedInference(tf$fit, tf$Y, combine = "brown")
+  expect_lt(fb@p.combined.pos["G1", "A"], fb@p.combined.neg["G1", "A"])
 })
 
 test_that("Cauchy combination recovers the planted effect and is valid", {
@@ -59,7 +72,8 @@ test_that("Cauchy combination recovers the planted effect and is valid", {
   expect_true(all(f@p.combined.neg >= 0 & f@p.combined.neg <= 1))
   # G1 is still the most significant gene for index A in the up direction
   expect_equal(names(which.min(f@p.combined.pos[, "A"])), "G1")
-  expect_lt(f@p.combined.pos["G1", "A"], f@p.combined.neg["G1", "A"])
+  # two-sided Cauchy returns the same combined p on both sides
+  expect_equal(f@p.combined.pos["G1", "A"], f@p.combined.neg["G1", "A"])
 
   # Cauchy path is invariant to block.size
   fb <- spiDE:::.blockedInference(tf$fit, tf$Y, combine = "cauchy",

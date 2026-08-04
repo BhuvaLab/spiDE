@@ -27,7 +27,7 @@ setGeneric("spiDE", function(spe, condition, ...) standardGeneric("spiDE"))
 
 #' @rdname results
 #' @export
-setGeneric("results", function(object) standardGeneric("results"))
+setGeneric("results", function(object, ...) standardGeneric("results"))
 
 #' @rdname fits
 #' @export

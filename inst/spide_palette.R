@@ -33,6 +33,10 @@ spide_pal <- list(
   method = c(fixed = "#D95F02", intercept = "#1B9E77", slope = "#7570B3"),
   # within-gene p-value combiners (own figures only; no clash in context)
   combine = c(Brown = "#7570B3", Cauchy = "#D95F02"),
+  # one- vs two-sided input to a combiner. Brown keeps its `combine` colour;
+  # the two Cauchy variants are split off it so the pair reads as one family.
+  sided = c("Brown (1-sided)" = "#7570B3", "Cauchy (1-sided)" = "#D95F02",
+            "Cauchy (2-sided)" = "#A02C3C"),
   # cell types -- pink / brown / amber / blue
   celltype = c(A = "#D8315B", B = "#FFD166", C = "#1E1B18", D = "#06D6A0"),
   # spatial niche layouts -- green / wine / navy / olive
@@ -41,6 +45,7 @@ spide_pal <- list(
   # gene categories in the simulation -- steel-blue / gold / crimson
   category = c("cell-type marker" = "#3B6BA5", housekeeping = "#C77D00",
                background = "#A02C3C"),
+
   # planted differential-expression status
   de = c(DE = "#D95F02", "non-DE" = "grey70"),
   # experimental condition

@@ -51,10 +51,16 @@ so they can be forwarded via `...` without renaming.
 
 2. **Design + fit** — `fitSpiDE()` (`R/fitSpiDE.R`, design assembly in `R/design.R`). For each
    bandwidth, `.buildNicheDesign()` builds
-   `~ 0 + <covariates> + CellType + condition*CellType:(niche cols) + niche cols`,
+   `~ 0 + <covariates> + CellType + CellType:condition + CellType:(niche cols) +
+   CellType:condition:(niche cols) + niche cols`,
    drops symmetric self-interactions (an index cell type against its own niche density), and tags
-   every column via `.tagCovtype()` as one of `CellType` / `Niche` / `Response` / `ResponseNiche` /
-   `Other`. **`ResponseNiche` columns are the scientifically important ones** — the three-way
+   every column via `.tagCovtype()` as one of `CellType` / `Niche` / `Response` /
+   `ResponseCellType` / `ResponseNiche` / `Other`. Note the **cell-means coding**: there is no bare
+   `condition` main effect — the condition contrast is carried by the `CellType:condition`
+   (`ResponseCellType`) columns, one per cell type. Code that looks up a single `"Response"` column
+   will find nothing; match on `ResponseCellType` instead.
+
+   **`ResponseNiche` columns are the scientifically important ones** — the three-way
    `celltype:condition:niche` interactions. The whole gene set is fit in a single
    `SpaNorm::fitNB(Y, W, ...)` call per bandwidth — **never slice genes before fitting**, because
    `fitNB` moderates dispersion across the full gene set via `edgeR::estimateDisp(robust=TRUE,
@@ -73,7 +79,12 @@ so they can be forwarded via `...` without renaming.
      Cauchy/ACAT test via `.cauchyCombine()`, with a `1e-15` clamp on the one-sided p-values) or
      **`"brown"`** (Brown's method, `poolr::mvnconv` + `poolr::fisher`, which consumes the
      coefficient correlation matrix). Brown's method mirrors the per-gene loop in the original
-     `batch_nichede_v9.R` almost line-for-line; Cauchy was made the default after a calibration/power
+     `batch_nichede_v9.R` almost line-for-line; Cauchy combines **two-sided** p-values while Brown keeps
+     **one-sided** ones — `tan((0.5 - p)pi)` diverges to `-Inf` as `p -> 1`, so under one-sided input
+     a gene up in one niche and down in another cancels exactly, whereas Brown's `-2log(p)` is
+     bounded at 0 and is safe one-sided. Under Cauchy both `p.combined.pos` and `p.combined.neg`
+     therefore carry the same combined value and `SpiDEFit@two.sided` tells the FDR cascade not to
+     apply the direction split. Cauchy was made the default after a calibration/power
      study (`vignettes/spiDE-cauchy-vs-brown.Rmd`) showed it matches or beats Brown while controlling
      type-I error under correlation without estimating `R`. The two combiners populate the same
      `p.combined.pos`/`p.combined.neg` slots (see below), so downstream code is combiner-agnostic.

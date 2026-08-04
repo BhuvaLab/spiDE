@@ -33,8 +33,16 @@ bandwidth) are combined in a \link{SpiDEResults} container.
 
 \item{\code{W}}{a matrix, the design matrix (cells x covariates).}
 
+\item{\code{two.sided}}{logical, TRUE when the within-gene combination used
+two-sided p-values (Cauchy/ACAT); FALSE for Brown's method.}
+
+\item{\code{se_patient}}{numeric, per-gene standard error of the abundance-weighted
+patient-level response contrast; length 0 when the design has no
+CellType:condition block.}
+
 \item{\code{covtype}}{a factor, the covariate type of each column of \code{W}, one of
-"CellType", "Niche", "Response", "ResponseNiche", "Other", or "Random"
+"CellType", "Niche", "Response", "ResponseNiche", "ResponseCellType",
+"Other", or "Random"
 (patient random-effect columns for the mixed-effects fit).}
 
 \item{\code{coefmap}}{a DataFrame mapping each covariate to its index cell type,
