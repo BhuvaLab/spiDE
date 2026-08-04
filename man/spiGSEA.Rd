@@ -5,11 +5,11 @@
 \alias{spiGSEA,SpiDEResults-method}
 \title{Gene-set enrichment on a fitted spiDE model}
 \usage{
-spiGSEA(object, spe, genesets, ...)
+spiGSEA(object, spe = NULL, genesets, ...)
 
 \S4method{spiGSEA}{SpiDEResults}(
   object,
-  spe,
+  spe = NULL,
   genesets,
   type = c("niche", "celltype"),
   test = c("self-contained", "competitive"),
@@ -29,7 +29,9 @@ spiGSEA(object, spe, genesets, ...)
 \item{object}{a \link{SpiDEResults} from \code{\link[=testSpiDE]{testSpiDE()}} or \code{\link[=spiDE]{spiDE()}}.}
 
 \item{spe}{the \link[SpatialExperiment:SpatialExperiment]{SpatialExperiment::SpatialExperiment} the model was fitted
-on; needed for the counts the inter-gene correlation is estimated from.}
+on. Only needed when the inter-gene correlation has to be estimated --
+\code{\link[=testSpiDE]{testSpiDE()}} normally stores it on each fit, in which case this can be
+omitted and no pass over the counts happens at all.}
 
 \item{genesets}{a named list of gene identifiers (character, matched against
 \code{rownames}) or integer row indices.}
@@ -50,10 +52,12 @@ with the fitted genes) are dropped. The lower bound keeps the mean from
 being dominated by one gene; the upper bound drops sets so broad that the
 competitive null they are tested against is largely themselves.}
 
-\item{rho}{the average inter-gene correlation: \code{NULL} to estimate it
-from Pearson residuals separately for each bandwidth (each is a different
-design and leaves different residuals), a scalar to use one value
-throughout, or one value per bandwidth. Pass 0 only if you are certain the
+\item{rho}{the average inter-gene correlation. \code{NULL} (default) uses
+the value \code{\link[=testSpiDE]{testSpiDE()}} stored on each fit, and falls back to estimating
+it from Pearson residuals -- separately per bandwidth, since each is a
+different design and leaves different residuals -- only if the fit does
+not carry one. Supply a scalar to use one value throughout, or one value
+per bandwidth, to override. Pass 0 only if you are certain the
 genes are independent -- they are not, and the test is severely
 anti-conservative without this term.}
 

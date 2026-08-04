@@ -24,6 +24,10 @@
 #' @slot alpha a matrix, the per-gene coefficients (genes x covariates).
 #' @slot gmean a numeric, the per-gene intercept (zero for the generic fit).
 #' @slot psi a numeric, the per-gene negative binomial dispersion.
+#' @slot rho a numeric, the average inter-gene correlation of the Pearson
+#'   residuals, accumulated by \code{testSpiDE()} from the gene blocks it
+#'   already loads. Used by \code{spiGSEA()} as the variance-inflation term.
+#'   Empty until inference has run.
 #' @slot loglik a numeric, the per-gene log-likelihood (used for Cauchy weights).
 #' @slot re_group a character (or NULL), the random-effect group of each column
 #'   of `W` (`NA` for fixed columns); NULL for a fixed-effects fit.
@@ -77,10 +81,16 @@ setClass(
     se = "ANY",
     p.combined.pos = "ANY",
     p.combined.neg = "ANY",
+    rho = "numeric",
     sampling = "ANY"
   ),
   prototype = list(
     re_group = NULL, tau2 = NULL, penalty = NULL, df = NULL,
+    # Average inter-gene correlation of the Pearson residuals, accumulated by
+    # .blockedInference() as a by-product of the blocks it already loads. Empty
+    # until inference has run; spiGSEA() uses it as the variance-inflation term
+    # so it needs no second pass over the counts.
+    rho = numeric(0),
     # E2: empty unless the design carries a CellType:condition block
     se_patient = numeric(0),
     # TRUE when the within-gene combination used TWO-SIDED p-values

@@ -703,6 +703,7 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
         dispb <- as.numeric(SpaNorm::toRMatrix(
           SpaNorm::rowSums_gpu(num / denom))) / disp_df
       }
+      rhob <- .rhoPartialGPU(Yb_dev, mub, psib, backend)
     } else {
       mub <- SpaNorm::calculateMu(zero_gmean, alpha_block, W_full)
       wtb <- 1 / (1 / mub + psib) # nblock x ncells
@@ -710,6 +711,7 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
       if (has_re) {
         dispb <- rowSums((Yb - mub)^2 / (mub + psib * mub^2)) / disp_df
       }
+      rhob <- .rhoPartial(Yb, mub, psib)
     }
     scale_block <- if (has_re) dispb else psib
 
@@ -721,6 +723,8 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
                               penalty = penalty, sel = sel, df = re_df,
                               backend = backend, cov.batch = cov_batch)
       res$loglik <- loglikb
+      res$rho_s <- rhob$s
+      res$rho_n <- rhob$n
       return(res)
     }
 
@@ -733,6 +737,7 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
                      penalty = penalty, sel = sel, df = re_df, w_rc = w_rc)
     })
     list(
+      rho_s = rhob$s, rho_n = rhob$n,
       t_stat = do.call(rbind, lapply(per_gene, `[[`, "t_stat")),
       se = do.call(rbind, lapply(per_gene, `[[`, "se")),
       p.pos = do.call(rbind, lapply(per_gene, `[[`, "p.pos")),
@@ -749,6 +754,14 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
   p.neg <- bind("p.neg")
   loglik <- unlist(lapply(block_res, `[[`, "loglik"), use.names = FALSE)
   se_pat <- unlist(lapply(block_res, `[[`, "se_pat"), use.names = FALSE)
+  # Inter-gene correlation, reduced from the per-block partial sums. Blocks
+  # contribute additively, so this is exact and independent of block size.
+  rs <- lapply(block_res, `[[`, "rho_s")
+  rs <- rs[!vapply(rs, is.null, logical(1))]
+  if (length(rs)) {
+    rn <- sum(unlist(lapply(block_res, `[[`, "rho_n"), use.names = FALSE))
+    fit@rho <- .meanCorFromZ(Reduce(`+`, rs), nrow(fit@W), rn)
+  }
 
   gnames <- rownames(alpha_full)
   rownames(t_stat) <- rownames(se) <- gnames

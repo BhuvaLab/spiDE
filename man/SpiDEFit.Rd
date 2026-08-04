@@ -54,6 +54,11 @@ niche cell type, and type.}
 
 \item{\code{psi}}{a numeric, the per-gene negative binomial dispersion.}
 
+\item{\code{rho}}{a numeric, the average inter-gene correlation of the Pearson
+residuals, accumulated by \code{testSpiDE()} from the gene blocks it
+already loads. Used by \code{spiGSEA()} as the variance-inflation term.
+Empty until inference has run.}
+
 \item{\code{loglik}}{a numeric, the per-gene log-likelihood (used for Cauchy weights).}
 
 \item{\code{re_group}}{a character (or NULL), the random-effect group of each column

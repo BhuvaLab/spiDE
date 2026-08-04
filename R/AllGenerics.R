@@ -39,7 +39,11 @@ setGeneric("bandwidths", function(object) standardGeneric("bandwidths"))
 
 #' @rdname spiGSEA
 #' @export
-setGeneric("spiGSEA", function(object, spe, genesets, ...)
+# `spe` defaults to NULL in the GENERIC as well as the method: testSpiDE()
+# stores the inter-gene correlation on each fit, so the counts are usually not
+# needed, and a generic without the default makes the argument mandatory no
+# matter what the method signature says.
+setGeneric("spiGSEA", function(object, spe = NULL, genesets, ...)
   standardGeneric("spiGSEA"))
 
 #' @rdname interGeneCor

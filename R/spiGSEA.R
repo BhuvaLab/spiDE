@@ -47,6 +47,23 @@
 #      instead of registering as heterogeneous. This is the same correction
 #      already applied to the gene-level combination (see R/combine.R).
 
+#' The stored inter-gene correlation, or NULL
+#'
+#' Objects serialised before the \code{rho} slot existed load perfectly well --
+#' only reaching for the new slot fails on them. Since those objects can
+#' represent hours of cluster time, this degrades to "estimate it from the
+#' counts", which is exactly the behaviour they had when they were written,
+#' rather than forcing a refit.
+#'
+#' @param f a SpiDEFit.
+#' @noRd
+.storedRho <- function(f) {
+  if (!methods::.hasSlot(f, "rho")) {
+    return(NULL)
+  }
+  if (length(f@rho) && is.finite(f@rho)) f@rho else NULL
+}
+
 #' Signed z-scores from t-statistics
 #'
 #' The tail is evaluated on the log scale and inverted there, because
@@ -85,6 +102,49 @@
     return(0)
   }
   (sum(s^2) / (n - 1) - p) / (p * (p - 1))
+}
+
+#' Per-block partial sums for the inter-gene correlation
+#'
+#' Called from inside \code{.blockedInference()}'s block loop, where the counts
+#' block and its fitted mean are already in hand -- so the correlation costs no
+#' extra pass over the data, only a few elementwise operations on a matrix that
+#' has already been paid for. Returns the per-cell sum of standardised Pearson
+#' residuals and the number of genes that contributed, which reduce additively
+#' across blocks.
+#'
+#' @param Yb a genes(block) x cells counts block.
+#' @param mub the fitted mean for that block.
+#' @param psib per-gene NB dispersion for that block.
+#' @return list(s = per-cell sums, n = genes kept).
+#' @noRd
+.rhoPartial <- function(Yb, mub, psib) {
+  n <- ncol(mub)
+  r <- (Yb - mub) / sqrt(mub + psib * mub^2)
+  rc <- r - rowMeans(r)
+  rsd <- sqrt(rowSums(rc^2) / (n - 1))
+  # a gene with no residual variation has an undefined correlation with
+  # anything; zeroing its scale drops it without needing to mask rows
+  ok <- is.finite(rsd) & rsd > 0
+  z <- rc * ifelse(ok, 1 / rsd, 0)
+  z[!is.finite(z)] <- 0
+  list(s = colSums(z), n = sum(ok))
+}
+
+#' GPU counterpart of \code{.rhoPartial()}
+#' @noRd
+.rhoPartialGPU <- function(Yb, mub, psib, backend) {
+  n <- ncol(mub)
+  v <- mub * (1 + SpaNorm::mult_vec_mat_gpu(psib, mub, backend = backend))
+  r <- (Yb - mub) / torch::torch_sqrt(v)
+  rmean <- as.numeric(SpaNorm::toRMatrix(SpaNorm::rowSums_gpu(r))) / n
+  rc <- SpaNorm::add_vec_mat_gpu(-rmean, r, backend = backend)
+  ss <- as.numeric(SpaNorm::toRMatrix(SpaNorm::rowSums_gpu(rc * rc)))
+  rsd <- sqrt(ss / (n - 1))
+  ok <- is.finite(rsd) & rsd > 0
+  z <- SpaNorm::mult_vec_mat_gpu(ifelse(ok, 1 / rsd, 0), rc, backend = backend)
+  list(s = as.numeric(SpaNorm::toRMatrix(torch::torch_sum(z, dim = 1L))),
+       n = sum(ok))
 }
 
 #' Mean pairwise correlation of Pearson residuals, without forming the matrix
@@ -307,7 +367,9 @@
 #'
 #' @param object a [SpiDEResults] from [testSpiDE()] or [spiDE()].
 #' @param spe the [SpatialExperiment::SpatialExperiment] the model was fitted
-#'   on; needed for the counts the inter-gene correlation is estimated from.
+#'   on. Only needed when the inter-gene correlation has to be estimated --
+#'   [testSpiDE()] normally stores it on each fit, in which case this can be
+#'   omitted and no pass over the counts happens at all.
 #' @param genesets a named list of gene identifiers (character, matched against
 #'   \code{rownames}) or integer row indices.
 #' @param type "niche" (default) tests the three-way celltype:condition:niche
@@ -322,10 +384,12 @@
 #'   with the fitted genes) are dropped. The lower bound keeps the mean from
 #'   being dominated by one gene; the upper bound drops sets so broad that the
 #'   competitive null they are tested against is largely themselves.
-#' @param rho the average inter-gene correlation: \code{NULL} to estimate it
-#'   from Pearson residuals separately for each bandwidth (each is a different
-#'   design and leaves different residuals), a scalar to use one value
-#'   throughout, or one value per bandwidth. Pass 0 only if you are certain the
+#' @param rho the average inter-gene correlation. \code{NULL} (default) uses
+#'   the value [testSpiDE()] stored on each fit, and falls back to estimating
+#'   it from Pearson residuals -- separately per bandwidth, since each is a
+#'   different design and leaves different residuals -- only if the fit does
+#'   not carry one. Supply a scalar to use one value throughout, or one value
+#'   per bandwidth, to override. Pass 0 only if you are certain the
 #'   genes are independent -- they are not, and the test is severely
 #'   anti-conservative without this term.
 #' @param rho.genes number of genes to subsample when estimating \code{rho}
@@ -368,7 +432,7 @@
 #' @export
 setMethod(
   "spiGSEA", "SpiDEResults",
-  function(object, spe, genesets, type = c("niche", "celltype"),
+  function(object, spe = NULL, genesets, type = c("niche", "celltype"),
            test = c("self-contained", "competitive"),
            fdr = 0.05, min.size = 5L, max.size = 500L, rho = NULL,
            rho.genes = 2000L, block.size = NULL,
@@ -384,9 +448,23 @@ setMethod(
       stop("no inference on `object`; run testSpiDE() first")
     }
     gnames <- rownames(f1@t_stat)
-    Y <- SummarizedExperiment::assay(spe, "counts")
-    if (!identical(nrow(Y), f1@ngenes) && !all(gnames %in% rownames(Y))) {
-      stop("`spe` does not match the fitted genes")
+    # rho is normally carried on the fit, accumulated by testSpiDE() from blocks
+    # it already had to load. When it is there, no counts pass is needed at all
+    # and `spe` is not required -- so a fitted result can be shared and queried
+    # against many gene-set collections without the counts matrix travelling
+    # with it.
+    stored <- lapply(fl, .storedRho)
+    have_stored <- !any(vapply(stored, is.null, logical(1)))
+    Y <- NULL
+    if (!is.null(spe)) {
+      Y <- SummarizedExperiment::assay(spe, "counts")
+      if (!identical(nrow(Y), f1@ngenes) && !all(gnames %in% rownames(Y))) {
+        stop("`spe` does not match the fitted genes")
+      }
+    } else if (is.null(rho) && !have_stored) {
+      stop("`spe` is required: this fit carries no stored inter-gene ",
+           "correlation (was it produced by an older testSpiDE()?), and no ",
+           "`rho` was supplied")
     }
 
     # --- map sets onto fitted rows, then size-filter ------------------------
@@ -415,7 +493,18 @@ setMethod(
     if (!is.null(rho.genes) && rho.genes < length(gsub_)) {
       gsub_ <- sort(sample(gsub_, rho.genes))
     }
-    rhov <- if (is.null(rho)) NULL else rep_len(rho, length(fl))
+    rhov <- if (!is.null(rho)) {
+      rep_len(rho, length(fl))
+    } else if (have_stored) {
+      unlist(stored, use.names = FALSE)
+    } else {
+      NULL
+    }
+    if (verbose && !is.null(rho)) {
+      message("spiGSEA: using the supplied rho")
+    } else if (verbose && have_stored) {
+      message("spiGSEA: using the rho stored on the fit by testSpiDE()")
+    }
     if (verbose && is.null(rhov)) {
       message(sprintf("spiGSEA: estimating inter-gene correlation on %d genes x %d bandwidths",
                       length(gsub_), length(fl)))
