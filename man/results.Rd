@@ -12,6 +12,8 @@ results(object, ...)
 \arguments{
 \item{object}{a \link{SpiDEResults} object.}
 
+\item{...}{ignored; present for compatibility with the generic.}
+
 \item{type}{which response result to return. "niche" (default) gives the
 neighbourhood-dependent calls keyed by (gene, ct_index, ct_niche,
 bandwidth), gated by the 3-level gene -> index -> niche cascade.
@@ -21,12 +23,11 @@ bandwidth), gated by the 3-level gene -> index -> niche cascade.
 The latter two are empty unless the design carries a CellType:condition
 block.
 
-Note that "celltype" and "patient" are read from the \strong{widest bandwidth's
-fit only}, whereas "niche" combines evidence across every bandwidth. The
-CellType:condition coefficients are not identical between bandwidths --
-they are fitted alongside different niche columns -- so these two layers
-depend on the largest \code{sigma} requested. Keep \code{sigma} fixed when comparing
-them across analyses.}
+All three layers combine evidence across \strong{every} bandwidth, using the
+same log-likelihood-weighted Cauchy combination. The CellType:condition
+coefficients are not identical between bandwidths -- they are fitted
+alongside different niche columns -- so each bandwidth contributes its own
+evidence about the same contrast, and combining is what pools it.}
 }
 \value{
 a data.frame of significant calls; see \code{type}. Empty until

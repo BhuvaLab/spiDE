@@ -248,9 +248,9 @@ completely Cauchy discards the gene.
 k <- 5; df_t <- 50; nsim_s <- 2000
 # gene-level p as the pipeline forms it: one-sided combiners test each direction
 # and pay a factor-2 direction-split correction; the two-sided combiner does not.
-gene_p <- function(T) {
-  pp <- pt(T, df_t, lower.tail = FALSE)
-  pn <- pt(T, df_t, lower.tail = TRUE)
+gene_p <- function(tstat) {
+  pp <- pt(tstat, df_t, lower.tail = FALSE)
+  pn <- pt(tstat, df_t, lower.tail = TRUE)
   p2 <- pmin(2 * pmin(pp, pn), 1)
   R  <- diag(k)
   data.frame(
@@ -263,10 +263,10 @@ gene_p <- function(T) {
   )
 }
 draw <- function(delta, bidirectional) {
-  T <- matrix(rt(nsim_s * k, df_t), nsim_s, k)
-  T[, 1] <- T[, 1] + delta
-  T[, 2] <- T[, 2] + if (bidirectional) -delta else delta
-  T
+  tstat <- matrix(rt(nsim_s * k, df_t), nsim_s, k)
+  tstat[, 1] <- tstat[, 1] + delta
+  tstat[, 2] <- tstat[, 2] + if (bidirectional) -delta else delta
+  tstat
 }
 deltas <- c(0, 2, 3, 4, 5, 6, 8, 10, 15)
 power_df <- do.call(rbind, lapply(c(TRUE, FALSE), function(bi) {

@@ -17,3 +17,7 @@
 ^\.mailmap$
 ^doc$
 ^Meta$
+^\.git$
+^vignettes/figure$
+^spiDE\.BiocCheck$
+^spiDE_.*\.tar\.gz$

@@ -12,3 +12,5 @@ docs
 specs/
 /doc/
 /Meta/
+spiDE.BiocCheck/
+spiDE_*.tar.gz

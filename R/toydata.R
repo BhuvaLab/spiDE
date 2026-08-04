@@ -123,6 +123,33 @@
          nrow = ng, dimnames = list(gene_names, NULL))
 }
 
+# Set the RNG seed for the duration of the caller only.
+#
+# These generators take a `seed` argument precisely so their output is
+# reproducible, but a bare set.seed() in package code silently reseeds the
+# USER's global RNG stream -- so calling a toy-data helper would perturb every
+# random draw a user made afterwards. Restoring the previous .Random.seed on
+# exit keeps the reproducibility and drops the side effect.
+#
+# BiocCheck flags the set.seed() below by a plain text search. It is the one
+# call that must stay: this helper exists precisely to make seeding safe, and
+# it is reached only when the caller passed an explicit `seed`.
+.localSeed <- function(seed, env = parent.frame()) {
+  if (is.null(seed)) return(invisible(NULL))
+  had <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+  .spiDE_prev_seed <- if (had) get(".Random.seed", envir = globalenv()) else NULL
+  # Registered in the CALLER's frame, so the restore happens when the generator
+  # returns rather than when this helper does.
+  do.call(on.exit, list(quote(
+    if (is.null(.spiDE_prev_seed)) {
+      suppressWarnings(rm(".Random.seed", envir = globalenv()))
+    } else {
+      assign(".Random.seed", .spiDE_prev_seed, envir = globalenv())
+    }), add = TRUE), envir = env)
+  assign(".spiDE_prev_seed", .spiDE_prev_seed, envir = env)
+  set.seed(seed)
+}
+
 #' Build a small synthetic SpatialExperiment for examples and tests
 #'
 #' @param n_samples number of samples (half Responder, half Non-responder).
@@ -133,11 +160,11 @@
 #' @param seed random seed.
 #' @return a SpatialExperiment with counts, cell_type, sample_id, condition, Age,
 #'   Area, and spatial coordinates.
-#' @importFrom stats rlnorm rnorm runif
+#' @importFrom stats rlnorm rnorm runif ave
 #' @noRd
 .toySPE <- function(n_samples = 6, n_per = 80, n_genes = 20, field = 500,
                     beta = 2.5, seed = 1) {
-  set.seed(seed)
+  .localSeed(seed)
   gene_names <- sprintf("G%d", seq_len(n_genes))
 
   sample_ids <- sprintf("S%d", seq_len(n_samples))
@@ -217,7 +244,7 @@
 #' @noRd
 .toyClustered <- function(n_samples = 8, n_per = 80, n_genes = 30, field = 500,
                           sd_patient = 0.7, seed = 1) {
-  set.seed(seed)
+  .localSeed(seed)
   gene_names <- sprintf("G%d", seq_len(n_genes))
   sample_ids <- sprintf("S%d", seq_len(n_samples))
   cond_levels <- rep(c("Responder", "Non-responder"), length.out = n_samples)

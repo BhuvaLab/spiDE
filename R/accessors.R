@@ -12,12 +12,12 @@
 #'   The latter two are empty unless the design carries a CellType:condition
 #'   block.
 #'
-#'   Note that "celltype" and "patient" are read from the **widest bandwidth's
-#'   fit only**, whereas "niche" combines evidence across every bandwidth. The
-#'   CellType:condition coefficients are not identical between bandwidths --
-#'   they are fitted alongside different niche columns -- so these two layers
-#'   depend on the largest `sigma` requested. Keep `sigma` fixed when comparing
-#'   them across analyses.
+#'   All three layers combine evidence across **every** bandwidth, using the
+#'   same log-likelihood-weighted Cauchy combination. The CellType:condition
+#'   coefficients are not identical between bandwidths -- they are fitted
+#'   alongside different niche columns -- so each bandwidth contributes its own
+#'   evidence about the same contrast, and combining is what pools it.
+#' @param ... ignored; present for compatibility with the generic.
 #' @return a data.frame of significant calls; see \code{type}. Empty until
 #'   [testSpiDE()] is run.
 #' @examples
