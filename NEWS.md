@@ -1,3 +1,44 @@
+# spiDE 0.99.9
+
+## New Features
+
+* `spiGSEA()` adds a gene-set layer over a fitted model. The per-gene niche
+  tests are individually under-powered on sparse spatial data; averaging a
+  statistic over the genes of a pathway recovers power, with the average
+  inter-gene correlation carried explicitly so that co-regulation is not
+  mistaken for evidence.
+
+  Two nulls are available and they answer different questions.
+  `test = "self-contained"` (default) asks whether the set's mean statistic
+  differs from zero; `test = "competitive"` asks whether it differs from the
+  genes outside the set, as `limma::camera` does. The default is the more
+  permissive of the two: under a global shift it will call most sets, correctly
+  but uninformatively.
+
+  Works on either result layer via `type = "niche"` (the three-way
+  celltype:condition:niche statistics) or `type = "celltype"` (the
+  CellType:condition statistics).
+
+  Three details differ from the flat-script gene-set code this replaces, all of
+  them corrections:
+
+  - statistics become z before averaging (as `camera` does), because the set
+    statistic assumes unit variance while a t with v df has variance v/(v-2) --
+    immaterial for the niche coefficients, but not for the CellType:condition
+    ones where v is the between-patient S-2;
+  - bandwidths combine on two-sided p-values, so a set shifting up at one scale
+    and down at another no longer cancels to nothing;
+  - the inter-gene correlation is estimated per bandwidth rather than once,
+    since each bandwidth is a different design and leaves different residuals.
+
+  The correlation is estimated without ever forming the gene x gene matrix
+  (1.4 GB at 13,000 genes): standardised residuals are streamed one gene block
+  at a time and accumulated through an identity that is exact, not an
+  approximation, in memory linear in the number of cells. That pass carries the
+  same `backend` / `BPPARAM` / `block.size` controls as the inference stage, and
+  is verified to give identical answers across block sizes, worker counts and
+  the CPU and GPU backends.
+
 # spiDE 0.99.8
 
 ## New Features

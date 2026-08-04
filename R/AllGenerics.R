@@ -36,3 +36,8 @@ setGeneric("fits", function(object) standardGeneric("fits"))
 #' @rdname bandwidths
 #' @export
 setGeneric("bandwidths", function(object) standardGeneric("bandwidths"))
+
+#' @rdname spiGSEA
+#' @export
+setGeneric("spiGSEA", function(object, spe, genesets, ...)
+  standardGeneric("spiGSEA"))
