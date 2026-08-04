@@ -612,7 +612,7 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
   # coded (one coefficient per cell type), so the tissue-level response effect
   # is the ABUNDANCE-WEIGHTED average of those coefficients: w_c proportional to
   # the number of cells of that type, summing to 1, and zero on every other
-  # tested column. Absent that block (released design) w_rc stays NULL and the
+  # tested column. Absent that block (the niche-only design) w_rc stays NULL and the
   # patient-level outputs are NA.
   cov_rc <- covtype[cols_gene] == "ResponseCellType"
   w_rc <- NULL

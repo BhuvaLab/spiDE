@@ -292,6 +292,61 @@
   out
 }
 
+#' Cell-type cascade on ALREADY-COMBINED p-values
+#'
+#' The t-statistic entry point (\code{.cellTypeFDR}) can only see one
+#' bandwidth. Once p-values have been combined across bandwidths there are no
+#' t-statistics left to work from, so the cascade takes the combined two-sided
+#' p directly. Same two steps: an ACAT gene gate across cell types, then a
+#' direction-split BH over cell types within each surviving gene.
+#'
+#' @param p_two genes x k matrix of combined TWO-SIDED p-values.
+#' @param cts cell type of each column.
+#' @param fdr the FDR threshold.
+#' @return a data.frame keyed by (gene, ct_index).
+#' @noRd
+.cellTypeFDRp <- function(p_two, cts, fdr) {
+  genes <- rownames(p_two)
+  eps <- 1e-15
+  clamp <- function(x) pmin(pmax(x, eps), 1 - eps)
+  empty <- data.frame(gene = character(0), ct_index = character(0),
+                      p = numeric(0), fdr.gene = numeric(0),
+                      fdr.celltype = numeric(0), stringsAsFactors = FALSE)
+
+  q_gene <- stats::p.adjust(.cauchyCombine(clamp(p_two)), "BH")
+  keep <- which(q_gene < fdr)
+  if (!length(keep)) return(empty)
+
+  out <- do.call(rbind, lapply(keep, function(i) {
+    # both directions already folded into the two-sided p, so BH over cell
+    # types is a single pass rather than the pos/neg split .dirBH does.
+    q <- stats::p.adjust(p_two[i, ], "BH")
+    j <- which(q < fdr)
+    if (!length(j)) return(NULL)
+    data.frame(gene = genes[i], ct_index = cts[j], p = p_two[i, j],
+               fdr.gene = q_gene[i], fdr.celltype = q[j],
+               stringsAsFactors = FALSE)
+  }))
+  if (is.null(out)) return(empty)
+  rownames(out) <- NULL
+  out
+}
+
+#' Patient-level cascade on an ALREADY-COMBINED p-value
+#'
+#' @param p_pat named vector of combined two-sided p-values, one per gene.
+#' @param beta effect size to report, from the best-supported bandwidth.
+#' @param fdr the FDR threshold.
+#' @noRd
+.patientFDRp <- function(p_pat, beta, fdr) {
+  q <- stats::p.adjust(p_pat, "BH")
+  keep <- which(q < fdr)
+  data.frame(gene = names(p_pat)[keep], coef = beta[keep], p = p_pat[keep],
+             fdr = q[keep],
+             Direction = ifelse(beta[keep] > 0, "Up", "Down"),
+             stringsAsFactors = FALSE, row.names = NULL)
+}
+
 #' Patient-level cascade: one contrast per gene, single BH
 #' @noRd
 .patientFDR <- function(beta, se, dfv, fdr) {

@@ -19,7 +19,14 @@ bandwidth), gated by the 3-level gene -> index -> niche cascade.
 (gene, ct_index), gated by a 2-level gene -> cell type cascade.
 "patient" gives one abundance-weighted response contrast per gene.
 The latter two are empty unless the design carries a CellType:condition
-block.}
+block.
+
+Note that "celltype" and "patient" are read from the \strong{widest bandwidth's
+fit only}, whereas "niche" combines evidence across every bandwidth. The
+CellType:condition coefficients are not identical between bandwidths --
+they are fitted alongside different niche columns -- so these two layers
+depend on the largest \code{sigma} requested. Keep \code{sigma} fixed when comparing
+them across analyses.}
 }
 \value{
 a data.frame of significant calls; see \code{type}. Empty until

@@ -836,7 +836,8 @@ close to the simulated $0.49$. `mixed` pins `df.method = "between"` (see the
 `fit_mode()` chunk), so `mixed$fit$df` is the flat scalar $S-2 = 8$ ($S=10$
 patients). Under the package default `"satterthwaite"` it would instead be a
 per-coefficient vector — as `fs` in the previous section shows — whose
-`Response` entry sits at $\approx 8$ while the niche interactions carry more.
+`ResponseCellType` entries sit at $\approx 8$ while the niche interactions
+carry more.
 
 ## Usage and caveats
 

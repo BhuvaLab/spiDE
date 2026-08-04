@@ -113,67 +113,54 @@ test_that(".varParamCov matches a brute-force n x n REML information (2 RE group
   expect_equal(unname(vp$cov), unname(solve(Ibrute)), tolerance = 1e-6)
 })
 
-test_that("df.method='satterthwaite' yields a per-column @df; Response df ~ S-2", {
-  spe <- buildNiches(spiDE:::.toyClustered(n_samples = 16, sd_patient = 0.7),
-                     sigma = 30)
-  fb <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
-                 df.method = "between", verbose = FALSE)
-  fs <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
-                 df.method = "satterthwaite", verbose = FALSE)
-  db <- fits(fb)[[1]]@df
-  ds <- fits(fs)[[1]]@df
-  # between: scalar S-2 = 14; satterthwaite: one df per tested column
-  expect_length(db, 1L)
-  ct <- as.character(fits(fs)[[1]]@covtype)
-  n_tested <- sum(grepl("Response", ct))
-  expect_length(ds, n_tested)
-  # Response column df ~ S-2 (the 0.99x regression anchor)
-  cm <- fits(fs)[[1]]@coefmap
-  # Under the celltype-response design the between-sample condition contrast is
-  # carried by the CellType:condition columns, one per cell type, rather than by
-  # a single "Response" main effect. The claim under test is unchanged: a
-  # between-sample contrast gets df ~ S - 2, a within-sample one gets more.
-  resp_name <- cm$covariate[ct == "ResponseCellType"]
-  expect_gt(length(resp_name), 0L)
-  expect_equal(unname(stats::median(ds[resp_name])), 14, tolerance = 0.20)
-  # niche-interaction dfs are larger (within-sample information)
-  rn_names <- cm$covariate[ct == "ResponseNiche"]
-  expect_gt(stats::median(ds[rn_names]), stats::median(ds[resp_name]))
+# ---------------------------------------------------------------------------
+# Contract assertions against PRECOMPUTED fits (data-raw/make_test_fixtures.R).
+#
+# The numerical claims these replace -- df ~ S-2 for a between-sample contrast,
+# the exact scalar under "between", satterthwaite being the default -- need
+# live fits and now live in longtests/test-mixed-numerics.R. Each of them cost
+# minutes, and Bioconductor allows 10 for the whole check.
+#
+# What remains here is the SHAPE of @df: its length, its alignment to the
+# tested columns of @t_stat, and its finiteness. That alignment is what callers
+# index against, and getting it wrong is silent -- a vector recycled
+# positionally against a genes x columns matrix runs down rows, not across
+# columns. That is worth catching nightly.
+# ---------------------------------------------------------------------------
+
+fixture <- function(nm) {
+  p <- system.file("extdata", "testfits", nm, package = "spiDE")
+  if (!nzchar(p)) skip(paste("fixture not installed:", nm))
+  readRDS(p)
+}
+
+test_that("@df is per-tested-column under satterthwaite and scalar under between", {
+  fs <- fixture("fit_s16_intercept_satterthwaite.rds")
+  fb <- fixture("fit_s16_intercept_between.rds")
+  expect_length(fb@df, 1L)
+  expect_length(fs@df, sum(grepl("Response", as.character(fs@covtype))))
+  expect_true(all(is.finite(fs@df)))
+  expect_true(all(fs@df >= 1))
 })
 
-test_that("satterthwaite is the df.method default", {
-  # guards the 0.99.7 behaviour change: an unqualified mixed fit must produce
-  # the per-tested-column df vector, not the legacy scalar S - 2. Other test
-  # files pin df.method = "between" for speed, so this is the only place the
-  # default itself is checked.
-  spe <- buildNiches(spiDE:::.toyClustered(n_samples = 12, sd_patient = 0.7),
-                     sigma = 30)
-  fd <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
-                 verbose = FALSE)
-  ff <- fits(fd)[[1]]
-  expect_gt(length(ff@df), 1L)
-  expect_equal(length(ff@df), sum(grepl("Response", as.character(ff@covtype))))
-  expect_true(all(is.finite(ff@df)))
+test_that("@df names align to the tested columns of @t_stat", {
+  fs <- fixture("fit_s16_intercept_satterthwaite.rds")
+  expect_identical(names(fs@df), colnames(fs@t_stat))
 })
 
-test_that("df.method='between' is byte-identical to the pre-existing scalar df", {
-  spe <- buildNiches(spiDE:::.toyClustered(n_samples = 12, sd_patient = 0.7),
-                     sigma = 30)
-  Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
-  fb <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
-                 df.method = "between", verbose = FALSE)
-  expect_equal(fits(fb)[[1]]@df, 10)                        # 12 samples -> S-2
-  tb <- spiDE:::.blockedInference(fits(fb)[[1]], Y)
-  expect_false(any(is.na(tb@p.combined.pos)))
+test_that("both response covariate classes appear in @df", {
+  fs <- fixture("fit_s16_intercept_satterthwaite.rds")
+  ct <- as.character(fs@covtype)
+  cm <- fs@coefmap
+  resp <- cm$covariate[ct == "ResponseCellType"]
+  niche <- cm$covariate[ct == "ResponseNiche"]
+  expect_gt(length(resp), 0L)
+  expect_gt(length(niche), 0L)
+  expect_true(all(c(resp, niche) %in% names(fs@df)))
 })
 
-test_that("df.method='satterthwaite' works for random='slope'", {
-  spe <- buildNiches(spiDE:::.toyClustered(n_samples = 16, sd_patient = 0.7),
-                     sigma = 30)
-  fs <- fitSpiDE(spe, "condition", sigma = 30, random = "slope",
-                 df.method = "satterthwaite", verbose = FALSE)
-  ds <- fits(fs)[[1]]@df
-  ct <- as.character(fits(fs)[[1]]@covtype)
-  expect_length(ds, sum(grepl("Response", ct)))
-  expect_true(all(is.finite(ds)) && all(ds >= 1))
+test_that("random='slope' also yields a finite per-column @df", {
+  fs <- fixture("fit_s16_slope_satterthwaite.rds")
+  expect_length(fs@df, sum(grepl("Response", as.character(fs@covtype))))
+  expect_true(all(is.finite(fs@df)) && all(fs@df >= 1))
 })

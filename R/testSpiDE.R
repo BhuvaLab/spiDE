@@ -107,33 +107,76 @@ setMethod(
     object@results <- .hierarchicalFDR(fits, p.pos, p.neg, gene.w, fdr,
                                       two.sided = two_sided)
 
-    # E2: cell-type-specific and patient-level response results. Both are
-    # niche-independent as model terms, so they are taken from a single fit --
-    # the widest bandwidth's. They are NOT identical across bandwidths, though:
-    # each is estimated alongside that bandwidth's niche columns, so the
-    # estimates shift with sigma. Unlike the niche layer these are therefore
-    # not combined across bandwidths, and depend on the largest sigma
-    # requested. Documented on ?results.
-    f1 <- fits[[length(fits)]]
-    ct1 <- as.character(f1@covtype)
-    tested <- colnames(f1@t_stat)
-    tt <- ct1[match(tested, as.character(f1@coefmap$covariate))]
-    rc <- which(tt == "ResponseCellType")
-    if (length(rc)) {
-      dfv <- if (is.null(f1@df) || length(f1@df) == 1L) f1@df else f1@df[rc]
-      cts <- f1@coefmap$index[match(tested[rc], f1@coefmap$covariate)]
-      object@results.celltype <- .cellTypeFDR(
-        f1@t_stat[, rc, drop = FALSE], dfv, cts, fdr)
+    # E2: cell-type-specific and patient-level response results. Like the
+    # niche layer, both are combined ACROSS BANDWIDTHS with the same weighted
+    # Cauchy combination -- every bandwidth contributes evidence, weighted by
+    # that gene's relative log-likelihood. Reading them off a single fit would
+    # discard most of the evidence and make the answer depend on which
+    # bandwidths happened to be requested.
+    #
+    # These terms are niche-independent as model terms, but they are NOT
+    # identical between bandwidths: each is estimated alongside that
+    # bandwidth's niche columns, so combining is the right operation rather
+    # than a convenience.
+    .rcCols <- function(f) {
+      ct <- as.character(f@covtype)
+      tested <- colnames(f@t_stat)
+      tt <- ct[match(tested, as.character(f@coefmap$covariate))]
+      which(tt == "ResponseCellType")
+    }
+    rc1 <- .rcCols(fits[[1]])
+    if (length(rc1)) {
+      f1 <- fits[[1]]
+      tested1 <- colnames(f1@t_stat)[rc1]
+      cts <- f1@coefmap$index[match(tested1, f1@coefmap$covariate)]
 
-      if (length(f1@se_patient)) {
-        # beta_patient = w'alpha, recomputed here from the coefficients; its SE
-        # came from the Wald block, where the covariance still existed.
-        n_cells <- colSums(f1@W[, paste0("CellType", cts), drop = FALSE] != 0)
-        w <- n_cells / sum(n_cells)
-        beta <- as.numeric(f1@alpha[, tested[rc], drop = FALSE] %*% w)
-        names(beta) <- rownames(f1@alpha)
-        dfp <- if (is.null(f1@df) || length(f1@df) == 1L) f1@df else stats::median(f1@df[rc])
-        object@results.patient <- .patientFDR(beta, f1@se_patient[names(beta)], dfp, fdr)
+      # per-bandwidth two-sided p on each CellType:condition column
+      pcube <- lapply(fits, function(f) {
+        rc <- .rcCols(f)
+        dfv <- if (is.null(f@df) || length(f@df) == 1L) f@df else f@df[rc]
+        tm <- f@t_stat[, rc, drop = FALSE]
+        pmin(2 * pmin(.ptByCol(tm, dfv, lower.tail = FALSE),
+                      .ptByCol(tm, dfv, lower.tail = TRUE)), 1)
+      })
+      # combine across bandwidths, column by column, with the gene weights
+      p_ct <- pcube[[1]]
+      for (j in seq_len(ncol(p_ct))) {
+        pj <- vapply(pcube, function(P) P[, j], numeric(nrow(p_ct)))
+        p_ct[, j] <- .cauchyCombine(pj, gene.w)
+      }
+      object@results.celltype <- .cellTypeFDRp(p_ct, cts, fdr)
+
+      # patient level: one contrast per gene per bandwidth, combined the same way
+      have_se <- vapply(fits, function(f) length(f@se_patient) > 0L, logical(1))
+      if (all(have_se)) {
+        pp <- vapply(fits, function(f) {
+          rc <- .rcCols(f)
+          tn <- colnames(f@t_stat)[rc]
+          cc <- f@coefmap$index[match(tn, f@coefmap$covariate)]
+          n_cells <- colSums(f@W[, paste0("CellType", cc), drop = FALSE] != 0)
+          w <- n_cells / sum(n_cells)
+          b <- as.numeric(f@alpha[, tn, drop = FALSE] %*% w)
+          dfp <- if (is.null(f@df) || length(f@df) == 1L) f@df else
+            stats::median(f@df[rc])
+          tt <- b / f@se_patient[rownames(f@alpha)]
+          tm <- matrix(tt, ncol = 1)
+          pmin(2 * pmin(.ptByCol(tm, dfp, lower.tail = FALSE),
+                        .ptByCol(tm, dfp, lower.tail = TRUE)), 1)[, 1]
+        }, numeric(nrow(fits[[1]]@alpha)))
+        p_pat <- .cauchyCombine(pp, gene.w)
+        names(p_pat) <- rownames(fits[[1]]@alpha)
+        # direction and effect size from the best-supported bandwidth
+        best <- max.col(gene.w, ties.method = "first")
+        bw_beta <- vapply(seq_along(fits), function(i) {
+          f <- fits[[i]]; rc <- .rcCols(f)
+          tn <- colnames(f@t_stat)[rc]
+          cc <- f@coefmap$index[match(tn, f@coefmap$covariate)]
+          n_cells <- colSums(f@W[, paste0("CellType", cc), drop = FALSE] != 0)
+          as.numeric(f@alpha[, tn, drop = FALSE] %*% (n_cells / sum(n_cells)))
+        }, numeric(nrow(fits[[1]]@alpha)))
+        beta <- bw_beta[cbind(seq_len(nrow(bw_beta)), best)]
+        names(beta) <- names(p_pat)
+        object@results.patient <- .patientFDRp(p_pat, beta, fdr)
       }
     }
     object@fdr <- fdr

@@ -179,6 +179,14 @@ setValidity("SpiDEFit", validSpiDEFit)
 #' @slot p.cauchy.neg a matrix, Cauchy-combined down-regulation p-values.
 #' @slot results a data.frame, the tidy results table (empty until
 #'   [testSpiDE()] is run), keyed by (gene, ct_index, ct_niche, bandwidth).
+#' @slot results.celltype a data.frame of cell-type-specific response calls
+#'   keyed by (gene, ct_index), from the `CellType:condition` block. Empty
+#'   unless the design carries that block. Retrieved with
+#'   `results(object, type = "celltype")`.
+#' @slot results.patient a data.frame of patient-level response calls, one
+#'   abundance-weighted contrast per gene. Empty unless the design carries the
+#'   `CellType:condition` block. Retrieved with
+#'   `results(object, type = "patient")`.
 #' @slot fdr a numeric, the FDR threshold used.
 #' @slot call the matched call that produced the object.
 #'
