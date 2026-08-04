@@ -100,3 +100,37 @@ test_that("spiGSEA errors when no set survives the size window", {
     "no gene set"
   )
 })
+
+test_that("spiGSEA handles a SINGLE gene set", {
+  # Regression: with one set, vapply over bandwidths returns a length-k vector
+  # instead of a 1 x k matrix, which .cauchyCombine then transposed against a
+  # 1 x k weight matrix and errored on. Testing one set is ordinary usage.
+  set.seed(1)
+  data(toySpiDE)
+  spe <- buildNiches(toySpiDE, sigma = c(20, 40))
+  res <- spiDE(spe, condition = "condition", sigma = c(20, 40), verbose = FALSE)
+  one <- list(only = rownames(spe)[1:6])
+  expect_no_error(
+    out <- spiGSEA(res, spe, one, min.size = 3, fdr = 1, verbose = FALSE))
+  expect_true(all(out$geneset == "only"))
+  # and it must agree with the same set tested alongside others
+  many <- spiGSEA(res, spe, c(one, list(other = rownames(spe)[7:14])),
+                  min.size = 3, fdr = 1, verbose = FALSE)
+  a <- out[order(out$ct_index, out$ct_niche), ]
+  b <- many[many$geneset == "only", ]
+  b <- b[order(b$ct_index, b$ct_niche), ]
+  expect_equal(a$z, b$z, tolerance = 1e-10)
+})
+
+test_that("interGeneCor() matches what spiGSEA computes internally", {
+  set.seed(1)
+  data(toySpiDE)
+  spe <- buildNiches(toySpiDE, sigma = c(20, 40))
+  res <- spiDE(spe, condition = "condition", sigma = c(20, 40), verbose = FALSE)
+  rho <- interGeneCor(res, spe, rho.genes = NULL, backend = "cpu")
+  expect_length(rho, 2L)
+  expect_true(all(rho > -1 & rho < 1))
+  out <- spiGSEA(res, spe, list(a = rownames(spe)[1:6]), min.size = 3,
+                 fdr = 1, rho = rho, verbose = FALSE)
+  expect_equal(unname(attr(out, "rho")), unname(rho), tolerance = 1e-12)
+})

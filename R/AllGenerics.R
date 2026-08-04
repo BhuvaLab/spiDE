@@ -41,3 +41,8 @@ setGeneric("bandwidths", function(object) standardGeneric("bandwidths"))
 #' @export
 setGeneric("spiGSEA", function(object, spe, genesets, ...)
   standardGeneric("spiGSEA"))
+
+#' @rdname interGeneCor
+#' @export
+setGeneric("interGeneCor", function(object, spe, ...)
+  standardGeneric("interGeneCor"))

@@ -488,6 +488,12 @@ setMethod(
     pcomb <- matrix(NA_real_, ns, nc)
     for (j in seq_len(nc)) {
       pj <- vapply(zl, function(z) 2 * stats::pnorm(-abs(z[, j])), numeric(ns))
+      # With a SINGLE gene set vapply returns a length-k vector rather than a
+      # 1 x k matrix, and as.matrix() inside .cauchyCombine would then stand it
+      # up as k x 1 -- the transpose of what it expects, against a 1 x k weight
+      # matrix, which errors outright. Testing one set is an ordinary thing to
+      # do, so pin the shape rather than rely on vapply's simplification.
+      if (!is.matrix(pj)) pj <- matrix(pj, nrow = ns)
       pcomb[, j] <- .cauchyCombine(pj, gene.w)
     }
     # Report the statistic at the bandwidth that saw it most strongly, and take
@@ -543,5 +549,72 @@ setMethod(
                       nrow(out), length(unique(out$geneset))))
     }
     out
+  }
+)
+
+#' Average inter-gene correlation of a fitted model's residuals
+#'
+#' The mean pairwise correlation of Pearson residuals, per bandwidth. This is
+#' the \code{rho} that [spiGSEA()] uses to inflate the variance of a gene-set
+#' mean, and it is worth having in its own right as a model diagnostic: it says
+#' how much of the residual variation is shared across genes, and therefore how
+#' far a set of \code{m} genes falls short of carrying \code{m} genes' worth of
+#' independent evidence.
+#'
+#' Compute it once and pass it to [spiGSEA()] as \code{rho} when testing
+#' several gene-set collections against the same fit. It depends only on the
+#' fit, not on the sets, so re-estimating it per collection repeats identical
+#' work. It is deliberately **not** cached on the fitted object: R's copy
+#' semantics mean a cache would have to be written to a copy and reassigned by
+#' the caller anyway, and a silently stale correlation would mis-scale every
+#' gene-set p-value derived from it.
+#'
+#' Estimated without ever forming the gene-by-gene correlation matrix, so it
+#' costs one streaming pass over the counts (about 5 seconds per bandwidth on
+#' 13,000 genes x 77,000 cells with 16 workers) and memory linear in cells.
+#'
+#' @param object a [SpiDEResults].
+#' @param spe the [SpatialExperiment::SpatialExperiment] the model was fitted
+#'   on.
+#' @param rho.genes number of genes to subsample (\code{NULL} uses all). A
+#'   random subset of genes gives a random subset of gene PAIRS, so the
+#'   estimate is unbiased; the default trades a little precision for a large
+#'   saving on the counts pass.
+#' @param block.size genes per block; \code{NULL} auto-sizes on the GPU
+#'   backend.
+#' @param backend "auto", "cpu" or "gpu".
+#' @param gpu.mem.budget device memory budget in bytes for the GPU block sizer.
+#' @param BPPARAM a BiocParallelParam. Blocks contribute additive partial sums,
+#'   so they parallelise exactly.
+#' @param verbose report progress.
+#' @return a named numeric, one value per bandwidth.
+#' @examples
+#' data(toySpiDE)
+#' spe <- buildNiches(toySpiDE, sigma = 20)
+#' res <- spiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+#' interGeneCor(res, spe)
+#' @rdname interGeneCor
+#' @export
+setMethod(
+  "interGeneCor", "SpiDEResults",
+  function(object, spe, rho.genes = 2000L, block.size = NULL,
+           backend = c("auto", "cpu", "gpu"), gpu.mem.budget = NULL,
+           BPPARAM = BiocParallel::SerialParam(), verbose = FALSE) {
+    backend <- match.arg(backend)
+    fl <- fits(object)
+    if (!length(fl)) stop("`object` holds no fits")
+    Y <- SummarizedExperiment::assay(spe, "counts")
+    g <- seq_len(nrow(Y))
+    if (!is.null(rho.genes) && rho.genes < length(g)) {
+      g <- sort(sample(g, rho.genes))
+    }
+    out <- vapply(fl, function(f) {
+      r <- .interGeneCor(Y, f, g, block.size, backend = backend,
+                         gpu.mem.budget = gpu.mem.budget, BPPARAM = BPPARAM)
+      if (verbose) message(sprintf("sigma %g: rho = %.4f", f@sigma, r))
+      r
+    }, numeric(1))
+    stats::setNames(out, paste0("sigma", vapply(fl, function(f) f@sigma,
+                                                numeric(1))))
   }
 )
