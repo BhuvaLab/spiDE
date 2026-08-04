@@ -134,6 +134,10 @@
 # BiocCheck flags the set.seed() below by a plain text search. It is the one
 # call that must stay: this helper exists precisely to make seeding safe, and
 # it is reached only when the caller passed an explicit `seed`.
+#
+# Callers must not call on.exit() without add = TRUE afterwards: that would
+# discard the restore handler registered here and silently reinstate the very
+# side effect this exists to remove.
 .localSeed <- function(seed, env = parent.frame()) {
   if (is.null(seed)) return(invisible(NULL))
   had <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)

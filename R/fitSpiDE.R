@@ -234,7 +234,7 @@
 
 #' Per-coefficient Satterthwaite degrees of freedom (shared across genes)
 #'
-#' df_j = 2 v_jj^2 / (d_j' Cov(theta-hat) d_j), with v_jj = [M^{-1}]_jj, gradient
+#' df_j = 2 v_jj^2 / (d_j' Cov(theta-hat) d_j), with v_jj = (M^{-1})_jj, gradient
 #' d_j = (v_jj, g_j1, ..., g_jM) and g_jm = (pen_m / tau2_m) * sum_{k in m} M^{-1}_{jk}^2.
 #' Invariant to the per-gene dispersion phi (spec), hence one shared vector.
 #' @noRd

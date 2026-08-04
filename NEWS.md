@@ -1,3 +1,51 @@
+# spiDE 0.99.8
+
+## New Features
+
+* The niche design now carries a `CellType:condition` block, so a response that
+  is **cell-type-specific but niche-independent** has a term of its own instead
+  of being forced into the three-way niche interaction. Benchmarked over 2,840
+  simulated design points (`research/`): the previous niche-only design produces
+  **6.8-9.5x more spurious niche calls** on such genes. Calibration is unchanged
+  (null type-I `0.0450` vs `0.0449`).
+
+  This is a trade, not a free win. On truth that really is niche-only, power is
+  lower (TPR `0.183` vs `0.319`), because the new block absorbs part of the
+  signal the three-way term used to carry alone. `vignettes/spiDE-mixed-benchmark.Rmd`
+  reports both sides.
+
+  Note the **cell-means coding**: there is no bare `condition` main effect. The
+  condition contrast is carried by the `CellType:condition` (`ResponseCellType`)
+  columns, one per cell type. Code matching a single `"Response"` column finds
+  nothing and should match `ResponseCellType`.
+
+* `results()` gains `type = "celltype"` and `type = "patient"` alongside the
+  default `"niche"`: cell-type-specific response calls keyed by
+  `(gene, ct_index)`, and one abundance-weighted response contrast per gene.
+
+## Improvements
+
+* **All three result layers now combine evidence across every bandwidth** with
+  the log-likelihood-weighted Cauchy combination. The cell-type and patient
+  layers previously reported the last bandwidth's fit alone. On a four-bandwidth
+  production fit the cell-type layer returns 107 genes combined against 93 for
+  the best single bandwidth, and 0 under the old behaviour -- the widest
+  bandwidth was the least informative of the four. If you compared these layers
+  across analyses with different `sigma` sets, those results change.
+
+* Cauchy combination now consumes **two-sided** p-values. Under one-sided input
+  `tan((0.5 - p)pi)` diverges to `-Inf` as `p -> 1`, so a gene up in one niche
+  and down in another cancelled exactly. Brown's method stays one-sided, where
+  `-2log(p)` is bounded at 0 and safe.
+
+* Consistent FDR scale across the three layers: `.dirBH()` tested each direction
+  at `q/2` but returned the per-direction `q` unscaled, understating cell-type
+  and patient q-values roughly two-fold relative to the niche layer.
+
+* The toy data generators no longer reseed the caller's global RNG. They take a
+  `seed` argument for reproducibility but previously called `set.seed()`
+  directly, perturbing every random draw the caller made afterwards.
+
 # spiDE 0.99.7
 
 * **Behaviour change:** `fitSpiDE()` / `spiDE()` now default to

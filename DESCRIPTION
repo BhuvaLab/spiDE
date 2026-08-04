@@ -1,6 +1,6 @@
 Package: spiDE
 Title: Context-specific, neighbourhood-dependent differential expression
-Version: 0.99.7
+Version: 0.99.8
 Authors@R: c(
             person(given = "Dharmesh D.",
                    family = "Bhuva",
