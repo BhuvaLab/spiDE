@@ -1,3 +1,27 @@
+# spiDE 0.99.12
+
+## New Features
+
+* `updateObject()` methods for `SpiDEFit` and `SpiDEResults`, filling any slots
+  that did not exist when an object was serialised.
+
+  Slots added to a class do not appear in objects pickled before them. Reading
+  such an object still works, but anything that triggers validity fails --
+  including `initialize()`, which is the documented way to re-combine
+  single-bandwidth fits across bandwidths:
+
+  ```
+  invalid class "SpiDEResults" object: slots in class definition but not in
+  object: "results.celltype", "results.patient"
+  ```
+
+  This bit a real analysis: fits stored before the `CellType:condition` result
+  layers existed could no longer be combined, and those objects represent hours
+  of cluster time. `updateObject()` fills absent slots from the class prototype
+  and leaves every present slot untouched; it also descends into the contained
+  `SpiDEFit` objects. Verified on a four-bandwidth production result: validity
+  goes from failing to passing with all fits and result rows preserved.
+
 # spiDE 0.99.11
 
 ## Behaviour change

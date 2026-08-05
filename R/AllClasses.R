@@ -273,3 +273,52 @@ validSpiDEResults <- function(object) {
 }
 
 setValidity("SpiDEResults", validSpiDEResults)
+
+# ---------------------------------------------------------------------------
+# Migration of objects serialised by earlier versions.
+#
+# Slots added to a class do not appear in objects pickled before they existed.
+# Reading such an object still works, but anything that triggers validity --
+# notably initialize(), which is the documented idiom for re-combining fits
+# across bandwidths -- fails with "slots in class definition but not in object".
+#
+# These objects can represent many hours of cluster time, so the fix is the
+# Bioconductor-standard one: fill absent slots from the prototype and leave
+# every present slot untouched.
+# ---------------------------------------------------------------------------
+
+#' @param object a SpiDEFit or SpiDEResults, possibly from an older version.
+#' @param ... ignored.
+#' @param verbose report which slots were filled.
+#' @return the object, with any slots missing since serialisation filled from
+#'   the class prototype.
+#' @importFrom BiocGenerics updateObject
+#' @rdname updateObject
+#' @export
+setMethod("updateObject", "SpiDEFit", function(object, ..., verbose = FALSE) {
+  .fillSlots(object, "SpiDEFit", verbose)
+})
+
+#' @rdname updateObject
+#' @export
+setMethod("updateObject", "SpiDEResults", function(object, ..., verbose = FALSE) {
+  object <- .fillSlots(object, "SpiDEResults", verbose)
+  if (length(object@fits)) {
+    object@fits <- lapply(object@fits, function(f) {
+      if (is(f, "SpiDEFit")) .fillSlots(f, "SpiDEFit", verbose) else f
+    })
+  }
+  object
+})
+
+#' Fill slots absent from a serialised object using the class prototype
+#' @noRd
+.fillSlots <- function(object, Class, verbose = FALSE) {
+  proto <- methods::new(Class)
+  missing <- setdiff(methods::slotNames(Class), names(attributes(object)))
+  for (s in missing) attr(object, s) <- methods::slot(proto, s)
+  if (verbose && length(missing)) {
+    message("updateObject(", Class, "): filled ", paste(missing, collapse = ", "))
+  }
+  object
+}
