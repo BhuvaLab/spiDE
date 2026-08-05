@@ -12,7 +12,7 @@ spiGSEA(object, spe = NULL, genesets, ...)
   spe = NULL,
   genesets,
   type = c("niche", "celltype"),
-  test = c("self-contained", "competitive"),
+  test = c("competitive", "self-contained"),
   fdr = 0.05,
   min.size = 5L,
   max.size = 500L,
@@ -42,10 +42,11 @@ omitted and no pass over the counts happens at all.}
 statistics; "celltype" tests the CellType:condition statistics, which are
 empty unless the design carries that block.}
 
-\item{test}{"self-contained" (default) compares the set's mean statistic
-with zero; "competitive" compares it with the genes outside the set. See
-the section below -- they answer different questions and the default is
-the more permissive one.}
+\item{test}{"competitive" (default) compares the set's mean statistic with
+the genes outside the set, as \code{limma::camera} does;
+"self-contained" compares it with zero. See the section below: the
+benchmark shows the self-contained form does not control error on
+correlated data, which is why it is not the default.}
 
 \item{fdr}{the FDR threshold applied at every level of the cascade.}
 
@@ -106,23 +107,33 @@ sets, then (for \code{type = "niche"}) niche cell type within those.
 }
 \section{Which test, and what it licenses you to say}{
 
-\code{test = "self-contained"} (the default) asks whether the set's mean
-statistic differs from \strong{zero} -- null: no gene in the set responds. It is
-the more powerful of the two and reproduces the established pipeline, but a
-significant result does \strong{not} mean the set is special: if a global effect
-shifts most genes, most sets become significant, correctly but uselessly.
+\code{test = "competitive"} (the default) asks whether the set's mean
+differs from the mean of the genes \strong{outside} it, as \code{limma::camera}
+does -- null: the set responds no more than the assayed background.
 
-\code{test = "competitive"} asks whether the set's mean differs from the
-mean of the genes \strong{outside} it, as \code{limma::camera} does -- null: the
-set responds no more than the assayed background. Use it when the claim is
-"this pathway specifically", not merely "this pathway responds".
+\code{test = "self-contained"} asks whether the set's mean differs from
+\strong{zero} -- null: no gene in the set responds. It reproduces the flat-script
+pipeline this replaces, and is offered for that comparison, but \strong{it does
+not control error on correlated data and should not be used for inference.}
 
-This matters concretely here: spiDE's per-gene statistics track expression,
-so a set of abundant genes can carry a real non-zero mean without carrying
-niche-specific signal. The competitive test absorbs much of that, because
-its background is subject to the same bias. Where the distinction is load
-bearing, also compare each set against expression-matched random sets of
-the same size rather than reading the q-value alone.
+The simulation benchmark (\code{research/}, scenario \code{gsea}) measured
+this on ground truth: with nothing planted, at realistic inter-gene
+correlation and a nominal FDR of 0.05, the self-contained test called 20.6
+of 208 sets per replicate -- every one of them false, a realised FDP of 1.00
+-- while the competitive test called 0.05 sets. The cause is not the
+correlation term: it is that the self-contained form assumes the gene-level
+statistics being averaged have unit spread, which holds under the null but
+not under signal (observed spread 1.8 at the largest effect tested). The
+competitive form divides by the observed spread and so is immune.
+
+Two consequences worth knowing. Under a \strong{global} shift affecting most
+genes, the self-contained test called 96.3\% of random sets and the
+competitive test 0.7\%. And because spiDE's per-gene statistics track
+expression, the self-contained test's false calls concentrate in abundant
+sets: its called sets sat at the 86th expression percentile against the 51st
+for random sets. Where that distinction is load bearing, also compare each
+set against expression-matched random sets of the same size rather than
+reading the q-value alone.
 }
 
 \examples{

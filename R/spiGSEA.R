@@ -20,12 +20,24 @@
 # What the two tests differ on is the null they compare against, and they answer
 # genuinely different questions:
 #
-#   "self-contained" (default) tests the set's mean z against ZERO. Null: no
-#       gene in the set responds. This is the test the flat-script pipeline this
-#       replaces used, and it is what its `fry_res` object holds.
-#   "competitive" tests the set's mean z against the mean of the genes OUTSIDE
-#       the set, as limma::camera does. Null: genes in the set respond no more
-#       than the rest of the assayed genes.
+#   "competitive" (default) tests the set's mean z against the mean of the genes
+#       OUTSIDE the set, as limma::camera does. Null: genes in the set respond
+#       no more than the rest of the assayed genes.
+#   "self-contained" tests the set's mean z against ZERO. Null: no gene in the
+#       set responds. This is what the flat-script pipeline this replaces used,
+#       and what its `fry_res` object holds -- kept for that comparison only.
+#
+# The benchmark (research/, scenario `gsea`) settles which should be the
+# default. With nothing planted, at realistic inter-gene correlation and a
+# nominal FDR of 0.05, self-contained called 20.6 of 208 sets per replicate,
+# ALL false -- a realised FDP of 1.00 -- against 0.05 sets for competitive.
+#
+# The cause is NOT the rho term. Setting rho = 0 roughly quadruples the damage,
+# so the variance inflation is doing real work, but self-contained stays badly
+# anti-conservative WITH the correct rho. The difference is that it assumes the
+# gene-level z being averaged have unit spread. That holds under the null and
+# fails under signal: measured spread was 1.0 null, 1.8 at the largest effect.
+# The competitive form divides by the observed spread, so it is immune.
 #
 # The distinction matters here more than usual. spiDE's per-gene statistics are
 # known to track expression, so a set of abundant genes can carry a non-zero
@@ -347,23 +359,33 @@
 #' sets, then (for \code{type = "niche"}) niche cell type within those.
 #'
 #' @section Which test, and what it licenses you to say:
-#' \code{test = "self-contained"} (the default) asks whether the set's mean
-#' statistic differs from **zero** -- null: no gene in the set responds. It is
-#' the more powerful of the two and reproduces the established pipeline, but a
-#' significant result does **not** mean the set is special: if a global effect
-#' shifts most genes, most sets become significant, correctly but uselessly.
+#' \code{test = "competitive"} (the default) asks whether the set's mean
+#' differs from the mean of the genes **outside** it, as \code{limma::camera}
+#' does -- null: the set responds no more than the assayed background.
 #'
-#' \code{test = "competitive"} asks whether the set's mean differs from the
-#' mean of the genes **outside** it, as \code{limma::camera} does -- null: the
-#' set responds no more than the assayed background. Use it when the claim is
-#' "this pathway specifically", not merely "this pathway responds".
+#' \code{test = "self-contained"} asks whether the set's mean differs from
+#' **zero** -- null: no gene in the set responds. It reproduces the flat-script
+#' pipeline this replaces, and is offered for that comparison, but **it does
+#' not control error on correlated data and should not be used for inference.**
 #'
-#' This matters concretely here: spiDE's per-gene statistics track expression,
-#' so a set of abundant genes can carry a real non-zero mean without carrying
-#' niche-specific signal. The competitive test absorbs much of that, because
-#' its background is subject to the same bias. Where the distinction is load
-#' bearing, also compare each set against expression-matched random sets of
-#' the same size rather than reading the q-value alone.
+#' The simulation benchmark (\code{research/}, scenario \code{gsea}) measured
+#' this on ground truth: with nothing planted, at realistic inter-gene
+#' correlation and a nominal FDR of 0.05, the self-contained test called 20.6
+#' of 208 sets per replicate -- every one of them false, a realised FDP of 1.00
+#' -- while the competitive test called 0.05 sets. The cause is not the
+#' correlation term: it is that the self-contained form assumes the gene-level
+#' statistics being averaged have unit spread, which holds under the null but
+#' not under signal (observed spread 1.8 at the largest effect tested). The
+#' competitive form divides by the observed spread and so is immune.
+#'
+#' Two consequences worth knowing. Under a **global** shift affecting most
+#' genes, the self-contained test called 96.3% of random sets and the
+#' competitive test 0.7%. And because spiDE's per-gene statistics track
+#' expression, the self-contained test's false calls concentrate in abundant
+#' sets: its called sets sat at the 86th expression percentile against the 51st
+#' for random sets. Where that distinction is load bearing, also compare each
+#' set against expression-matched random sets of the same size rather than
+#' reading the q-value alone.
 #'
 #' @param object a [SpiDEResults] from [testSpiDE()] or [spiDE()].
 #' @param spe the [SpatialExperiment::SpatialExperiment] the model was fitted
@@ -375,10 +397,11 @@
 #' @param type "niche" (default) tests the three-way celltype:condition:niche
 #'   statistics; "celltype" tests the CellType:condition statistics, which are
 #'   empty unless the design carries that block.
-#' @param test "self-contained" (default) compares the set's mean statistic
-#'   with zero; "competitive" compares it with the genes outside the set. See
-#'   the section below -- they answer different questions and the default is
-#'   the more permissive one.
+#' @param test "competitive" (default) compares the set's mean statistic with
+#'   the genes outside the set, as \code{limma::camera} does;
+#'   "self-contained" compares it with zero. See the section below: the
+#'   benchmark shows the self-contained form does not control error on
+#'   correlated data, which is why it is not the default.
 #' @param fdr the FDR threshold applied at every level of the cascade.
 #' @param min.size,max.size sets outside this size range (after intersecting
 #'   with the fitted genes) are dropped. The lower bound keeps the mean from
@@ -434,7 +457,7 @@
 setMethod(
   "spiGSEA", "SpiDEResults",
   function(object, spe = NULL, genesets, type = c("niche", "celltype"),
-           test = c("self-contained", "competitive"),
+           test = c("competitive", "self-contained"),
            fdr = 0.05, min.size = 5L, max.size = 500L, rho = NULL,
            rho.genes = 2000L, block.size = NULL,
            backend = c("auto", "cpu", "gpu"), gpu.mem.budget = NULL,

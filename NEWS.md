@@ -1,3 +1,42 @@
+# spiDE 0.99.11
+
+## Behaviour change
+
+* `spiGSEA()` now defaults to `test = "competitive"` (was `"self-contained"`).
+  The simulation benchmark (`research/`, scenario `gsea`) measured both on
+  ground truth and the self-contained form **does not control error on
+  correlated data**: with nothing planted, at realistic inter-gene correlation
+  and a nominal FDR of 0.05, it called 20.6 of 208 sets per replicate, every
+  one of them false -- a realised FDP of 1.00 -- against 0.05 sets for the
+  competitive test.
+
+  The cause is not the inter-gene correlation term. Setting `rho = 0` roughly
+  quadruples the damage, so that term is doing real work, but the
+  self-contained test stays badly anti-conservative with the correct `rho`. It
+  assumes the gene-level statistics being averaged have unit spread, which
+  holds under the null and fails under signal (measured spread 1.0 null, 1.8 at
+  the largest effect tested). The competitive form divides by the observed
+  spread and is immune.
+
+  Two further results from the same benchmark. Under a global shift affecting
+  most genes, the self-contained test called 96.3% of random sets against 0.7%
+  for competitive. And because the per-gene statistics track expression, the
+  self-contained test's false calls concentrate in abundant sets: called sets
+  sat at the 86th expression percentile against the 51st for random sets --
+  closely reproducing what is seen on real data.
+
+  `test = "self-contained"` is retained for comparison with the flat-script
+  pipeline it replaces, and is documented as unsuitable for inference.
+
+  Power for the competitive test, at FDR 0.05, is usable from about 25 genes
+  per set at moderate effects, and saturates by 50 genes at larger ones.
+
+## New Features
+
+* A gene-set benchmark in `research/`: scenarios `gsea` and `gseacal`, with
+  gene-gene correlation induced at the rate observed in real spatial data and
+  calibrated against the realised residual correlation rather than assumed.
+
 # spiDE 0.99.10
 
 ## Improvements
