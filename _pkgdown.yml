@@ -35,9 +35,11 @@ articles:
   - spiDE-model
 - title: Statistical validation
   desc: >
-    Calibration, power/FDR, and performance studies behind the method. These
-    vignettes are precomputed; see vignettes/precompile.R.
+    Calibration, power/FDR, and performance studies behind the method. Figures
+    are read from summary tables shipped in inst/extdata/benchmark; the study
+    that produces them lives in research/.
   contents:
+  - spiDE-calibration
   - spiDE-cauchy-vs-brown
   - spiDE-mixed-benchmark
   - spiDE-simulation
