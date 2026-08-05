@@ -12,9 +12,15 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
+# fig.retina = 2 renders figures at twice the pixel dimensions (300 dpi here)
+# and scales them down in the browser. BiocStyle emits a SELF-CONTAINED html, so
+# every figure is embedded base64 and the file carries ~4x the bytes for no
+# visible gain at normal display size. This vignette alone reached 6.9 MB that
+# way, and Bioconductor caps the source package -- which includes inst/doc --
+# at 5 MB. Keep this at 1.
 knitr::opts_chunk$set(echo = FALSE, collapse = TRUE, comment = "#>",
                       fig.width = 7, fig.height = 4.5, dpi = 150,
-                      fig.retina = 2, message = FALSE, warning = FALSE)
+                      fig.retina = 1, message = FALSE, warning = FALSE)
 ```
 
 ```{r libs}
