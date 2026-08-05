@@ -320,6 +320,64 @@ response loses by the change, one with such a shift gains. Null calibration is
 unaffected either way (median type-I 0.0450 against 0.0449 across 50 design
 points per arm), so the choice is about power and specificity, not validity.
 
+# Gene sets: why `spiGSEA()` defaults to the competitive test
+
+`spiGSEA()` offers two nulls. The **self-contained** test asks whether a set's
+mean statistic differs from zero; the **competitive** test asks whether it
+differs from the genes outside the set, as `limma::camera` does. They answer
+different questions, and the benchmark decides which is safe to default to.
+
+The simulation plants nothing: 30 samples of 300 cells, 1,500 genes, and
+gene-gene correlation induced at the rate seen in real spatial data
+(rho ~ 0.011, calibrated against the *realised* residual correlation rather
+than assumed). Sets are of three kinds -- `null` (random genes), `high`
+(drawn from the top expression quintile) and `plant` (which carry signal only
+in the power scenarios). With no signal anywhere, every call is a false one.
+
+```{r gsea-null, fig.height = 3.6, fig.cap = "False call rate with nothing planted, at nominal FDR 0.05 and realistic inter-gene correlation. Every call shown is false. The self-contained test does not control error, and its errors concentrate in the high-expression sets."}
+cl <- bench("gsea_calls.csv")
+if (!is.null(cl)) {
+  k <- cl[cl$arm == "null" & cl$fdr == 0.05 & cl$rho_mode == "estimated" &
+            cl$load == 0.3 & cl$libsd == 0.2 &
+            cl$set_class %in% c("null", "high"), ]
+  g <- aggregate(call_rate ~ test + set_class, data = k, FUN = mean)
+  g$set_class <- factor(g$set_class, c("null", "high"),
+                        c("random sets", "high-expression sets"))
+  ggplot(g, aes(set_class, call_rate, fill = test)) +
+    geom_col(position = position_dodge(0.7), width = 0.6) +
+    geom_hline(yintercept = 0.05, linetype = 2) +
+    labs(x = NULL, y = "fraction of sets called (all false)", fill = NULL) +
+    vissE::bhuvad_theme()
+}
+```
+
+The dashed line is the nominal 5%. The competitive test sits at zero. The
+self-contained test calls about 2.7% of random sets and 17.6% of
+high-expression sets -- roughly 20 of 208 sets per replicate, all false, so its
+realised false-discovery proportion is **1.00 against a reported 0.05**.
+
+It is worth being precise about the cause, because the obvious suspect is
+wrong. Setting `rho = 0` roughly quadruples the damage, so the
+correlation term is doing real work -- but the self-contained test remains
+badly anti-conservative *with* the correct `rho`. The difference is that it
+assumes the gene-level statistics being averaged have unit spread. That holds
+under the null and fails under signal (measured spread 1.0 null, 1.8 at the
+largest effect). The competitive form divides by the observed spread, so it is
+immune. With genuinely independent genes -- which requires switching off
+per-cell library-size variation as well as the latent factor, since library
+size alone leaves rho ~ 0.0036 -- **both** tests are calibrated, which is what
+identifies correlation rather than the model or the FDR cascade as the cause.
+
+Two consequences follow. Under a global shift affecting most genes, the
+self-contained test called 96.3% of random sets against 0.7% for competitive.
+And because the per-gene statistics track expression, its false calls land on
+abundant sets: called sets sat at the 86th expression percentile against the
+51st for random sets, closely reproducing what is seen on real data.
+
+The competitive test is not bought with unusable sensitivity: at FDR 0.05 its
+power is usable from about 25 genes per set at moderate effects and saturates
+by 50 genes at larger ones.
+
 # Summary
 
 * Subsampling cells for the PQL loop (`re.prop < 1`) plus a single inner
