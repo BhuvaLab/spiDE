@@ -346,8 +346,7 @@ if (!is.null(cl)) {
   ggplot(g, aes(set_class, call_rate, fill = test)) +
     geom_col(position = position_dodge(0.7), width = 0.6) +
     geom_hline(yintercept = 0.05, linetype = 2) +
-    labs(x = NULL, y = "fraction of sets called (all false)", fill = NULL) +
-    vissE::bhuvad_theme()
+    labs(x = NULL, y = "fraction of sets called (all false)", fill = NULL)
 }
 ```
 
