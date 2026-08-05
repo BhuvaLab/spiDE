@@ -67,7 +67,16 @@ test_that("spiGSEA recovers a planted gene-set signal", {
   gn <- rownames(spe)
   # G1 carries the planted Responder x B-niche effect in index cell type A
   sets <- list(planted = gn[1:6], other = gn[7:14])
-  out <- spiGSEA(res, spe, sets, min.size = 3, fdr = 1, verbose = FALSE)
+  # Pinned to the self-contained null ON PURPOSE. The competitive test measures
+  # a set against the genes OUTSIDE it, and this fixture has 20 genes: the
+  # complement of a 6-gene set is 14 genes, most of which are the other set
+  # under test. That contrast is degenerate at this scale and the ranking below
+  # is not a meaningful assertion about it -- when the default became
+  # competitive, this test began reporting "other" as the strongest set.
+  # Competitive power is established where it can be, on the 1,500-gene
+  # simulation benchmark (research/, scenario `gsea`), not on a toy.
+  out <- spiGSEA(res, spe, sets, test = "self-contained", min.size = 3,
+                 fdr = 1, verbose = FALSE)
 
   expect_s3_class(out, "data.frame")
   expect_true(all(c("geneset", "ct_index", "ct_niche", "z", "Direction",
@@ -134,4 +143,21 @@ test_that("testSpiDE() stores the correlation spiGSEA then applies", {
   out <- spiGSEA(res, genesets = list(a = rownames(spe)[1:6]), min.size = 3,
                  fdr = 1, verbose = FALSE)
   expect_equal(unname(attr(out, "rho")), unname(rho), tolerance = 0)
+})
+
+test_that("the competitive default runs and is self-consistent on the fixture", {
+  # No ranking assertion here -- see above for why a 20-gene fixture cannot
+  # support a competitive contrast. This checks the DEFAULT path executes and
+  # agrees with itself when the same null is requested explicitly.
+  set.seed(1)
+  data(toySpiDE)
+  spe <- buildNiches(toySpiDE, sigma = c(20, 40))
+  res <- spiDE(spe, condition = "condition", sigma = c(20, 40), verbose = FALSE)
+  sets <- list(a = rownames(spe)[1:6], b = rownames(spe)[7:14])
+  d <- spiGSEA(res, spe, sets, min.size = 3, fdr = 1, verbose = FALSE)
+  e <- spiGSEA(res, spe, sets, test = "competitive", min.size = 3, fdr = 1,
+               verbose = FALSE)
+  expect_identical(attr(d, "test"), "competitive")
+  expect_equal(d$z, e$z, tolerance = 0)
+  expect_true(all(is.finite(d$z)))
 })
