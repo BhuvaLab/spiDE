@@ -408,6 +408,7 @@
 #'   sums, so they parallelise exactly; a multi-worker param is downgraded to
 #'   serial on the GPU backend to stop workers contending for one device.
 #' @param verbose report progress.
+#' @param ... ignored; present for compatibility with the generic.
 #' @return a data.frame of significant sets, keyed by (geneset, ct_index) and
 #'   additionally ct_niche when \code{type = "niche"}, with the set size, the
 #'   z-statistic at its most informative bandwidth, the direction, and the

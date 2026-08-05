@@ -36,6 +36,8 @@ omitted and no pass over the counts happens at all.}
 \item{genesets}{a named list of gene identifiers (character, matched against
 \code{rownames}) or integer row indices.}
 
+\item{...}{ignored; present for compatibility with the generic.}
+
 \item{type}{"niche" (default) tests the three-way celltype:condition:niche
 statistics; "celltype" tests the CellType:condition statistics, which are
 empty unless the design carries that block.}
