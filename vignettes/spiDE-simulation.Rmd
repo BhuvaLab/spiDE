@@ -15,9 +15,13 @@ vignette: >
 # fig.retina = 2 renders figures at twice the pixel dimensions (300 dpi here)
 # and scales them down in the browser. BiocStyle emits a SELF-CONTAINED html, so
 # every figure is embedded base64 and the file carries ~4x the bytes for no
-# visible gain at normal display size. This vignette alone reached 6.9 MB that
-# way, and Bioconductor caps the source package -- which includes inst/doc --
-# at 5 MB. Keep this at 1.
+# visible gain at normal display size.
+#
+# Bioconductor's limits are a tarball under 10 MB AND individual files at most
+# 5 MB (contributions.bioconductor.org/general.html). It is the per-FILE limit
+# that binds here: at fig.retina = 2 this one vignette's html reached 6.87 MB
+# and breached it on its own, while the tarball (8.20 MB) was still legal.
+# At fig.retina = 1 the html is 3.52 MB and the tarball 5.15 MB. Keep this at 1.
 knitr::opts_chunk$set(echo = FALSE, collapse = TRUE, comment = "#>",
                       fig.width = 7, fig.height = 4.5, dpi = 150,
                       fig.retina = 1, message = FALSE, warning = FALSE)
