@@ -1,5 +1,7 @@
 # Design-matrix construction for the neighbourhood-dependent DE model. Builds
 #   ~ 0 + <covariates> + CellType + <condition> * CellType:(niches) + niches
+# or, for a condition-free (niche-only) design (condition = NULL),
+#   ~ 0 + <covariates> + CellType + CellType:(niches)
 # then tags each column by type and drops symmetric self-interactions
 # (an index cell type interacting with its own niche density). Reproduces the
 # design in batch_nichede_v9.R; column tagging is done by parsing tokens so it
@@ -90,18 +92,22 @@
 #' @param response_coef the condition main-effect coefficient name.
 #' @return a data.frame with columns covariate, type, index, niche.
 #' @noRd
-.tagCovtype <- function(cols, niche_cols, response_coef) {
+.tagCovtype <- function(cols, niche_cols, response_coef = NULL) {
+  # response_coef = NULL is the condition-free design: there is no response
+  # token, so has_resp is uniformly FALSE and the existing parse rules fall
+  # through to "Niche" for the CellType:niche interactions -- which are the
+  # tested terms in that mode.
   parse_one <- function(col) {
     tokens <- strsplit(col, ":", fixed = TRUE)[[1]]
     ct_tok <- tokens[grepl("^CellType", tokens)]
     niche_tok <- intersect(tokens, niche_cols)
-    has_resp <- response_coef %in% tokens
+    has_resp <- !is.null(response_coef) && response_coef %in% tokens
 
     index <- if (length(ct_tok) == 1) sub("^CellType", "", ct_tok) else NA_character_
     niche <- if (length(niche_tok) == 1) niche_tok else NA_character_
 
     if (length(tokens) == 1) {
-      type <- if (col == response_coef) {
+      type <- if (!is.null(response_coef) && col == response_coef) {
         "Response"
       } else if (grepl("^CellType", col)) {
         "CellType"
@@ -140,7 +146,8 @@
 #' Build the neighbourhood-interaction design for one bandwidth
 #'
 #' @param spe a SpatialExperiment with a niche reducedDim for \code{sigma}.
-#' @param condition a character, the colData column of the tested condition.
+#' @param condition a character, the colData column of the tested condition, or
+#'   \code{NULL} for a condition-free (niche-only) design.
 #' @param sigma a numeric, the bandwidth (a single value).
 #' @param index,niche character vectors restricting index / niche cell types
 #'   (NULL = all).
@@ -154,17 +161,20 @@
 #'   slopes on the niche covariates). The random-effect columns are penalised at
 #'   fit time to implement a mixed model via ridge (see the vignette).
 #' @return a list with `W` (design matrix), `covtype` (factor), `coefmap`
-#'   (data.frame), `response_coef` (character), and `re_group` (per-column
-#'   random-effect group label, `NA` for fixed columns).
+#'   (data.frame), `response_coef` (character, `NULL` without a condition),
+#'   `re_group` (per-column random-effect group label, `NA` for fixed columns),
+#'   and `mode` ("condition" or "niche").
 #' @importFrom stats model.matrix as.formula
 #' @importFrom SingleCellExperiment reducedDim
 #' @importFrom S4Vectors metadata
 #' @noRd
-.buildNicheDesign <- function(spe, condition, sigma, index = NULL, niche = NULL,
+.buildNicheDesign <- function(spe, condition = NULL, sigma, index = NULL,
+                              niche = NULL,
                               covariates = character(), cell_type = "cell_type",
                               name = "Niche", sample_id = "sample_id",
                               random = c("none", "intercept", "slope")) {
   random <- match.arg(random)
+  has_cond <- !is.null(condition)
   cd <- SummarizedExperiment::colData(spe)
 
   # niche matrix -> log1p, sanitised column names
@@ -183,14 +193,19 @@
   # assemble the model data.frame
   df <- as.data.frame(nichemat[, niche_cols, drop = FALSE])
   df[["CellType"]] <- factor(.sanitise(as.character(cd[[cell_type]])))
-  df[[condition]] <- factor(cd[[condition]])
+  if (has_cond) {
+    df[[condition]] <- factor(cd[[condition]])
+  }
   for (cv in covariates) {
     df[[cv]] <- cd[[cv]]
   }
 
   # tested (non-reference) level of the condition -> coefficient name
-  tested_level <- levels(df[[condition]])[2]
-  response_coef <- paste0(condition, tested_level)
+  response_coef <- if (has_cond) {
+    paste0(condition, levels(df[[condition]])[2])
+  } else {
+    NULL
+  }
 
   # formula: 0 + covariates + CellType + CellType:condition +
   #          CellType:(niches) + CellType:condition:(niches) + niches
@@ -206,13 +221,32 @@
   # each the responder-vs-non-responder shift WITHIN that cell type, readable
   # without a contrast. Keeping the main effect would instead give k-1
   # treatment-coded columns requiring condition + CellType_x:condition.
+  # Without a condition (condition = NULL) the condition groups drop out AND so
+  # do the bare niche main effects, leaving
+  #   ~ 0 + covariates + CellType + CellType:(niches)
+  # so that the CellType:(niches) block -- tagged "Niche" either way -- becomes
+  # the tested set under CELL-MEANS coding, exactly as CellType:condition is
+  # cell-means coded above. c() drops the NULL entries.
+  #
+  # Dropping the niche main effects is required, not cosmetic. With them in,
+  # niche_n = sum_c CellType_c:niche_n, so model.matrix() silently drops one
+  # interaction per niche as aliased -- always the FIRST cell type's. In
+  # condition mode that is harmless, because the tested terms are the three-way
+  # CellType:condition:niche columns, which are not aliased with anything. Here
+  # the two-way columns ARE the tested terms, so the alphabetically-first cell
+  # type would lose every one of its niche slopes and could never be tested
+  # (nicheDesign(index = "A") returned an empty design). Without the main
+  # effects no aliasing occurs, every index cell type keeps a slope against
+  # every non-self niche, and each coefficient is directly the within-cell-type
+  # slope of expression on that niche's log density -- readable without a
+  # contrast.
   terms <- c(
     covariates,
     "CellType",
-    sprintf("CellType:%s", condition),
+    if (has_cond) sprintf("CellType:%s", condition),
     sprintf("CellType:(%s)", niche_f),
-    sprintf("CellType:%s:(%s)", condition, niche_f),
-    niche_f
+    if (has_cond) sprintf("CellType:%s:(%s)", condition, niche_f),
+    if (has_cond) niche_f
   )
   f <- stats::as.formula(paste("~ 0 +", paste(terms, collapse = " + ")))
   W <- stats::model.matrix(f, df)
@@ -265,7 +299,8 @@
   covtype <- factor(coefmap$type, levels = lvls)
 
   list(W = W, covtype = covtype, coefmap = coefmap,
-       response_coef = response_coef, re_group = re_group)
+       response_coef = response_coef, re_group = re_group,
+       mode = if (has_cond) "condition" else "niche")
 }
 
 #' Build a spiDE design matrix
@@ -281,8 +316,19 @@
 #' of the merged niche's group. This is an escape hatch for custom fits; most
 #' users should call [fitSpiDE()].
 #'
+#' With `condition = NULL` the condition terms are omitted and the two-way
+#' `CellType:niche` interactions ("Niche") become the tested effects. That
+#' design also omits the bare niche main effects, so the interaction block is
+#' cell-means coded: each coefficient is directly the slope of expression on
+#' that niche cell type's log density *within* the index cell type, rather than
+#' a contrast against a reference cell type.
+#'
 #' @param spe a SpatialExperiment with a niche reducedDim for \code{sigma}.
-#' @param condition a character, the colData column of the tested condition.
+#' @param condition a character, the colData column of the tested condition, or
+#'   \code{NULL} (default) for a condition-free design. With \code{NULL} the
+#'   condition terms are omitted and the two-way \code{CellType:niche}
+#'   interactions (tagged "Niche") become the tested effects; no \code{Response}
+#'   columns are produced.
 #' @param sigma a numeric, the bandwidth (a single value).
 #' @param index,niche character vectors restricting index / niche cell types
 #'   (NULL = all).
@@ -298,7 +344,8 @@
 #' @param ... ignored.
 #'
 #' @return a list with `W` (the design matrix), `covtype` (a factor of column
-#'   types), and `coefmap` (a data.frame mapping columns to index/niche cells).
+#'   types), `coefmap` (a data.frame mapping columns to index/niche cells), and
+#'   `mode` ("condition" or "niche").
 #'
 #' @examples
 #' data(toySpiDE)
@@ -307,19 +354,24 @@
 #' des <- nicheDesign(spe, condition = "condition", sigma = 20)
 #' table(des$covtype)
 #'
+#' des0 <- nicheDesign(spe, condition = NULL, sigma = 20)
+#' table(des0$covtype)
+#'
 #' @rdname nicheDesign
 #' @export
-nicheDesign <- function(spe, condition, sigma, index = NULL, niche = NULL,
+nicheDesign <- function(spe, condition = NULL, sigma, index = NULL,
+                        niche = NULL,
                         covariates = character(), cell_type = "cell_type",
                         name = "Niche", sample_id = "sample_id",
                         random = c("none", "intercept", "slope"), ...) {
   random <- match.arg(random)
   checkSPE(spe, cell_type = cell_type)
-  checkCondition(spe, condition)
+  if (!is.null(condition)) checkCondition(spe, condition)
   checkCovariates(spe, covariates)
   checkNiche(spe, sigma, name = name)
   res <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
                            cell_type, name, sample_id, random)
-  keep <- c("W", "covtype", "coefmap", if (random != "none") "re_group")
+  keep <- c("W", "covtype", "coefmap", "mode",
+            if (random != "none") "re_group")
   res[keep]
 }
