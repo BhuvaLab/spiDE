@@ -62,3 +62,60 @@ test_that("condition-free designs honour index and niche restrictions", {
   expect_equal(sum(cm$type == "Niche"), 2L)      # A:B and A:C
   expect_true(all(cm$index[cm$type == "Niche"] == "A"))
 })
+
+test_that("the niche-only design carries no bare niche main effects", {
+  # niche_n = sum_c CellType_c:niche_n, so keeping the main effects would make
+  # model.matrix() alias away one interaction per niche -- always the first
+  # cell type's -- and that cell type could then never be tested.
+  spe <- buildNiches(.toySPE(), sigma = 20)
+  des <- nicheDesign(spe, condition = NULL, sigma = 20)
+  expect_false(any(colnames(des$W) %in% c("A", "B", "C")))
+  # every index cell type keeps a slope against every non-self niche
+  cm <- des$coefmap[des$coefmap$type == "Niche", ]
+  expect_setequal(cm$index, c("A", "B", "C"))
+  expect_equal(nrow(cm), 6L)
+})
+
+test_that(".testedCols / .nicheTestCols resolve the tested set by mode", {
+  ct <- factor(
+    c("CellType", "Niche", "ResponseNiche", "ResponseCellType", "Other",
+      "Random"),
+    levels = c("CellType", "Niche", "Response", "ResponseNiche",
+               "ResponseCellType", "Other", "Random"))
+
+  expect_equal(spiDE:::.testedCols(ct, "condition"),
+               c(FALSE, FALSE, TRUE, TRUE, FALSE, FALSE))
+  expect_equal(spiDE:::.nicheTestCols(ct, "condition"),
+               c(FALSE, FALSE, TRUE, FALSE, FALSE, FALSE))
+  expect_equal(spiDE:::.testedCols(ct, "niche"),
+               c(FALSE, TRUE, FALSE, FALSE, FALSE, FALSE))
+  expect_equal(spiDE:::.nicheTestCols(ct, "niche"),
+               c(FALSE, TRUE, FALSE, FALSE, FALSE, FALSE))
+})
+
+test_that("condition-mode .testedCols reproduces the historical predicate", {
+  # The code being replaced is grepl("Response", covtype), which also admits
+  # the (currently unpopulated) bare "Response" level. Pin that equivalence so
+  # the refactor in the next task cannot silently narrow the tested set.
+  ct <- c("CellType", "Niche", "Response", "ResponseNiche", "ResponseCellType",
+          "Other", "Random")
+  expect_equal(spiDE:::.testedCols(ct, "condition"), grepl("Response", ct))
+})
+
+test_that(".fitMode falls back to condition for objects lacking the slot", {
+  expect_identical(spiDE:::.fitMode(structure(list(), class = "foo")),
+                   "condition")
+})
+
+test_that("mode defaults to condition and survives updateObject", {
+  spe <- buildNiches(.toySPE(), sigma = 20)
+  res <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+  expect_identical(res@mode, "condition")
+  expect_identical(fits(res)[[1]]@mode, "condition")
+
+  # emulate an object serialised before @mode existed
+  f <- fits(res)[[1]]
+  attr(f, "mode") <- NULL
+  expect_false("mode" %in% names(attributes(f)))
+  expect_identical(updateObject(f)@mode, "condition")
+})

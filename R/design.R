@@ -143,6 +143,57 @@
   )
 }
 
+#' Which design columns are Wald-tested
+#'
+#' The tested set depends on the design mode. In "condition" mode it is the
+#' response terms -- exactly the historical \code{grepl("Response", covtype)},
+#' which also admits the (currently unpopulated) bare "Response" level. In
+#' "niche" mode there is no condition, and the two-way \code{CellType:niche}
+#' interactions -- tagged "Niche" in BOTH designs -- are themselves the effects
+#' of interest.
+#'
+#' This predicate and \code{.nicheTestCols()} are the single choke point for
+#' that decision: every consumer (inference, FDR, the gene-set layer) asks here
+#' rather than matching a tag literal, so adding a further mode stays cheap.
+#'
+#' @param covtype the per-column covariate tags (a factor or character).
+#' @param mode one of "condition" or "niche".
+#' @return a logical vector, one entry per column.
+#' @noRd
+.testedCols <- function(covtype, mode = "condition") {
+  ct <- as.character(covtype)
+  if (identical(mode, "niche")) ct == "Niche" else grepl("Response", ct)
+}
+
+#' Which of the tested columns are the niche interactions
+#'
+#' The subset of \code{.testedCols()} that enters the within-gene combination
+#' and the three-level (gene -> index -> niche) FDR cascade. In condition mode
+#' the cell-means \code{CellType:condition} block is tested but excluded here;
+#' in niche mode the two sets coincide.
+#'
+#' @inheritParams .testedCols
+#' @return a logical vector, one entry per column.
+#' @noRd
+.nicheTestCols <- function(covtype, mode = "condition") {
+  ct <- as.character(covtype)
+  if (identical(mode, "niche")) ct == "Niche" else ct == "ResponseNiche"
+}
+
+#' Read the design mode off a fit, tolerating objects that predate the slot
+#'
+#' Objects serialised before \code{mode} existed can represent many hours of
+#' cluster time and may be used without \code{updateObject()} having been
+#' called. Every such object is a condition-mode fit, so that is the fallback.
+#'
+#' @param x a SpiDEFit or SpiDEResults (or anything else).
+#' @return a length-1 character, "condition" or "niche".
+#' @noRd
+.fitMode <- function(x) {
+  m <- tryCatch(x@mode, error = function(e) NULL)
+  if (is.null(m) || !length(m)) "condition" else as.character(m)[1]
+}
+
 #' Build the neighbourhood-interaction design for one bandwidth
 #'
 #' @param spe a SpatialExperiment with a niche reducedDim for \code{sigma}.

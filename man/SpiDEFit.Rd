@@ -27,6 +27,10 @@ bandwidth) are combined in a \link{SpiDEResults} container.
 \describe{
 \item{\code{sigma}}{a numeric, the niche bandwidth (kernel standard deviation) used.}
 
+\item{\code{mode}}{a character, the design mode: "condition" (the default — a
+\code{CellType:condition:niche} design) or "niche" (a condition-free design in
+which the two-way \code{CellType:niche} interactions are the tested effects).}
+
 \item{\code{ngenes}}{a numeric, the number of genes.}
 
 \item{\code{ncells}}{a numeric, the number of cells/spots.}

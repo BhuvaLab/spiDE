@@ -7,6 +7,9 @@
 #'   bandwidth) are combined in a [SpiDEResults] container.
 #'
 #' @slot sigma a numeric, the niche bandwidth (kernel standard deviation) used.
+#' @slot mode a character, the design mode: "condition" (the default — a
+#'   `CellType:condition:niche` design) or "niche" (a condition-free design in
+#'   which the two-way `CellType:niche` interactions are the tested effects).
 #' @slot ngenes a numeric, the number of genes.
 #' @slot ncells a numeric, the number of cells/spots.
 #' @slot W a matrix, the design matrix (cells x covariates).
@@ -62,6 +65,7 @@ setClass(
   Class = "SpiDEFit",
   slots = c(
     sigma = "numeric",
+    mode = "character",
     ngenes = "numeric",
     ncells = "numeric",
     W = "matrix",
@@ -86,6 +90,9 @@ setClass(
   ),
   prototype = list(
     re_group = NULL, tau2 = NULL, penalty = NULL, df = NULL,
+    # "condition" is also what .fillSlots() gives objects serialised before
+    # this slot existed -- every one of those is a condition-mode fit.
+    mode = "condition",
     # Average inter-gene correlation of the Pearson residuals, accumulated by
     # .blockedInference() as a by-product of the blocks it already loads. Empty
     # until inference has run; spiGSEA() uses it as the variance-inflation term
@@ -162,7 +169,16 @@ validSpiDEFit <- function(object) {
   if (!all(levels(object@covtype) %in% valid_levels)) {
     stop(sprintf("'covtype' levels should be a subset of: %s", paste(valid_levels, collapse = ", ")))
   }
+  .checkMode(object@mode)
   TRUE
+}
+
+# Shared by both classes' validity methods.
+.checkMode <- function(mode) {
+  if (length(mode) != 1L || !mode %in% c("condition", "niche")) {
+    stop("'mode' should be a single value, either \"condition\" or \"niche\"")
+  }
+  invisible(TRUE)
 }
 
 setValidity("SpiDEFit", validSpiDEFit)
@@ -178,7 +194,11 @@ setValidity("SpiDEFit", validSpiDEFit)
 #'
 #' @slot fits a list of [SpiDEFit] objects, one per bandwidth.
 #' @slot sigma a numeric, the bandwidth grid.
-#' @slot condition a character, the condition (colData column) tested.
+#' @slot condition a character, the condition (colData column) tested;
+#'   `NA_character_` in "niche" mode.
+#' @slot mode a character, the design mode: "condition" or "niche". In "niche"
+#'   mode `condition` is `NA_character_` and the `results.celltype` /
+#'   `results.patient` tables are empty.
 #' @slot index a character, the index cell types considered.
 #' @slot niche a character, the niche cell types considered.
 #' @slot covariates a character, the nuisance covariates included.
@@ -213,6 +233,7 @@ setClass(
     fits = "list",
     sigma = "numeric",
     condition = "character",
+    mode = "character",
     index = "character",
     niche = "character",
     covariates = "character",
@@ -230,7 +251,8 @@ setClass(
   ),
   prototype = list(
     results.celltype = data.frame(),
-    results.patient = data.frame()
+    results.patient = data.frame(),
+    mode = "condition"
   )
 )
 
@@ -269,6 +291,7 @@ validSpiDEResults <- function(object) {
   if (length(object@fits) != length(object@sigma)) {
     stop("length of 'fits' does not match length of 'sigma'")
   }
+  .checkMode(object@mode)
   TRUE
 }
 

@@ -29,7 +29,12 @@ results table produced by \code{\link[=testSpiDE]{testSpiDE()}}.
 
 \item{\code{sigma}}{a numeric, the bandwidth grid.}
 
-\item{\code{condition}}{a character, the condition (colData column) tested.}
+\item{\code{condition}}{a character, the condition (colData column) tested;
+\code{NA_character_} in "niche" mode.}
+
+\item{\code{mode}}{a character, the design mode: "condition" or "niche". In "niche"
+mode \code{condition} is \code{NA_character_} and the \code{results.celltype} /
+\code{results.patient} tables are empty.}
 
 \item{\code{index}}{a character, the index cell types considered.}
 
