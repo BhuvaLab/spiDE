@@ -38,7 +38,10 @@ omitted and no pass over the counts happens at all.}
 
 \item{...}{ignored; present for compatibility with the generic.}
 
-\item{type}{"niche" (default) tests the three-way celltype:condition:niche
+\item{type}{on a condition-free fit (\code{condition = NULL}) "niche" tests
+the two-way \code{celltype:niche} statistics, which are the tested effects
+in that mode, and "celltype" has nothing to test and errors. Otherwise:
+"niche" (default) tests the three-way celltype:condition:niche
 statistics; "celltype" tests the CellType:condition statistics, which are
 empty unless the design carries that block.}
 

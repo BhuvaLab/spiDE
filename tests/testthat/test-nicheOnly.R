@@ -172,6 +172,26 @@ test_that("checkSample accepts a condition-free call", {
     "constant within sample")
 })
 
+# --- gene-set layer on a condition-free fit --------------------------------
+
+test_that("spiGSEA type='niche' works on a condition-free fit", {
+  sets <- list(setA = rownames(spe_niche)[1:5],
+               setB = rownames(spe_niche)[6:10])
+  gs <- spiGSEA(res_niche, spe_niche, sets, min.size = 3, fdr = 1,
+                verbose = FALSE)
+  expect_s3_class(gs, "data.frame")
+  expect_true(nrow(gs) > 0)
+  expect_true(all(c("geneset", "ct_index", "ct_niche") %in% colnames(gs)))
+})
+
+test_that("spiGSEA type='celltype' is refused on a condition-free fit", {
+  sets <- list(setA = rownames(spe_niche)[1:5])
+  expect_error(
+    spiGSEA(res_niche, spe_niche, sets, type = "celltype", min.size = 3,
+            fdr = 1, verbose = FALSE),
+    "ResponseCellType")
+})
+
 test_that("mode defaults to condition and survives updateObject", {
   spe <- buildNiches(.toySPE(), sigma = 20)
   res <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
