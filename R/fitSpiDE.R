@@ -544,9 +544,14 @@ setMethod(
     })
     names(fits) <- paste0(name, sigma)
 
-    # resolve the index / niche cell type sets actually used
+    mode <- if (is.null(condition)) "niche" else "condition"
+
+    # Resolve the index / niche cell type sets actually used. This must go
+    # through the mode predicate like every other tested-column lookup: a bare
+    # == "ResponseNiche" is all-FALSE in niche mode, which would leave @index
+    # and @niche empty on every condition-free result.
     coefmap0 <- fits[[1]]@coefmap
-    rn <- coefmap0$type == "ResponseNiche"
+    rn <- .nicheTestCols(coefmap0$type, mode)
     index_used <- sort(unique(coefmap0$index[rn]))
     niche_used <- sort(unique(coefmap0$niche[rn]))
 
@@ -557,7 +562,7 @@ setMethod(
       fits = fits,
       sigma = sigma,
       condition = if (is.null(condition)) NA_character_ else condition,
-      mode = if (is.null(condition)) "niche" else "condition",
+      mode = mode,
       index = index_used,
       niche = niche_used,
       covariates = covariates,

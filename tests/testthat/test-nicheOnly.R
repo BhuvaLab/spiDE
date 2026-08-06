@@ -157,10 +157,20 @@ test_that("condition-free results carry no celltype or patient layer", {
   expect_length(fits(res_niche)[[1]]@se_patient, 0L)
 })
 
-test_that("show() reports the niche-only mode", {
+test_that("condition-free results resolve the index and niche cell type sets", {
+  # These are read off the tested columns, which in niche mode are tagged
+  # "Niche" -- a bare == "ResponseNiche" lookup is all-FALSE here and would
+  # leave both slots empty.
+  expect_setequal(res_niche@index, c("A", "B", "C"))
+  expect_setequal(res_niche@niche, c("A", "B", "C"))
+})
+
+test_that("show() reports the niche-only mode and the cell type sets", {
   txt <- paste(capture.output(show(res_niche)), collapse = " ")
   expect_match(txt, "niche-only")
   expect_no_match(txt, "Condition: NA")
+  expect_match(txt, "Index cell types: A, B, C")
+  expect_match(txt, "Niche cell types: A, B, C")
 })
 
 test_that("checkSample accepts a condition-free call", {
