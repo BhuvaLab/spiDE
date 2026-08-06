@@ -105,3 +105,26 @@ test_that("random effects sharply reduce false calls on null clustered data", {
   expect_lt(n_mixed, n_fixed / 3)  # the correction removes most of it
   expect_lt(n_mixed, 10L)          # and what remains is a handful, not a flood
 })
+
+# --- the Brown combiner on a condition-free fit ----------------------------
+# combine = "brown" takes a genuinely different route than the default: a
+# per-gene .waldBrownGene() loop with a gene-specific correlation matrix,
+# rather than the batched Cauchy block. Niche mode has to work down that path
+# too, and nothing else exercises it.
+
+test_that("combine = 'brown' works on a condition-free fit", {
+  skip_if_not_installed("poolr")
+  spe <- buildNiches(spiDE:::.toyNiche(), sigma = 20)
+  res <- spiDE(spe, condition = NULL, sigma = 20, combine = "brown",
+               verbose = FALSE)
+  tab <- results(res)
+
+  # Brown keeps ONE-SIDED p-values, so the fit must not be flagged two.sided
+  expect_false(fits(res)[[1]]@two.sided)
+  expect_gt(nrow(tab), 0L)
+
+  g <- tab[tab$gene == "G1" & tab$ct_index == "A" & tab$ct_niche == "B", ]
+  expect_equal(nrow(g), 1L)
+  expect_equal(g$DirectionNiche, "Up")
+  expect_gt(abs(g$t), 5)
+})
