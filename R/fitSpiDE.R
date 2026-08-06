@@ -290,7 +290,7 @@
                        tau2.init = tau2.init, idx = idx,
                        re.maxit.psi = re.maxit.psi,
                        df.method = df.method,
-                       cols_tested = grepl("Response", as.character(des$covtype)),
+                       cols_tested = .testedCols(des$covtype, des$mode),
                        ...)
     penalty <- fit$penalty
     tau2 <- fit$tau2
@@ -309,6 +309,7 @@
   new(
     "SpiDEFit",
     sigma = sigma,
+    mode = des$mode,
     ngenes = nrow(alpha),
     ncells = ncol(Y),
     W = W,

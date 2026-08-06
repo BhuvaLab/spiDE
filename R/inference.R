@@ -601,9 +601,12 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
   backend <- match.arg(backend)
   W_full <- fit@W
   covtype <- as.character(fit@covtype)
-  cols_gene <- grepl("Response", covtype) # Response + ResponseNiche columns
+  mode <- .fitMode(fit)
+  # Which columns are tested depends on the design mode: the response terms
+  # under a condition, the two-way CellType:niche interactions without one.
+  cols_gene <- .testedCols(covtype, mode)
   Wsub <- W_full[, cols_gene, drop = FALSE]
-  cov_niche <- covtype[cols_gene] == "ResponseNiche"
+  cov_niche <- .nicheTestCols(covtype, mode)[cols_gene]
   coefmap_sub <- fit@coefmap[cols_gene, , drop = FALSE]
   index_ct <- coefmap_sub$index[cov_niche]
   uniq_index <- unique(index_ct)

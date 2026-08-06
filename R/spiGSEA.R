@@ -535,12 +535,20 @@ setMethod(
     }
 
     # --- per-bandwidth set statistics --------------------------------------
-    want <- if (type == "niche") "ResponseNiche" else "ResponseCellType"
+    # Label used only in the "no such columns" error below; the actual
+    # selection goes through the mode-aware predicates.
+    want <- if (type == "niche") "tested niche-interaction" else
+      "ResponseCellType"
     per <- lapply(seq_along(fl), function(i) {
       f <- fl[[i]]
       ct <- as.character(f@covtype)
-      respcols <- grepl("Response", ct)
-      sel <- ct[respcols] == want
+      md <- .fitMode(f)
+      respcols <- .testedCols(ct, md)
+      sel <- if (type == "niche") {
+        .nicheTestCols(ct, md)[respcols]
+      } else {
+        ct[respcols] == "ResponseCellType"
+      }
       if (!any(sel)) {
         return(NULL)
       }
