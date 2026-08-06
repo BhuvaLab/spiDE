@@ -229,6 +229,66 @@
   )
 }
 
+#' Build a small synthetic SpatialExperiment with NO condition
+#'
+#' Like \code{.toySPE()} but plants a condition-free neighbourhood effect: in
+#' index cell type "A", gene "G1" is up-regulated in proportion to the local
+#' density of niche cell type "B" (B cells concentrate at high \code{x}), for
+#' every cell rather than only in responders. There is deliberately no
+#' \code{condition} column at all, so a fixture built here can only be analysed
+#' in the condition-free mode -- which is what the niche-only tests must prove,
+#' rather than merely leaving a present condition unread.
+#'
+#' @inheritParams .toySPE
+#' @param beta effect size of the planted B-niche association on G1 in A cells.
+#' @return a SpatialExperiment with counts, cell_type, sample_id, Age, Area,
+#'   nCount and spatial coordinates -- and no condition.
+#' @importFrom stats rlnorm rnorm runif ave
+#' @noRd
+.toyNiche <- function(n_samples = 6, n_per = 80, n_genes = 20, field = 500,
+                      beta = 2.5, seed = 1) {
+  .localSeed(seed)
+  gene_names <- sprintf("G%d", seq_len(n_genes))
+  sample_ids <- sprintf("S%d", seq_len(n_samples))
+
+  cells <- lapply(sample_ids, function(sid) {
+    x <- runif(n_per, 0, field)
+    y <- runif(n_per, 0, field)
+    # B cells concentrated in the right 40% of the field; A and C elsewhere
+    ct <- ifelse(x > 0.6 * field & runif(n_per) < 0.7, "B",
+                 sample(c("A", "C"), n_per, replace = TRUE))
+    data.frame(sample_id = sid, x = x, y = y, cell_type = ct,
+               Age = rnorm(1), stringsAsFactors = FALSE)
+  })
+  cd <- do.call(rbind, cells)
+  cd$Age <- ave(cd$Age, cd$sample_id) # ensure constant within sample
+  n <- nrow(cd)
+  cd$cell_id <- sprintf("cell%d", seq_len(n))
+
+  gene_params <- .simGeneParams(gene_names, bcv.disp = 0.6, mean.min = 0.5,
+                                boost = "G1", boost.gmean = 8)
+
+  # planted signal: G1 in A cells scales with x (the B-niche proxy). No
+  # condition gates it -- this is a pure CellType:niche effect.
+  is_A <- cd$cell_type == "A"
+  log_effect <- matrix(0, n_genes, n, dimnames = list(gene_names, cd$cell_id))
+  log_effect["G1", ] <- beta * is_A * (cd$x / field)
+
+  lib.size <- rlnorm(n, meanlog = -0.02, sdlog = 0.2)
+  counts <- .simCounts(gene_params, cd$cell_type, log_effect = log_effect,
+                       lib.size = lib.size)
+  colnames(counts) <- cd$cell_id
+
+  cd$Area <- lib.size
+  cd$nCount <- colSums(counts)
+
+  SpatialExperiment::SpatialExperiment(
+    assays = list(counts = counts),
+    colData = S4Vectors::DataFrame(cd),
+    spatialCoords = as.matrix(cd[, c("x", "y")])
+  )
+}
+
 #' Synthetic data with patient-level clustering (for the mixed-effects tests)
 #'
 #' Like \code{.toySPE()} but plants a per-(gene, sample) random intercept shared

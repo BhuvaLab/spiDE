@@ -275,7 +275,11 @@ setMethod(
       is(object)[[1]],
       sprintf("Bandwidths (sigma): %s", paste(object@sigma, collapse = ", ")),
       sprintf("Genes: %s", ng),
-      sprintf("Condition: %s", object@condition),
+      if (identical(.fitMode(object), "niche")) {
+        "Mode: niche-only (no condition)"
+      } else {
+        sprintf("Condition: %s", object@condition)
+      },
       sprintf("Index cell types: %s", paste(object@index, collapse = ", ")),
       sprintf("Niche cell types: %s", paste(object@niche, collapse = ", ")),
       sprintf("Tested: %s (%d rows in results table)", nrow(object@results) > 0, nrow(object@results)),

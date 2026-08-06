@@ -107,6 +107,71 @@ test_that(".fitMode falls back to condition for objects lacking the slot", {
                    "condition")
 })
 
+# --- shared condition-free pipeline run ------------------------------------
+# Two bandwidths, not three: this still exercises the cross-bandwidth Cauchy
+# combination, but test-spiDE-e2e.R's three-bandwidth run already costs ~475 s
+# of Bioconductor's 600 s budget on its own.
+spe_niche <- .toyNiche()
+res_niche <- spiDE(spe_niche, condition = NULL, sigma = c(10, 30),
+                   covariates = "Age", verbose = FALSE)
+tab_niche <- results(res_niche)
+
+test_that(".toyNiche carries no condition column", {
+  cd <- SummarizedExperiment::colData(spe_niche)
+  expect_false("condition" %in% colnames(cd))
+  expect_true(all(c("sample_id", "cell_type", "Age", "Area") %in% colnames(cd)))
+})
+
+test_that("spiDE runs condition-free and populates the results table", {
+  expect_s4_class(res_niche, "SpiDEResults")
+  expect_identical(res_niche@mode, "niche")
+  expect_true(is.na(res_niche@condition))
+  expect_identical(fits(res_niche)[[1]]@mode, "niche")
+
+  expect_true(nrow(tab_niche) > 0)
+  expect_true(all(c(
+    "gene", "ct_index", "ct_niche", "bandwidth.max", "coef", "t",
+    "DirectionGene", "DirectionIndex", "DirectionNiche",
+    "fdr.gene", "fdr.index", "fdr.niche"
+  ) %in% colnames(tab_niche)))
+  expect_true(all(tab_niche$fdr.niche >= 0 & tab_niche$fdr.niche <= 1))
+})
+
+test_that("the planted condition-free niche effect is recovered and specific", {
+  ab <- tab_niche[tab_niche$gene == "G1" & tab_niche$ct_index == "A" &
+                  tab_niche$ct_niche == "B", ]
+  expect_equal(nrow(ab), 1)
+  expect_equal(ab$DirectionNiche, "Up")
+  expect_gt(abs(ab$t), 5)
+
+  # niche-specificity: for G1 in index A, B is the strongest association. This
+  # is the assertion test-spiDE-e2e.R makes, for the reason recorded there --
+  # a null gene can outrank the planted one on raw |t| genome-wide.
+  g1a <- tab_niche[tab_niche$gene == "G1" & tab_niche$ct_index == "A", ]
+  expect_equal(g1a$ct_niche[which.max(abs(g1a$t))], "B")
+})
+
+test_that("condition-free results carry no celltype or patient layer", {
+  expect_equal(nrow(results(res_niche, type = "celltype")), 0L)
+  expect_equal(nrow(results(res_niche, type = "patient")), 0L)
+  expect_length(fits(res_niche)[[1]]@se_patient, 0L)
+})
+
+test_that("show() reports the niche-only mode", {
+  txt <- paste(capture.output(show(res_niche)), collapse = " ")
+  expect_match(txt, "niche-only")
+  expect_no_match(txt, "Condition: NA")
+})
+
+test_that("checkSample accepts a condition-free call", {
+  expect_true(spiDE:::checkSample(spe_niche, condition = NULL))
+  # the sample-constant-covariate rejection still applies: Age is constant
+  # within sample, so the per-sample random intercept would absorb it
+  expect_error(
+    spiDE:::checkSample(spe_niche, condition = NULL, covariates = "Age"),
+    "constant within sample")
+})
+
 test_that("mode defaults to condition and survives updateObject", {
   spe <- buildNiches(.toySPE(), sigma = 20)
   res <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)

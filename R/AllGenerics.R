@@ -15,7 +15,7 @@ setGeneric("computeSizeFactors", function(spe, ...) standardGeneric("computeSize
 
 #' @rdname fitSpiDE
 #' @export
-setGeneric("fitSpiDE", function(spe, condition, ...) standardGeneric("fitSpiDE"))
+setGeneric("fitSpiDE", function(spe, condition = NULL, ...) standardGeneric("fitSpiDE"))
 
 #' @rdname testSpiDE
 #' @export
@@ -23,7 +23,7 @@ setGeneric("testSpiDE", function(object, ...) standardGeneric("testSpiDE"))
 
 #' @rdname spiDE
 #' @export
-setGeneric("spiDE", function(spe, condition, ...) standardGeneric("spiDE"))
+setGeneric("spiDE", function(spe, condition = NULL, ...) standardGeneric("spiDE"))
 
 #' @rdname results
 #' @export

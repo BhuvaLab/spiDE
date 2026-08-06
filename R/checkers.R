@@ -62,20 +62,24 @@ checkCovariates <- function(spe, covariates) {
 # must be a patient-level variable (constant within each sample), otherwise the
 # per-sample random intercept is mis-specified, and there must be enough samples
 # for the between-sample variance components to be identifiable.
-checkSample <- function(spe, condition, sample_id = "sample_id",
+checkSample <- function(spe, condition = NULL, sample_id = "sample_id",
                         covariates = character()) {
   cd <- SummarizedExperiment::colData(spe)
   if (!sample_id %in% colnames(cd)) {
     stop(sprintf("sample id column '%s' not found in colData(spe)", sample_id))
   }
   smp <- as.character(cd[[sample_id]])
-  cond <- as.character(cd[[condition]])
-  n_lvl <- tapply(cond, smp, function(x) length(unique(x[!is.na(x)])))
-  if (any(n_lvl > 1)) {
-    stop(sprintf(
-      "condition '%s' varies within sample(s): %s. The random-effects fit needs a patient-level condition (constant within '%s').",
-      condition, paste(names(n_lvl)[n_lvl > 1], collapse = ", "), sample_id
-    ))
+  # A condition-free (niche-only) design has no condition to be patient-level,
+  # so this check applies only when one was supplied.
+  if (!is.null(condition)) {
+    cond <- as.character(cd[[condition]])
+    n_lvl <- tapply(cond, smp, function(x) length(unique(x[!is.na(x)])))
+    if (any(n_lvl > 1)) {
+      stop(sprintf(
+        "condition '%s' varies within sample(s): %s. The random-effects fit needs a patient-level condition (constant within '%s').",
+        condition, paste(names(n_lvl)[n_lvl > 1], collapse = ", "), sample_id
+      ))
+    }
   }
   # sample-constant covariates are confounded with the per-sample random
   # intercept (which already adjusts for all between-sample nuisance variation)

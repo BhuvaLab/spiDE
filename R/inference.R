@@ -756,7 +756,16 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
   p.pos <- bind("p.pos")
   p.neg <- bind("p.neg")
   loglik <- unlist(lapply(block_res, `[[`, "loglik"), use.names = FALSE)
-  se_pat <- unlist(lapply(block_res, `[[`, "se_pat"), use.names = FALSE)
+  # w_rc is NULL when the design carries no CellType:condition block (the
+  # niche-only mode). The blocks then return NA for every gene; collapse that
+  # to the empty vector the slot documents, so `length(@se_patient) > 0` stays
+  # a reliable test for "this fit has a patient-level contrast" rather than
+  # reporting a full-length vector of NAs.
+  se_pat <- if (is.null(w_rc)) {
+    numeric(0)
+  } else {
+    unlist(lapply(block_res, `[[`, "se_pat"), use.names = FALSE)
+  }
   # Inter-gene correlation, reduced from the per-block partial sums. Blocks
   # contribute additively, so this is exact and independent of block size.
   rs <- lapply(block_res, `[[`, "rho_s")

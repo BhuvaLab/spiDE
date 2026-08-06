@@ -8,6 +8,8 @@
 #' calling [buildNiches()] (if the niches are not already present),
 #' [fitSpiDE()], and [testSpiDE()] in sequence.
 #'
+#' @param condition a character, the colData column of the tested condition, or
+#'   \code{NULL} for a condition-free (niche-only) analysis. See [fitSpiDE()].
 #' @inheritParams fitSpiDE
 #' @param sample_id a character, the colData column identifying samples (used
 #'   when niches must be built and for the random-effects fit).
@@ -43,7 +45,7 @@
 setMethod(
   "spiDE",
   signature = "ANY",
-  definition = function(spe, condition, index = NULL, niche = NULL,
+  definition = function(spe, condition = NULL, index = NULL, niche = NULL,
                         covariates = character(), sigma = c(10, 30, 50, 70),
                         assay = "counts", cell_type = "cell_type",
                         sample_id = "sample_id",

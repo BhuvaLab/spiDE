@@ -343,7 +343,13 @@
 #'
 #' @param spe a SpatialExperiment with niche reducedDims (see [buildNiches()]).
 #' @param condition a character, the colData column of the tested condition
-#'   (must have exactly two levels).
+#'   (must have exactly two levels), or \code{NULL} for a condition-free
+#'   (niche-only) analysis. With \code{NULL} the condition terms are dropped
+#'   from the design and the two-way \code{CellType:niche} interactions become
+#'   the tested effects: within index cell type \emph{c}, how expression
+#'   changes with the local density of niche cell type \emph{n}. The
+#'   \code{results(type = "celltype")} and \code{results(type = "patient")}
+#'   tables are empty in that mode, there being no condition to contrast.
 #' @param index,niche character vectors restricting the index / niche cell
 #'   types considered (NULL = all).
 #' @param covariates a character vector of nuisance colData columns to adjust
@@ -436,13 +442,16 @@
 #' fit <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
 #' fit
 #'
+#' fit0 <- fitSpiDE(spe, condition = NULL, sigma = 20, verbose = FALSE)
+#' fit0
+#'
 #' @rdname fitSpiDE
 #' @importFrom BiocParallel SerialParam
 #' @export
 setMethod(
   "fitSpiDE",
   signature = "ANY",
-  definition = function(spe, condition, index = NULL, niche = NULL,
+  definition = function(spe, condition = NULL, index = NULL, niche = NULL,
                         covariates = character(), sigma = NULL, assay = "counts",
                         cell_type = "cell_type", sample_id = "sample_id",
                         random = c("none", "intercept", "slope"),
@@ -456,7 +465,8 @@ setMethod(
     random <- match.arg(random)
     df.method <- match.arg(df.method)
     checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
-    checkCondition(spe, condition)
+    # condition = NULL selects the condition-free (niche-only) design
+    if (!is.null(condition)) checkCondition(spe, condition)
     checkCovariates(spe, covariates)
     if (random != "none") {
       checkSample(spe, condition, sample_id, covariates)
@@ -498,7 +508,8 @@ setMethod(
       "SpiDEResults",
       fits = fits,
       sigma = sigma,
-      condition = condition,
+      condition = if (is.null(condition)) NA_character_ else condition,
+      mode = if (is.null(condition)) "niche" else "condition",
       index = index_used,
       niche = niche_used,
       covariates = covariates,

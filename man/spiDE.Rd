@@ -5,11 +5,11 @@
 \alias{spiDE,ANY-method}
 \title{Run the full spiDE workflow}
 \usage{
-spiDE(spe, condition, ...)
+spiDE(spe, condition = NULL, ...)
 
 \S4method{spiDE}{ANY}(
   spe,
-  condition,
+  condition = NULL,
   index = NULL,
   niche = NULL,
   covariates = character(),
@@ -35,8 +35,8 @@ spiDE(spe, condition, ...)
 \arguments{
 \item{spe}{a SpatialExperiment with niche reducedDims (see \code{\link[=buildNiches]{buildNiches()}}).}
 
-\item{condition}{a character, the colData column of the tested condition
-(must have exactly two levels).}
+\item{condition}{a character, the colData column of the tested condition, or
+\code{NULL} for a condition-free (niche-only) analysis. See \code{\link[=fitSpiDE]{fitSpiDE()}}.}
 
 \item{...}{further arguments forwarded to \code{\link[SpaNorm]{fitNB}}.}
 

@@ -5,11 +5,11 @@
 \alias{fitSpiDE,ANY-method}
 \title{Fit the spiDE negative binomial model}
 \usage{
-fitSpiDE(spe, condition, ...)
+fitSpiDE(spe, condition = NULL, ...)
 
 \S4method{fitSpiDE}{ANY}(
   spe,
-  condition,
+  condition = NULL,
   index = NULL,
   niche = NULL,
   covariates = character(),
@@ -38,7 +38,13 @@ fitSpiDE(spe, condition, ...)
 \item{spe}{a SpatialExperiment with niche reducedDims (see \code{\link[=buildNiches]{buildNiches()}}).}
 
 \item{condition}{a character, the colData column of the tested condition
-(must have exactly two levels).}
+(must have exactly two levels), or \code{NULL} for a condition-free
+(niche-only) analysis. With \code{NULL} the condition terms are dropped
+from the design and the two-way \code{CellType:niche} interactions become
+the tested effects: within index cell type \emph{c}, how expression
+changes with the local density of niche cell type \emph{n}. The
+\code{results(type = "celltype")} and \code{results(type = "patient")}
+tables are empty in that mode, there being no condition to contrast.}
 
 \item{...}{further arguments forwarded to \code{\link[SpaNorm]{fitNB}}.}
 
@@ -159,5 +165,8 @@ spe <- toySpiDE
 spe <- buildNiches(spe, sigma = 20)
 fit <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
 fit
+
+fit0 <- fitSpiDE(spe, condition = NULL, sigma = 20, verbose = FALSE)
+fit0
 
 }
