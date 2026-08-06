@@ -60,6 +60,23 @@ so they can be forwarded via `...` without renaming.
    (`ResponseCellType`) columns, one per cell type. Code that looks up a single `"Response"` column
    will find nothing; match on `ResponseCellType` instead.
 
+   **Two modes.** With `condition = NULL` the design drops the condition terms *and* the
+   bare niche main effects (`~ 0 + <covariates> + CellType + CellType:(niche cols)`), and the
+   two-way `CellType:niche` columns — tagged `Niche` in *both* designs — become the tested
+   effects, cell-means coded. The main effects must go: `niche_n = sum_c CellType_c:niche_n`,
+   so keeping them makes `model.matrix()` alias away one interaction per niche (always the
+   alphabetically first cell type's), which is harmless in condition mode but leaves that cell
+   type untestable in niche mode. Which tag is the tested tag is decided in exactly one place —
+   `.testedCols()` / `.nicheTestCols()` in `R/design.R`, keyed off the `mode` slot
+   (`"condition"` / `"niche"`) carried on `SpiDEFit`/`SpiDEResults` and read via `.fitMode()`.
+   **Never match a covtype literal downstream** — go through those predicates, or a new mode
+   silently skips your code path. In niche mode `results(type = "celltype")` /
+   `results(type = "patient")` are empty, `spiGSEA(type = "celltype")` errors, and
+   `df.method = "between"` means the cell-level residual df under `random = "intercept"` (the
+   tested slope is a within-sample contrast) or `S - 1` under `random = "slope"`. Niche mode is
+   mildly anti-conservative because the niche covariate is spatially autocorrelated and spiDE
+   does not model that; see `longtests/testthat/test-nicheOnly-mixed.R`.
+
    **`ResponseNiche` columns are the scientifically important ones** — the three-way
    `celltype:condition:niche` interactions. The whole gene set is fit in a single
    `SpaNorm::fitNB(Y, W, ...)` call per bandwidth — **never slice genes before fitting**, because

@@ -136,6 +136,29 @@ res2 <- testSpiDE(fit, spe = spe, fdr = 0.05)
 nrow(results(res2))
 ```
 
+# Niche-only analysis: no condition
+
+Not every question needs an experimental condition. The same framework tests how expression within an *index* cell type changes with the local density of a *niche* cell type, with no condition involved at all — the two-way `CellType:niche` interaction. Pass `condition = NULL` to get it:
+
+```{r niche-only}
+res_niche <- spiDE(toySpiDE, condition = NULL, sigma = c(10, 30),
+                   verbose = FALSE)
+res_niche
+head(results(res_niche))
+```
+
+The design drops the condition terms *and* the bare niche main effects,
+
+```
+~ 0 + covariates + CellType + CellType:(niches)
+```
+
+leaving the `CellType:niche` columns — nuisance terms in the conditioned model — as the tested effects, cell-means coded. Dropping the niche main effects matters: with them in, `niche_n` equals the sum of `CellType_c:niche_n` over cell types, so one interaction per niche would be aliased away and the affected index cell type could never be tested. Without them, every index cell type keeps a slope against every non-self niche and each coefficient reads directly as a within-cell-type slope of expression on that niche's log density.
+
+Everything downstream is shared: the same Wald statistics, the same within-gene and cross-bandwidth Cauchy combination, and the same three-level gene → index cell type → niche cell type FDR cascade. The `results(type = "celltype")` and `results(type = "patient")` tables are empty in this mode, there being no condition to contrast, and `spiGSEA(type = "celltype")` errors for the same reason.
+
+The mixed-effects correction applies here too. Note one caveat specific to this mode: the tested slope is a *within-sample* contrast on a *spatially autocorrelated* covariate, and spiDE does not model spatial autocorrelation, so neighbouring cells are not independent replicates of that slope. Random effects remove most of the resulting inflation — on a null fixture, 37 calls with `random = "none"` against 5 with `random = "intercept"` — but niche mode remains mildly anti-conservative. Treat borderline calls with corresponding caution.
+
 # Scaling
 
 Fitting is performed over all genes at once (the negative binomial dispersion is moderated across genes). The per-gene inference is independent across genes and is processed in gene-blocks, dispatched with `r BiocStyle::Biocpkg("BiocParallel")`; the counts matrix may be a `r BiocStyle::Biocpkg("DelayedArray")` and is realised one block at a time. On the CPU backend, results are exactly invariant to the block size and the parallel backend; see below for the GPU backend's tolerance-level invariance.
