@@ -29,6 +29,10 @@ setGeneric("spiDE", function(spe, condition = NULL, ...) standardGeneric("spiDE"
 #' @export
 setGeneric("results", function(object, ...) standardGeneric("results"))
 
+#' @rdname spilloverScore
+#' @export
+setGeneric("spilloverScore", function(object, ...) standardGeneric("spilloverScore"))
+
 #' @rdname fits
 #' @export
 setGeneric("fits", function(object) standardGeneric("fits"))

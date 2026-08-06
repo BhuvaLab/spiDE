@@ -157,6 +157,20 @@ leaving the `CellType:niche` columns — nuisance terms in the conditioned model
 
 Everything downstream is shared: the same Wald statistics, the same within-gene and cross-bandwidth Cauchy combination, and the same three-level gene → index cell type → niche cell type FDR cascade. The `results(type = "celltype")` and `results(type = "patient")` tables are empty in this mode, there being no condition to contrast, and `spiGSEA(type = "celltype")` errors for the same reason.
 
+## Transcript spillover
+
+There is a second caveat, specific to this mode and more serious than the first. Transcript misassignment makes a cell's counts include a fraction of its neighbours', and that contamination is proportional to the local density of each neighbouring cell type — the same shape as the `CellType:niche` covariate. In the conditioned model that does no harm: the two-way term is a free nuisance parameter, leakage is condition-independent, so contamination lands there and cancels out of the tested three-way term. In niche mode the two-way term *is* the tested term, so contamination is confounded with the biology at the point of estimation.
+
+The artefact looks like plausible biology — index cells appearing to upregulate the neighbouring cell type's marker genes — and it is large, not marginal. `spilloverScore()` flags it, by asking whether a pair's coefficients are ordered across genes by how much of a marker each gene is for the neighbouring cell type:
+
+```{r spillover}
+spilloverScore(res_niche)
+```
+
+On simulated data with a 30% leak rate the tested rows score ≈ 0.8, against ≈ 0 with no leakage; condition mode's tested rows stay ≈ 0 either way. There is no universal threshold — read the scores against each other and against your own controls.
+
+The score is deliberately a flag and not a correction. Genuine biology in which cells come to resemble their neighbours produces the same ordering, so a high score means the result cannot be told apart from spillover on this evidence alone, and wants an orthogonal check: a nucleus-only segmentation, negative-control probes, or an independent assay.
+
 The mixed-effects correction applies here too. Note one caveat specific to this mode: the tested slope is a *within-sample* contrast on a *spatially autocorrelated* covariate, and spiDE does not model spatial autocorrelation, so neighbouring cells are not independent replicates of that slope. Random effects remove most of the resulting inflation — on a null fixture, 37 calls with `random = "none"` against 5 with `random = "intercept"` — but niche mode remains mildly anti-conservative. Treat borderline calls with corresponding caution.
 
 # Scaling

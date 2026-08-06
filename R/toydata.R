@@ -289,6 +289,46 @@
   )
 }
 
+#' Apply transcript spillover to a SpatialExperiment's counts
+#'
+#' Mixes a fraction \code{kappa} of each cell's counts into its neighbours
+#' within \code{radius}, the standard linear model of transcript
+#' misassignment: a cell keeps \code{1 - kappa} of its own transcripts and
+#' receives \code{kappa} spread evenly over the cells within one cell diameter.
+#' Cells with no neighbour inside the radius keep their counts intact.
+#'
+#' Used to test \code{spilloverScore()}: contamination of this form makes the
+#' fitted \code{CellType:niche} coefficients order by how much of a marker each
+#' gene is for the neighbouring cell type, which is what the score detects.
+#'
+#' @param spe a SpatialExperiment with a counts assay and spatial coordinates.
+#' @param kappa the leaked fraction, in [0, 1); 0 returns \code{spe} unchanged.
+#' @param radius the leak radius in the units of the spatial coordinates.
+#' @return \code{spe} with a contaminated counts assay.
+#' @noRd
+.toySpill <- function(spe, kappa = 0.3, radius = 20) {
+  if (kappa <= 0) {
+    return(spe)
+  }
+  Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
+  xy <- SpatialExperiment::spatialCoords(spe)
+  smp <- as.character(SummarizedExperiment::colData(spe)[["sample_id"]])
+  out <- Y
+  for (s in unique(smp)) {
+    j <- which(smp == s)
+    d <- as.matrix(stats::dist(xy[j, , drop = FALSE]))
+    nb <- (d > 0) & (d <= radius)
+    deg <- rowSums(nb)
+    # row-normalise so each cell donates exactly kappa of its own counts
+    wn <- nb / pmax(deg, 1)
+    ys <- Y[, j, drop = FALSE]
+    keep <- ifelse(deg > 0, 1 - kappa, 1)
+    out[, j] <- round(sweep(ys, 2, keep, `*`) + kappa * (ys %*% t(wn)))
+  }
+  SummarizedExperiment::assay(spe, "counts") <- out
+  spe
+}
+
 #' Synthetic data with patient-level clustering (for the mixed-effects tests)
 #'
 #' Like \code{.toySPE()} but plants a per-(gene, sample) random intercept shared
