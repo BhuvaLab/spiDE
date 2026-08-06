@@ -33,6 +33,41 @@
 # So the signature is strong, specific to spillover, and confined to niche mode
 # exactly as the algebra predicts.
 #
+# Two candidate CORRECTIONS were measured against this artefact, both of which
+# work by estimating a niche effect common to all index cell types and removing
+# it. Scored by the same signature (median |Spearman(coef, log marker ratio)|;
+# the kappa = 0 noise floor is ~0.14) and by signal-to-noise against null genes
+# for two kinds of planted biology -- one specific to a single index cell type,
+# one shared by all of them:
+#
+#   D1  cell-means beta_cn                       (what spiDE tests today)
+#   D2  deviation  delta_cn = beta_cn - mean_c'  (a contrast INSIDE D1's span;
+#                                                 the common term is estimated
+#                                                 from index cells only)
+#   D3  additive   D1 + a bare niche main effect (a strictly LARGER model: the
+#                                                 main effect has support on
+#                                                 type-n cells, which D1 does
+#                                                 not, so it reintroduces a
+#                                                 self-niche slope)
+#
+#                              D1      D2      D3
+#   signature, kappa=0.3      0.617   0.280   0.448     (floor ~0.14)
+#   A-specific SNR, kappa=0    7.06    2.87    7.93
+#   shared SNR,     kappa=0    5.74    0.19    8.02
+#
+# So neither dominates. D2 removes ~71% of the spillover signature above the
+# floor but destroys cell-type-SHARED niche biology entirely (5.74 -> 0.19 with
+# no spillover present at all) and attenuates cell-type-specific biology by the
+# factor (k-1)/k, k being the number of index types for that niche -- worst at
+# k = 2. D3 is nearly free statistically but removes only ~35% of the
+# signature, because its common term is estimated using type-n cells too, and
+# those barely change under same-type contamination.
+#
+# The destruction of shared biology is not a tuning problem: a niche response
+# common to every index cell type is mathematically indistinguishable from
+# spillover under the assumption that makes either correction work, namely that
+# leakage affects all index cell types alike.
+#
 # This is deliberately a DIAGNOSTIC and not an adjustment. Regressing the
 # contamination component out of beta is not identifiable from these data:
 # genuine biology in which cells come to resemble their neighbours
