@@ -10,7 +10,9 @@
 #'   (gene, ct_index), gated by a 2-level gene -> cell type cascade.
 #'   "patient" gives one abundance-weighted response contrast per gene.
 #'   The latter two are empty unless the design carries a CellType:condition
-#'   block.
+#'   block — in particular they are always empty for a condition-free
+#'   (`condition = NULL`) fit, where "niche" instead reports the two-way
+#'   `CellType:niche` associations.
 #'
 #'   All three layers combine evidence across **every** bandwidth, using the
 #'   same log-likelihood-weighted Cauchy combination. The CellType:condition
