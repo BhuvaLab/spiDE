@@ -394,7 +394,10 @@
 #'   omitted and no pass over the counts happens at all.
 #' @param genesets a named list of gene identifiers (character, matched against
 #'   \code{rownames}) or integer row indices.
-#' @param type "niche" (default) tests the three-way celltype:condition:niche
+#' @param type on a condition-free fit (\code{condition = NULL}) "niche" tests
+#'   the two-way \code{celltype:niche} statistics, which are the tested effects
+#'   in that mode, and "celltype" has nothing to test and errors. Otherwise:
+#'   "niche" (default) tests the three-way celltype:condition:niche
 #'   statistics; "celltype" tests the CellType:condition statistics, which are
 #'   empty unless the design carries that block.
 #' @param test "competitive" (default) compares the set's mean statistic with
@@ -535,12 +538,20 @@ setMethod(
     }
 
     # --- per-bandwidth set statistics --------------------------------------
-    want <- if (type == "niche") "ResponseNiche" else "ResponseCellType"
+    # Label used only in the "no such columns" error below; the actual
+    # selection goes through the mode-aware predicates.
+    want <- if (type == "niche") "tested niche-interaction" else
+      "ResponseCellType"
     per <- lapply(seq_along(fl), function(i) {
       f <- fl[[i]]
       ct <- as.character(f@covtype)
-      respcols <- grepl("Response", ct)
-      sel <- ct[respcols] == want
+      md <- .fitMode(f)
+      respcols <- .testedCols(ct, md)
+      sel <- if (type == "niche") {
+        .nicheTestCols(ct, md)[respcols]
+      } else {
+        ct[respcols] == "ResponseCellType"
+      }
       if (!any(sel)) {
         return(NULL)
       }

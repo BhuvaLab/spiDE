@@ -96,6 +96,9 @@
 #' @param cols_tested a logical over \code{colnames(W)} marking the
 #'   Response/ResponseNiche columns needing a df (only used when
 #'   \code{df.method == "satterthwaite"}).
+#' @param mode the design mode, "condition" or "niche"; selects the
+#'   \code{df.method = "between"} reference df (see the comment at its
+#'   computation).
 #' @return a list with the fitNB result plus \code{penalty} (per-column
 #'   \code{lambda.a}), \code{tau2} (named variance components) and \code{df}
 #'   (effective residual degrees of freedom: a scalar under "between", a
@@ -107,7 +110,7 @@
                         re.maxit = 10L, re.tol = 1e-3, tau2.init = 1,
                         tau2.range = c(1e-8, 1e4), idx = NULL,
                         re.maxit.psi = 1L, df.method = "satterthwaite",
-                        cols_tested = NULL, ...) {
+                        cols_tested = NULL, mode = "condition", ...) {
   p <- ncol(W)
   groups <- unique(re_group[!is.na(re_group)])
   base <- if (length(lambda.a) == 1) rep(lambda.a, p) else lambda.a
@@ -172,17 +175,36 @@
          verbose = verbose),
     dots))
 
-  # between-patient reference df for the Wald t-test: the response contrasts live
-  # in the between-sample error stratum, so they are tested against the number of
-  # samples, not cells (the condition has two levels -> S - 2). This, together
-  # with the working (Pearson) dispersion used at inference time, is what
-  # corrects the cell-level pseudo-replication. df.method = "satterthwaite"
-  # instead derives a per-tested-column df from the shared variance-component
-  # fit (see .satterthwaiteDF()), which differentiates between-sample contrasts
-  # (Response, small df) from within-sample contrasts (ResponseNiche, larger
-  # df) rather than applying the same S - 2 to both.
+  # Reference df for the Wald t-test under df.method = "between".
+  #
+  # condition mode: the ResponseNiche coefficient is a DIFFERENCE BETWEEN
+  #   within-sample niche slopes across conditions, so the replication unit for
+  #   that comparison is the patient -> S - 2 (the condition has two levels).
+  #   This, with the working (Pearson) dispersion used at inference time, is
+  #   what corrects the cell-level pseudo-replication.
+  # niche mode, random = "intercept": there is no between-condition comparison
+  #   left. The CellType:niche slope is identified by niche density varying
+  #   cell-to-cell INSIDE each sample, so cells are the replicates and the
+  #   reference is the residual df ncells - p_fixed. The option name "between"
+  #   is a misnomer in this case; it is kept for back-compatibility.
+  # niche mode, random = "slope": the per-sample random slopes sit on the very
+  #   columns being tested, moving that contrast back into the between-sample
+  #   stratum -> S - 1 (no condition contrast spends a df here).
+  #
+  # df.method = "satterthwaite" instead derives a per-tested-column df from the
+  # shared variance-component fit (see .satterthwaiteDF()), which computes this
+  # same distinction rather than hard-coding it -- and is the default.
   n_samples <- sum(re_group == "SampleInt", na.rm = TRUE)
-  df_between <- max(n_samples - 2, 1)
+  has_slope <- any(re_group == "SampleSlope", na.rm = TRUE)
+  df_between <- if (identical(mode, "niche")) {
+    if (has_slope) {
+      max(n_samples - 1, 1)
+    } else {
+      max(ncol(Y) - sum(is.na(re_group)), 1)
+    }
+  } else {
+    max(n_samples - 2, 1)
+  }
   if (df.method == "satterthwaite" && !is.null(cols_tested)) {
     wbar <- .repWeights(Y, fit$alpha, W, fit$psi)
     A <- crossprod(W * sqrt(wbar))
@@ -290,7 +312,8 @@
                        tau2.init = tau2.init, idx = idx,
                        re.maxit.psi = re.maxit.psi,
                        df.method = df.method,
-                       cols_tested = grepl("Response", as.character(des$covtype)),
+                       cols_tested = .testedCols(des$covtype, des$mode),
+                       mode = des$mode,
                        ...)
     penalty <- fit$penalty
     tau2 <- fit$tau2
@@ -309,6 +332,7 @@
   new(
     "SpiDEFit",
     sigma = sigma,
+    mode = des$mode,
     ngenes = nrow(alpha),
     ncells = ncol(Y),
     W = W,
@@ -342,7 +366,13 @@
 #'
 #' @param spe a SpatialExperiment with niche reducedDims (see [buildNiches()]).
 #' @param condition a character, the colData column of the tested condition
-#'   (must have exactly two levels).
+#'   (must have exactly two levels), or \code{NULL} for a condition-free
+#'   (niche-only) analysis. With \code{NULL} the condition terms are dropped
+#'   from the design and the two-way \code{CellType:niche} interactions become
+#'   the tested effects: within index cell type \emph{c}, how expression
+#'   changes with the local density of niche cell type \emph{n}. The
+#'   \code{results(type = "celltype")} and \code{results(type = "patient")}
+#'   tables are empty in that mode, there being no condition to contrast.
 #' @param index,niche character vectors restricting the index / niche cell
 #'   types considered (NULL = all).
 #' @param covariates a character vector of nuisance colData columns to adjust
@@ -367,6 +397,20 @@
 #'   stochastic (\code{fitNB} subsamples cells for the dispersion estimate), so
 #'   set a seed for reproducible variance components. See the mixed-effects and
 #'   simulation vignettes.
+#'
+#'   In a condition-free analysis (\code{condition = NULL}) the random-slope
+#'   block sits on exactly the \code{CellType:niche} columns being tested, so
+#'   \code{"slope"} is the natural correction there when between-sample
+#'   variation in niche slopes is plausible. Be aware of a limitation specific
+#'   to that mode: the tested slope is a \emph{within-sample} contrast on a
+#'   \emph{spatially autocorrelated} covariate, and spiDE does not model
+#'   spatial autocorrelation. Neighbouring cells are therefore not independent
+#'   replicates of the slope, and neither random-effect structure can recover
+#'   that -- on a null fixture with a planted per-sample intercept, the
+#'   fixed-effects fit made 37 calls, \code{"intercept"} 5 and \code{"slope"}
+#'   5 (see \code{longtests/testthat/test-nicheOnly-mixed.R}). Random effects
+#'   remove most of the inflation but niche mode remains mildly
+#'   anti-conservative; treat borderline calls with corresponding caution.
 #' @param winsor,lambda.a fitting parameters forwarded to
 #'   \code{\link[SpaNorm]{fitNB}} (coefficient winsorisation and the base ridge
 #'   penalty on the fixed columns).
@@ -422,6 +466,17 @@
 #'   \eqn{S} (worst measured \eqn{\approx 0.065}); use "between" when strict
 #'   conservatism matters more than power, or for back-compatibility.
 #'   Ignored when \code{random == "none"}.
+#'
+#'   In a condition-free analysis (\code{condition = NULL}) the
+#'   \code{"between"} reference df changes, because the tested
+#'   \code{CellType:niche} slope is a within-sample contrast rather than a
+#'   between-condition one: it is \code{ncells - p_fixed} under
+#'   \code{random = "intercept"} (cells are the replicates) and \code{S - 1}
+#'   under \code{random = "slope"} (the per-sample random slopes sit on the
+#'   tested columns, moving the contrast into the between-sample stratum). The
+#'   name \code{"between"} is therefore a misnomer in the intercept case; it is
+#'   retained for back-compatibility. \code{"satterthwaite"} computes this
+#'   distinction from the fitted variance components and is preferred.
 #' @param BPPARAM a BiocParallelParam (reserved for the inference stage).
 #' @param verbose a logical, whether to print fitting progress.
 #' @param ... further arguments forwarded to \code{\link[SpaNorm]{fitNB}}.
@@ -435,13 +490,16 @@
 #' fit <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
 #' fit
 #'
+#' fit0 <- fitSpiDE(spe, condition = NULL, sigma = 20, verbose = FALSE)
+#' fit0
+#'
 #' @rdname fitSpiDE
 #' @importFrom BiocParallel SerialParam
 #' @export
 setMethod(
   "fitSpiDE",
   signature = "ANY",
-  definition = function(spe, condition, index = NULL, niche = NULL,
+  definition = function(spe, condition = NULL, index = NULL, niche = NULL,
                         covariates = character(), sigma = NULL, assay = "counts",
                         cell_type = "cell_type", sample_id = "sample_id",
                         random = c("none", "intercept", "slope"),
@@ -455,7 +513,8 @@ setMethod(
     random <- match.arg(random)
     df.method <- match.arg(df.method)
     checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
-    checkCondition(spe, condition)
+    # condition = NULL selects the condition-free (niche-only) design
+    if (!is.null(condition)) checkCondition(spe, condition)
     checkCovariates(spe, covariates)
     if (random != "none") {
       checkSample(spe, condition, sample_id, covariates)
@@ -485,9 +544,14 @@ setMethod(
     })
     names(fits) <- paste0(name, sigma)
 
-    # resolve the index / niche cell type sets actually used
+    mode <- if (is.null(condition)) "niche" else "condition"
+
+    # Resolve the index / niche cell type sets actually used. This must go
+    # through the mode predicate like every other tested-column lookup: a bare
+    # == "ResponseNiche" is all-FALSE in niche mode, which would leave @index
+    # and @niche empty on every condition-free result.
     coefmap0 <- fits[[1]]@coefmap
-    rn <- coefmap0$type == "ResponseNiche"
+    rn <- .nicheTestCols(coefmap0$type, mode)
     index_used <- sort(unique(coefmap0$index[rn]))
     niche_used <- sort(unique(coefmap0$niche[rn]))
 
@@ -497,7 +561,8 @@ setMethod(
       "SpiDEResults",
       fits = fits,
       sigma = sigma,
-      condition = condition,
+      condition = if (is.null(condition)) NA_character_ else condition,
+      mode = mode,
       index = index_used,
       niche = niche_used,
       covariates = covariates,

@@ -81,8 +81,9 @@
 .nicheRecords <- function(fits, genes) {
   recs <- lapply(fits, function(f) {
     ct <- as.character(f@covtype)
-    respcols <- grepl("Response", ct)
-    rn <- ct[respcols] == "ResponseNiche"
+    md <- .fitMode(f)
+    respcols <- .testedCols(ct, md)
+    rn <- .nicheTestCols(ct, md)[respcols]
     tmat <- f@t_stat[genes, rn, drop = FALSE]
     cm <- f@coefmap[respcols, , drop = FALSE][rn, , drop = FALSE]
     cols <- cm$covariate

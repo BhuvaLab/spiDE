@@ -5,11 +5,11 @@
 \alias{fitSpiDE,ANY-method}
 \title{Fit the spiDE negative binomial model}
 \usage{
-fitSpiDE(spe, condition, ...)
+fitSpiDE(spe, condition = NULL, ...)
 
 \S4method{fitSpiDE}{ANY}(
   spe,
-  condition,
+  condition = NULL,
   index = NULL,
   niche = NULL,
   covariates = character(),
@@ -38,7 +38,13 @@ fitSpiDE(spe, condition, ...)
 \item{spe}{a SpatialExperiment with niche reducedDims (see \code{\link[=buildNiches]{buildNiches()}}).}
 
 \item{condition}{a character, the colData column of the tested condition
-(must have exactly two levels).}
+(must have exactly two levels), or \code{NULL} for a condition-free
+(niche-only) analysis. With \code{NULL} the condition terms are dropped
+from the design and the two-way \code{CellType:niche} interactions become
+the tested effects: within index cell type \emph{c}, how expression
+changes with the local density of niche cell type \emph{n}. The
+\code{results(type = "celltype")} and \code{results(type = "patient")}
+tables are empty in that mode, there being no condition to contrast.}
 
 \item{...}{further arguments forwarded to \code{\link[SpaNorm]{fitNB}}.}
 
@@ -71,7 +77,21 @@ intercept-only variance; prefer "intercept" at small \code{S}, and "slope"
 when between-sample niche-slope variation is expected. The fit is also
 stochastic (\code{fitNB} subsamples cells for the dispersion estimate), so
 set a seed for reproducible variance components. See the mixed-effects and
-simulation vignettes.}
+simulation vignettes.
+
+In a condition-free analysis (\code{condition = NULL}) the random-slope
+block sits on exactly the \code{CellType:niche} columns being tested, so
+\code{"slope"} is the natural correction there when between-sample
+variation in niche slopes is plausible. Be aware of a limitation specific
+to that mode: the tested slope is a \emph{within-sample} contrast on a
+\emph{spatially autocorrelated} covariate, and spiDE does not model
+spatial autocorrelation. Neighbouring cells are therefore not independent
+replicates of the slope, and neither random-effect structure can recover
+that -- on a null fixture with a planted per-sample intercept, the
+fixed-effects fit made 37 calls, \code{"intercept"} 5 and \code{"slope"}
+5 (see \code{longtests/testthat/test-nicheOnly-mixed.R}). Random effects
+remove most of the inflation but niche mode remains mildly
+anti-conservative; treat borderline calls with corresponding caution.}
 
 \item{winsor, lambda.a}{fitting parameters forwarded to
 \code{\link[SpaNorm]{fitNB}} (coefficient winsorisation and the base ridge
@@ -135,7 +155,18 @@ correspondingly near-zero power), while "satterthwaite" holds type-I in
 \eqn{\approx 0.10} mean TPR. The trade is a mild liberal drift at larger
 \eqn{S} (worst measured \eqn{\approx 0.065}); use "between" when strict
 conservatism matters more than power, or for back-compatibility.
-Ignored when \code{random == "none"}.}
+Ignored when \code{random == "none"}.
+
+In a condition-free analysis (\code{condition = NULL}) the
+\code{"between"} reference df changes, because the tested
+\code{CellType:niche} slope is a within-sample contrast rather than a
+between-condition one: it is \code{ncells - p_fixed} under
+\code{random = "intercept"} (cells are the replicates) and \code{S - 1}
+under \code{random = "slope"} (the per-sample random slopes sit on the
+tested columns, moving the contrast into the between-sample stratum). The
+name \code{"between"} is therefore a misnomer in the intercept case; it is
+retained for back-compatibility. \code{"satterthwaite"} computes this
+distinction from the fitted variance components and is preferred.}
 
 \item{BPPARAM}{a BiocParallelParam (reserved for the inference stage).}
 
@@ -159,5 +190,8 @@ spe <- toySpiDE
 spe <- buildNiches(spe, sigma = 20)
 fit <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
 fit
+
+fit0 <- fitSpiDE(spe, condition = NULL, sigma = 20, verbose = FALSE)
+fit0
 
 }

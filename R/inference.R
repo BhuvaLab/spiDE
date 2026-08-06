@@ -601,9 +601,12 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
   backend <- match.arg(backend)
   W_full <- fit@W
   covtype <- as.character(fit@covtype)
-  cols_gene <- grepl("Response", covtype) # Response + ResponseNiche columns
+  mode <- .fitMode(fit)
+  # Which columns are tested depends on the design mode: the response terms
+  # under a condition, the two-way CellType:niche interactions without one.
+  cols_gene <- .testedCols(covtype, mode)
   Wsub <- W_full[, cols_gene, drop = FALSE]
-  cov_niche <- covtype[cols_gene] == "ResponseNiche"
+  cov_niche <- .nicheTestCols(covtype, mode)[cols_gene]
   coefmap_sub <- fit@coefmap[cols_gene, , drop = FALSE]
   index_ct <- coefmap_sub$index[cov_niche]
   uniq_index <- unique(index_ct)
@@ -753,7 +756,16 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
   p.pos <- bind("p.pos")
   p.neg <- bind("p.neg")
   loglik <- unlist(lapply(block_res, `[[`, "loglik"), use.names = FALSE)
-  se_pat <- unlist(lapply(block_res, `[[`, "se_pat"), use.names = FALSE)
+  # w_rc is NULL when the design carries no CellType:condition block (the
+  # niche-only mode). The blocks then return NA for every gene; collapse that
+  # to the empty vector the slot documents, so `length(@se_patient) > 0` stays
+  # a reliable test for "this fit has a patient-level contrast" rather than
+  # reporting a full-length vector of NAs.
+  se_pat <- if (is.null(w_rc)) {
+    numeric(0)
+  } else {
+    unlist(lapply(block_res, `[[`, "se_pat"), use.names = FALSE)
+  }
   # Inter-gene correlation, reduced from the per-block partial sums. Blocks
   # contribute additively, so this is exact and independent of block size.
   rs <- lapply(block_res, `[[`, "rho_s")

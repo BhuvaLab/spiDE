@@ -1,6 +1,6 @@
 Package: spiDE
 Title: Context-specific, neighbourhood-dependent differential expression
-Version: 0.99.12
+Version: 0.99.13
 Authors@R: c(
             person(given = "Dharmesh D.",
                    family = "Bhuva",
@@ -22,7 +22,9 @@ Description: spiDE identifies context-specific, neighbourhood-dependent
     using the SpaNorm fitting engine; and neighbourhood effects are tested via
     Wald statistics combined across correlated covariates (Cauchy combination by
     default, or Brown's method), across bandwidths (Cauchy combination), and
-    corrected with a hierarchical false discovery rate procedure.
+    corrected with a hierarchical false discovery rate procedure. A
+    condition-free mode tests how expression varies with niche composition
+    alone, without an experimental contrast.
 License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

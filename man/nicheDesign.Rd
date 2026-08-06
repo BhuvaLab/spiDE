@@ -6,7 +6,7 @@
 \usage{
 nicheDesign(
   spe,
-  condition,
+  condition = NULL,
   sigma,
   index = NULL,
   niche = NULL,
@@ -21,7 +21,11 @@ nicheDesign(
 \arguments{
 \item{spe}{a SpatialExperiment with a niche reducedDim for \code{sigma}.}
 
-\item{condition}{a character, the colData column of the tested condition.}
+\item{condition}{a character, the colData column of the tested condition, or
+\code{NULL} (default) for a condition-free design. With \code{NULL} the
+condition terms are omitted and the two-way \code{CellType:niche}
+interactions (tagged "Niche") become the tested effects; no \code{Response}
+columns are produced.}
 
 \item{sigma}{a numeric, the bandwidth (a single value).}
 
@@ -46,7 +50,8 @@ fit time to implement a mixed model via ridge (see the vignette).}
 }
 \value{
 a list with \code{W} (the design matrix), \code{covtype} (a factor of column
-types), and \code{coefmap} (a data.frame mapping columns to index/niche cells).
+types), \code{coefmap} (a data.frame mapping columns to index/niche cells), and
+\code{mode} ("condition" or "niche").
 }
 \description{
 Constructs the neighbourhood-interaction design matrix for a single niche
@@ -60,11 +65,22 @@ been merged with \code{\link[=mergeNiches]{mergeNiches()}}, this extends to any 
 of the merged niche's group. This is an escape hatch for custom fits; most
 users should call \code{\link[=fitSpiDE]{fitSpiDE()}}.
 }
+\details{
+With \code{condition = NULL} the condition terms are omitted and the two-way
+\code{CellType:niche} interactions ("Niche") become the tested effects. That
+design also omits the bare niche main effects, so the interaction block is
+cell-means coded: each coefficient is directly the slope of expression on
+that niche cell type's log density \emph{within} the index cell type, rather than
+a contrast against a reference cell type.
+}
 \examples{
 data(toySpiDE)
 spe <- toySpiDE
 spe <- buildNiches(spe, sigma = 20)
 des <- nicheDesign(spe, condition = "condition", sigma = 20)
 table(des$covtype)
+
+des0 <- nicheDesign(spe, condition = NULL, sigma = 20)
+table(des0$covtype)
 
 }

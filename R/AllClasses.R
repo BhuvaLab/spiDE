@@ -7,6 +7,9 @@
 #'   bandwidth) are combined in a [SpiDEResults] container.
 #'
 #' @slot sigma a numeric, the niche bandwidth (kernel standard deviation) used.
+#' @slot mode a character, the design mode: "condition" (the default — a
+#'   `CellType:condition:niche` design) or "niche" (a condition-free design in
+#'   which the two-way `CellType:niche` interactions are the tested effects).
 #' @slot ngenes a numeric, the number of genes.
 #' @slot ncells a numeric, the number of cells/spots.
 #' @slot W a matrix, the design matrix (cells x covariates).
@@ -62,6 +65,7 @@ setClass(
   Class = "SpiDEFit",
   slots = c(
     sigma = "numeric",
+    mode = "character",
     ngenes = "numeric",
     ncells = "numeric",
     W = "matrix",
@@ -86,6 +90,9 @@ setClass(
   ),
   prototype = list(
     re_group = NULL, tau2 = NULL, penalty = NULL, df = NULL,
+    # "condition" is also what .fillSlots() gives objects serialised before
+    # this slot existed -- every one of those is a condition-mode fit.
+    mode = "condition",
     # Average inter-gene correlation of the Pearson residuals, accumulated by
     # .blockedInference() as a by-product of the blocks it already loads. Empty
     # until inference has run; spiGSEA() uses it as the variance-inflation term
@@ -162,7 +169,16 @@ validSpiDEFit <- function(object) {
   if (!all(levels(object@covtype) %in% valid_levels)) {
     stop(sprintf("'covtype' levels should be a subset of: %s", paste(valid_levels, collapse = ", ")))
   }
+  .checkMode(object@mode)
   TRUE
+}
+
+# Shared by both classes' validity methods.
+.checkMode <- function(mode) {
+  if (length(mode) != 1L || !mode %in% c("condition", "niche")) {
+    stop("'mode' should be a single value, either \"condition\" or \"niche\"")
+  }
+  invisible(TRUE)
 }
 
 setValidity("SpiDEFit", validSpiDEFit)
@@ -178,7 +194,11 @@ setValidity("SpiDEFit", validSpiDEFit)
 #'
 #' @slot fits a list of [SpiDEFit] objects, one per bandwidth.
 #' @slot sigma a numeric, the bandwidth grid.
-#' @slot condition a character, the condition (colData column) tested.
+#' @slot condition a character, the condition (colData column) tested;
+#'   `NA_character_` in "niche" mode.
+#' @slot mode a character, the design mode: "condition" or "niche". In "niche"
+#'   mode `condition` is `NA_character_` and the `results.celltype` /
+#'   `results.patient` tables are empty.
 #' @slot index a character, the index cell types considered.
 #' @slot niche a character, the niche cell types considered.
 #' @slot covariates a character, the nuisance covariates included.
@@ -213,6 +233,7 @@ setClass(
     fits = "list",
     sigma = "numeric",
     condition = "character",
+    mode = "character",
     index = "character",
     niche = "character",
     covariates = "character",
@@ -230,7 +251,8 @@ setClass(
   ),
   prototype = list(
     results.celltype = data.frame(),
-    results.patient = data.frame()
+    results.patient = data.frame(),
+    mode = "condition"
   )
 )
 
@@ -253,7 +275,11 @@ setMethod(
       is(object)[[1]],
       sprintf("Bandwidths (sigma): %s", paste(object@sigma, collapse = ", ")),
       sprintf("Genes: %s", ng),
-      sprintf("Condition: %s", object@condition),
+      if (identical(.fitMode(object), "niche")) {
+        "Mode: niche-only (no condition)"
+      } else {
+        sprintf("Condition: %s", object@condition)
+      },
       sprintf("Index cell types: %s", paste(object@index, collapse = ", ")),
       sprintf("Niche cell types: %s", paste(object@niche, collapse = ", ")),
       sprintf("Tested: %s (%d rows in results table)", nrow(object@results) > 0, nrow(object@results)),
@@ -269,6 +295,7 @@ validSpiDEResults <- function(object) {
   if (length(object@fits) != length(object@sigma)) {
     stop("length of 'fits' does not match length of 'sigma'")
   }
+  .checkMode(object@mode)
   TRUE
 }
 
@@ -287,11 +314,24 @@ setValidity("SpiDEResults", validSpiDEResults)
 # every present slot untouched.
 # ---------------------------------------------------------------------------
 
+#' Update a serialised spiDE object to the current class definition
+#'
+#' Slots added to a class do not appear in objects serialised before they
+#' existed. Reading such an object still works, but anything that triggers
+#' validity — notably `initialize()`, the documented idiom for re-combining
+#' fits across bandwidths — fails. These methods fill any absent slot from the
+#' class prototype and leave every present slot untouched.
+#'
 #' @param object a SpiDEFit or SpiDEResults, possibly from an older version.
 #' @param ... ignored.
 #' @param verbose report which slots were filled.
 #' @return the object, with any slots missing since serialisation filled from
 #'   the class prototype.
+#' @examples
+#' data(toySpiDE)
+#' spe <- buildNiches(toySpiDE, sigma = 20)
+#' fit <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+#' updateObject(fit)
 #' @importFrom BiocGenerics updateObject
 #' @rdname updateObject
 #' @export
