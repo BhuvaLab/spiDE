@@ -109,6 +109,10 @@
 #'   operation is lossy and the original should stay available for comparison.
 #' @param sample_id a character, the colData column identifying samples. Cells
 #'   are only ever mixed within a sample.
+#' @param det.drop.max the per-gene detection loss above which a gene is
+#'   flagged as bimodalised by the filter (default 0.02). The cohort's median
+#'   loss is 0.000 and its 99th percentile 0.006, so this sits well clear of
+#'   normal behaviour while catching the technical outliers.
 #' @param BPPARAM a BiocParallelParam; samples are independent.
 #' @param verbose a logical, report the per-sample floored fraction.
 #'
@@ -129,6 +133,18 @@
 #'   outside the range where this approximation was validated and a warning is
 #'   raised — treat the result with suspicion rather than confidence.
 #'
+#'   `det_drop` is the per-gene loss of detection (fraction of cells with a
+#'   non-zero count) caused by the correction, and `amplified` names the genes
+#'   exceeding `det.drop.max`. The
+#'   operator is the inverse of a smoother, hence a sharpener, so it amplifies
+#'   heavy tails while flooring the middle — which shows up precisely as lost
+#'   detection. Real panels carry technical outliers (one gene in the YTMA
+#'   cohort has a mean of 8 and a maximum of 7711) that this turns into bimodal
+#'   distributions no negative-binomial fit can handle; left in, they dominate
+#'   every downstream test. **Filter them before fitting.** Simulated NB counts
+#'   have no such tail, which is why this failure mode appears only on real
+#'   data.
+#'
 #' @examples
 #' data(toySpiDE)
 #' spe <- deconvolveSpillover(toySpiDE, kappa = 0.2, radius = 20)
@@ -143,8 +159,8 @@
 setMethod(
   "deconvolveSpillover", "ANY",
   function(spe, kappa, radius, assay = "counts", name = "counts_deconv",
-           sample_id = "sample_id", BPPARAM = BiocParallel::SerialParam(),
-           verbose = TRUE, ...) {
+           sample_id = "sample_id", det.drop.max = 0.02,
+           BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     checkSPE(spe, assay = assay, sample_id = sample_id)
     if (!is.numeric(kappa) || length(kappa) != 1L || is.na(kappa) ||
         kappa < 0 || kappa >= 0.5) {
@@ -180,8 +196,17 @@ setMethod(
       # A X' = Y'  ->  one sparse LU, applied to every gene at once
       Xt <- Matrix::solve(A, Matrix::t(as.matrix(Y[, j, drop = FALSE])))
       X <- t(as.matrix(Xt))
-      list(j = j, X = pmax(round(X), 0), nneg = sum(X < 0), n = length(X),
-           negmass = -sum(X[X < 0]), tot = sum(Y[, j, drop = FALSE]))
+      Xr <- pmax(round(X), 0)
+      # Per-gene DETECTION, before and after. The operator is a sharpener (the
+      # inverse of a smoother): on a heavy-tailed gene it pushes the tail
+      # further out while flooring the middle to zero, which is exactly a drop
+      # in the fraction of cells with a non-zero count. That turned out to be a
+      # far better discriminator than amplification of the maximum -- see the
+      # note above the function.
+      Yj <- as.matrix(Y[, j, drop = FALSE])
+      list(j = j, X = Xr, nneg = sum(X < 0), n = length(X),
+           negmass = -sum(X[X < 0]), tot = sum(Yj),
+           det_r = rowSums(Yj > 0), det_z = rowSums(Xr > 0), ncell = length(j))
     }, BPPARAM = BPPARAM)
 
     # Assemble sparse. Densifying the whole assay is not an option at realistic
@@ -197,10 +222,40 @@ setMethod(
     floored <- gt("nneg") / gt("n")
     floored_mass <- gt("negmass") / gt("tot")
 
+    # Genes the sharpening filter has bimodalised. Real panels carry technical
+    # outliers (one gene in the YTMA cohort has a mean of 8 and a maximum of
+    # 7711); the inverse pushes their tail further out while flooring their
+    # middle, and the result is a distribution no negative-binomial fit can
+    # handle, which then dominates every downstream test. Simulated NB counts
+    # have no such tail, which is why this appears only on real data.
+    #
+    # DETECTION DROP is the diagnostic, chosen by measurement. On the cohort it
+    # ranked the known-bad genes 1st, 2nd and 7th of 10,422 against a median of
+    # 0.000 and a 99th percentile of 0.006. Inflation of the per-gene MAXIMUM
+    # was tried first and is useless here: deconvolution raises every gene's
+    # maximum by roughly the same 1/(1-kappa), so the worst offender sat well
+    # inside the range of well-behaved genes.
+    nc <- sum(vapply(res, `[[`, numeric(1), "ncell"))
+    det_r <- Reduce(`+`, lapply(res, `[[`, "det_r")) / nc
+    det_z <- Reduce(`+`, lapply(res, `[[`, "det_z")) / nc
+    det_drop <- det_r - det_z
+    names(det_drop) <- rownames(Y)
+    amplified <- det_drop > det.drop.max
+
     if (verbose) {
       message(sprintf(
         "deconvolveSpillover: kappa = %.3f, radius = %g; %.1f%% of entries floored (%.2f%% of count mass)",
         kappa, radius, 100 * floored, 100 * floored_mass))
+      if (any(amplified)) {
+        worst <- names(sort(det_drop[amplified], decreasing = TRUE))
+        warning(sum(amplified), " gene(s) lost more than ",
+                round(100 * det.drop.max, 1), "% of their detection to the ",
+                "correction (worst: ", paste(utils::head(worst, 5), collapse = ", "),
+                "). These are heavy-tailed, usually technical, genes that the ",
+                "inverse filter bimodalises; drop them before fitting or the ",
+                "corrected data will be worse than the uncorrected.",
+                call. = FALSE)
+      }
       if (floored_mass > 0.10) {
         warning("flooring destroyed more than 10% of the count mass; this is ",
                 "outside the range where the approximation was validated -- ",
@@ -211,7 +266,8 @@ setMethod(
     SummarizedExperiment::assay(spe, name) <- out
     S4Vectors::metadata(spe)[["spiDE_deconvolution"]] <-
       list(kappa = kappa, radius = radius, floored = floored,
-           floored_mass = floored_mass)
+           floored_mass = floored_mass, det_drop = det_drop,
+           amplified = names(det_drop)[amplified])
     spe
   }
 )

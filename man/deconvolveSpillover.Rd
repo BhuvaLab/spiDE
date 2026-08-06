@@ -14,6 +14,7 @@ deconvolveSpillover(spe, kappa, radius, ...)
   assay = "counts",
   name = "counts_deconv",
   sample_id = "sample_id",
+  det.drop.max = 0.02,
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
   ...
@@ -34,6 +35,11 @@ operation is lossy and the original should stay available for comparison.}
 
 \item{sample_id}{a character, the colData column identifying samples. Cells
 are only ever mixed within a sample.}
+
+\item{det.drop.max}{the per-gene detection loss above which a gene is
+flagged as bimodalised by the filter (default 0.02). The cohort's median
+loss is 0.000 and its 99th percentile 0.006, so this sits well clear of
+normal behaviour while catching the technical outliers.}
 
 \item{BPPARAM}{a BiocParallelParam; samples are independent.}
 
@@ -56,6 +62,18 @@ truncation, and is the number that actually bounds the damage (0.46\% on the
 simulation study, 6.9\% on a low-count toy). Above ~10\% the operator is
 outside the range where this approximation was validated and a warning is
 raised — treat the result with suspicion rather than confidence.
+
+\code{det_drop} is the per-gene loss of detection (fraction of cells with a
+non-zero count) caused by the correction, and \code{amplified} names the genes
+exceeding \code{det.drop.max}. The
+operator is the inverse of a smoother, hence a sharpener, so it amplifies
+heavy tails while flooring the middle — which shows up precisely as lost
+detection. Real panels carry technical outliers (one gene in the YTMA
+cohort has a mean of 8 and a maximum of 7711) that this turns into bimodal
+distributions no negative-binomial fit can handle; left in, they dominate
+every downstream test. \strong{Filter them before fitting.} Simulated NB counts
+have no such tail, which is why this failure mode appears only on real
+data.
 }
 \description{
 Reverses segmentation bleed and ambient contamination, which move transcripts

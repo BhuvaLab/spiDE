@@ -114,3 +114,35 @@ test_that("isolated cells pass through untouched", {
     as.matrix(SummarizedExperiment::assay(out, "counts_deconv")),
     as.matrix(SummarizedExperiment::assay(spe, "counts")))
 })
+
+test_that("heavy-tailed genes are flagged by their detection loss", {
+  # The operator is a sharpener, so a gene with technical outliers gets its
+  # tail pushed further out while its middle is FLOORED -- which shows up as
+  # lost detection, not as an inflated maximum. On the cohort this ranked the
+  # known-bad genes 1st, 2nd and 7th of 10,422; an earlier guard based on the
+  # maximum missed all of them, because deconvolution raises every gene's
+  # maximum by roughly the same factor.
+  spe <- .denseSPE()
+  cnt <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
+  # G2: low everywhere, enormous in a scattered handful -- the shape that
+  # bimodalises. Its neighbours' counts then floor to zero.
+  cnt["G2", ] <- 1L
+  spikes <- seq(1, ncol(cnt), length.out = 40)
+  cnt["G2", round(spikes)] <- 5000L
+  SummarizedExperiment::assay(spe, "counts") <- cnt
+
+  # This fixture is deliberately extreme, so the count-mass warning fires as
+  # well; collect all warnings and assert the detection one is among them.
+  ws <- capture_warnings(
+    deconvolveSpillover(spe, kappa = 0.3, radius = 25, verbose = TRUE))
+  expect_true(any(grepl("detection", ws)))
+
+  out <- suppressWarnings(
+    deconvolveSpillover(spe, kappa = 0.3, radius = 25, verbose = FALSE))
+  qc <- S4Vectors::metadata(out)$spiDE_deconvolution
+  expect_true("G2" %in% qc$amplified)
+  # a well-behaved gene must not be flagged
+  expect_false("G5" %in% qc$amplified)
+  expect_equal(length(qc$det_drop), nrow(spe))
+  expect_gt(qc$det_drop[["G2"]], 0.02)
+})
