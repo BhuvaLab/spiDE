@@ -33,6 +33,11 @@ setGeneric("results", function(object, ...) standardGeneric("results"))
 #' @export
 setGeneric("spilloverScore", function(object, ...) standardGeneric("spilloverScore"))
 
+#' @rdname deconvolveSpillover
+#' @export
+setGeneric("deconvolveSpillover",
+           function(spe, kappa, radius, ...) standardGeneric("deconvolveSpillover"))
+
 #' @rdname fits
 #' @export
 setGeneric("fits", function(object) standardGeneric("fits"))
