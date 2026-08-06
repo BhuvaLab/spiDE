@@ -5,7 +5,8 @@
 \alias{toySpiDE}
 \title{A small synthetic SpatialExperiment for spiDE examples}
 \format{
-A \linkS4class{SpatialExperiment} with a \code{counts} assay and colData
+A \link[SpatialExperiment:SpatialExperiment-class]{SpatialExperiment}
+with a \code{counts} assay and colData
 columns \code{sample_id}, \code{condition}, \code{cell_type}, \code{Age}, \code{Area}, and \code{nCount}.
 }
 \source{

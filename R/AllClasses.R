@@ -314,11 +314,24 @@ setValidity("SpiDEResults", validSpiDEResults)
 # every present slot untouched.
 # ---------------------------------------------------------------------------
 
+#' Update a serialised spiDE object to the current class definition
+#'
+#' Slots added to a class do not appear in objects serialised before they
+#' existed. Reading such an object still works, but anything that triggers
+#' validity — notably `initialize()`, the documented idiom for re-combining
+#' fits across bandwidths — fails. These methods fill any absent slot from the
+#' class prototype and leave every present slot untouched.
+#'
 #' @param object a SpiDEFit or SpiDEResults, possibly from an older version.
 #' @param ... ignored.
 #' @param verbose report which slots were filled.
 #' @return the object, with any slots missing since serialisation filled from
 #'   the class prototype.
+#' @examples
+#' data(toySpiDE)
+#' spe <- buildNiches(toySpiDE, sigma = 20)
+#' fit <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+#' updateObject(fit)
 #' @importFrom BiocGenerics updateObject
 #' @rdname updateObject
 #' @export
