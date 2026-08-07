@@ -133,7 +133,7 @@ setMethod(
       # per-bandwidth two-sided p on each CellType:condition column
       pcube <- lapply(fits, function(f) {
         rc <- .rcCols(f)
-        dfv <- if (is.null(f@df) || length(f@df) == 1L) f@df else f@df[rc]
+        dfv <- .dfFor(f, rc)
         tm <- f@t_stat[, rc, drop = FALSE]
         pmin(2 * pmin(.ptByCol(tm, dfv, lower.tail = FALSE),
                       .ptByCol(tm, dfv, lower.tail = TRUE)), 1)
@@ -156,8 +156,8 @@ setMethod(
           n_cells <- colSums(f@W[, paste0("CellType", cc), drop = FALSE] != 0)
           w <- n_cells / sum(n_cells)
           b <- as.numeric(f@alpha[, tn, drop = FALSE] %*% w)
-          dfp <- if (is.null(f@df) || length(f@df) == 1L) f@df else
-            stats::median(f@df[rc])
+          dfp <- .dfFor(f, rc)
+          if (length(dfp) > 1L) dfp <- stats::median(dfp)
           tt <- b / f@se_patient[rownames(f@alpha)]
           tm <- matrix(tt, ncol = 1)
           pmin(2 * pmin(.ptByCol(tm, dfp, lower.tail = FALSE),

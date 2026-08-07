@@ -556,7 +556,7 @@ setMethod(
         return(NULL)
       }
       tm <- f@t_stat[, sel, drop = FALSE]
-      dfn <- if (is.null(f@df) || length(f@df) == 1L) f@df else f@df[sel]
+      dfn <- .dfFor(f, sel)
       zm <- .tToZ(tm, dfn)
       zbar <- .setColMeans(zm, sets)
       m <- lengths(sets)

@@ -154,6 +154,37 @@
   set.seed(seed)
 }
 
+#' Library-size variation that survives within-sample normalisation
+#'
+#' Counts entering spiDE have already been library-size corrected \emph{within}
+#' a sample, so there is no per-cell sequencing-depth noise left to simulate.
+#' Simulating it anyway (an i.i.d. per-cell log-normal, as these fixtures once
+#' did) makes the fitted model \strong{misspecified}, which contaminates any
+#' calibration conclusion drawn from them.
+#'
+#' What genuinely remains is two gene-independent scalings: a \strong{sample
+#' level} depth bias, which a per-sample random intercept absorbs, and
+#' \strong{cell-type level} differences in total RNA that are real biology
+#' rather than technical (a tumour cell carries far more transcript than a
+#' lymphocyte), which the \code{CellType} main effects absorb. Because both are
+#' absorbed exactly, the fitted NB model is correctly specified and a
+#' miscalibration is attributable to the inference rather than to the fixture.
+#'
+#' @param sample_id,cell_type per-cell labels.
+#' @param sd.sample,sd.celltype log-scale SDs of the two components.
+#' @return a per-cell multiplicative library size.
+#' @noRd
+.simLibSize <- function(sample_id, cell_type, sd.sample = 0.15,
+                        sd.celltype = 0.35) {
+  smp <- as.character(sample_id)
+  ct <- as.character(cell_type)
+  s_lib <- stats::setNames(
+    stats::rnorm(length(unique(smp)), 0, sd.sample), sort(unique(smp)))
+  ct_lib <- stats::setNames(
+    stats::rnorm(length(unique(ct)), 0, sd.celltype), sort(unique(ct)))
+  exp(s_lib[smp] + ct_lib[ct])
+}
+
 #' Build a small synthetic SpatialExperiment for examples and tests
 #'
 #' @param n_samples number of samples (half Responder, half Non-responder).
@@ -167,6 +198,7 @@
 #' @importFrom stats rlnorm rnorm runif ave
 #' @noRd
 .toySPE <- function(n_samples = 6, n_per = 80, n_genes = 20, field = 500,
+                    sd.lib.sample = 0.15, sd.lib.celltype = 0.35,
                     beta = 2.5, seed = 1) {
   .localSeed(seed)
   gene_names <- sprintf("G%d", seq_len(n_genes))
@@ -212,14 +244,18 @@
   log_effect <- matrix(0, n_genes, n, dimnames = list(gene_names, cd$cell_id))
   log_effect["G1", ] <- beta * is_A * is_resp * (cd$x / field)
 
-  # per-cell library size (used as Area, so computeSizeFactors has real signal)
-  lib.size <- rlnorm(n, meanlog = -0.02, sdlog = 0.2)
+  lib.size <- .simLibSize(cd$sample_id, cd$cell_type,
+                          sd.sample = sd.lib.sample,
+                          sd.celltype = sd.lib.celltype)
 
   counts <- .simCounts(gene_params, cd$cell_type, log_effect = log_effect,
                        lib.size = lib.size)
   colnames(counts) <- cd$cell_id
 
-  cd$Area <- lib.size
+  # Area is a genuine per-cell measurement, independent of the counts. It was
+  # previously an alias for the library size, hence near-collinear with the
+  # cell-type indicators (which sum to 1 in every row).
+  cd$Area <- rlnorm(n, meanlog = 0, sdlog = 0.25)
   cd$nCount <- colSums(counts)
 
   SpatialExperiment::SpatialExperiment(
@@ -246,6 +282,7 @@
 #' @importFrom stats rlnorm rnorm runif ave
 #' @noRd
 .toyNiche <- function(n_samples = 6, n_per = 80, n_genes = 20, field = 500,
+                      sd.lib.sample = 0.15, sd.lib.celltype = 0.35,
                       beta = 2.5, seed = 1) {
   .localSeed(seed)
   gene_names <- sprintf("G%d", seq_len(n_genes))
@@ -274,12 +311,17 @@
   log_effect <- matrix(0, n_genes, n, dimnames = list(gene_names, cd$cell_id))
   log_effect["G1", ] <- beta * is_A * (cd$x / field)
 
-  lib.size <- rlnorm(n, meanlog = -0.02, sdlog = 0.2)
+  lib.size <- .simLibSize(cd$sample_id, cd$cell_type,
+                          sd.sample = sd.lib.sample,
+                          sd.celltype = sd.lib.celltype)
   counts <- .simCounts(gene_params, cd$cell_type, log_effect = log_effect,
                        lib.size = lib.size)
   colnames(counts) <- cd$cell_id
 
-  cd$Area <- lib.size
+  # Area is a genuine per-cell measurement, independent of the counts. It was
+  # previously an alias for the library size, hence near-collinear with the
+  # cell-type indicators (which sum to 1 in every row).
+  cd$Area <- rlnorm(n, meanlog = 0, sdlog = 0.25)
   cd$nCount <- colSums(counts)
 
   SpatialExperiment::SpatialExperiment(
@@ -307,6 +349,7 @@
 #' @importFrom stats rlnorm rnorm runif
 #' @noRd
 .toyClustered <- function(n_samples = 8, n_per = 80, n_genes = 30, field = 500,
+                          sd.lib.sample = 0.15, sd.lib.celltype = 0.35,
                           sd_patient = 0.7, seed = 1) {
   .localSeed(seed)
   gene_names <- sprintf("G%d", seq_len(n_genes))
@@ -337,12 +380,17 @@
               dimnames = list(gene_names, sample_ids))
   log_effect <- u[, cd$sample_id, drop = FALSE]
 
-  lib.size <- rlnorm(n, meanlog = -0.02, sdlog = 0.2)
+  lib.size <- .simLibSize(cd$sample_id, cd$cell_type,
+                          sd.sample = sd.lib.sample,
+                          sd.celltype = sd.lib.celltype)
   counts <- .simCounts(gene_params, cd$cell_type, log_effect = log_effect,
                        lib.size = lib.size)
   colnames(counts) <- cd$cell_id
 
-  cd$Area <- lib.size
+  # Area is a genuine per-cell measurement, independent of the counts. It was
+  # previously an alias for the library size, hence near-collinear with the
+  # cell-type indicators (which sum to 1 in every row).
+  cd$Area <- rlnorm(n, meanlog = 0, sdlog = 0.25)
   cd$nCount <- colSums(counts)
 
   SpatialExperiment::SpatialExperiment(
