@@ -218,7 +218,7 @@
 #' linear mixed model V = W-bar^{-1} + Z G Z', built entirely from p x p M^{-1}
 #' sub-blocks (never an n x n matrix). Parameter order is (phi, groups...). The
 #' phi-phi entry reduces to 0.5*(ncells - p + tr((M^{-1} Lambda)^2)); the
-#' group entries use B_{a,b} = A[ca,cb] - A[ca,] M^{-1} A[,cb] = Z_a' P Z_b.
+#' group entries use `B_{a,b} = A[ca,cb] - A[ca,] M^{-1} A[,cb] = Z_a' P Z_b`.
 #' @noRd
 .varParamCov <- function(A, minv, pen, re_group, ncells) {
   p <- ncol(A)
