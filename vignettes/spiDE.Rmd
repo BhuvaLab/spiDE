@@ -47,12 +47,17 @@ table(toySpiDE$cell_type, toySpiDE$condition)
 
 # The full workflow in one call
 
+`spiDE()` defaults to `random = "intercept"`, a per-sample random intercept that
+corrects the cell-level pseudo-replication described below. Note what that
+implies for covariates: a per-sample random intercept already absorbs *all*
+between-sample variation, so a sample-level covariate such as `Age` is
+collinear with it and is rejected. Adjust for cell-level covariates only.
+
 ```{r full}
 res <- spiDE(
   toySpiDE,
   condition = "condition",
   sigma = c(10, 30, 50),
-  covariates = "Age",
   verbose = FALSE
 )
 res
@@ -118,7 +123,7 @@ reducedDimNames(spe)
 ## 2. Fit the model
 
 ```{r fit}
-fit <- fitSpiDE(spe, condition = "condition", covariates = "Age", verbose = FALSE)
+fit <- fitSpiDE(spe, condition = "condition", verbose = FALSE)
 fit
 ```
 
@@ -168,7 +173,6 @@ library(BiocParallel)
 res <- spiDE(
   toySpiDE,
   condition = "condition",
-  covariates = "Age",
   block.size = 500,
   BPPARAM = MulticoreParam(4)
 )
