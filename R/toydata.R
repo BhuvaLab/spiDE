@@ -192,6 +192,14 @@
 #' @param n_genes number of genes.
 #' @param field the side length of the (square) spatial field.
 #' @param beta effect size of the planted B-niche x Responder interaction on G1.
+#'   This is the MAXIMUM log-fold-change across the field, since the effect is
+#'   planted as \code{beta * (x / field)} -- so \code{beta = 2} is a 7-fold
+#'   gradient and \code{beta = 4} a 55-fold one. The response to it is
+#'   \strong{non-monotonic}: G1's own dynamic range inflates its estimated NB
+#'   dispersion, which inflates its standard error, so past \code{beta ~ 2} the
+#'   induced noise outgrows the signal and the statistic collapses (measured
+#'   t: 2.22, 2.87, 5.28, 2.49, 1.42, 0.25 at beta 1, 1.5, 2, 2.5, 3, 4). The
+#'   default is the peak; do not raise it expecting a stronger effect.
 #' @param seed random seed.
 #' @return a SpatialExperiment with counts, cell_type, sample_id, condition, Age,
 #'   Area, and spatial coordinates.
@@ -199,7 +207,7 @@
 #' @noRd
 .toySPE <- function(n_samples = 6, n_per = 80, n_genes = 20, field = 500,
                     sd.lib.sample = 0.15, sd.lib.celltype = 0.35,
-                    beta = 2.5, seed = 1) {
+                    beta = 2, seed = 1) {
   .localSeed(seed)
   gene_names <- sprintf("G%d", seq_len(n_genes))
 
