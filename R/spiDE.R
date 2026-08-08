@@ -49,7 +49,7 @@ setMethod(
                         covariates = character(), sigma = c(10, 30, 50, 70),
                         assay = "counts", cell_type = "cell_type",
                         sample_id = "sample_id",
-                        random = c("none", "intercept", "slope"),
+                        random = c("intercept", "none", "slope"),
                         winsor = 4, lambda.a = 0,
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         fdr = 0.05, combine = c("cauchy", "brown"),

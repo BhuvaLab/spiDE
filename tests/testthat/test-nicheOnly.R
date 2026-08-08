@@ -113,7 +113,7 @@ test_that(".fitMode falls back to condition for objects lacking the slot", {
 # of Bioconductor's 600 s budget on its own.
 spe_niche <- .toyNiche()
 res_niche <- spiDE(spe_niche, condition = NULL, sigma = c(10, 30),
-                   covariates = "Age", verbose = FALSE)
+                   covariates = "Age", random = "none", verbose = FALSE)
 tab_niche <- results(res_niche)
 
 test_that(".toyNiche carries no condition column", {
@@ -209,7 +209,7 @@ test_that("spiGSEA type='celltype' is refused on a condition-free fit", {
 
 test_that("mode defaults to condition and survives updateObject", {
   spe <- buildNiches(.toySPE(), sigma = 20)
-  res <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+  res <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
   expect_identical(res@mode, "condition")
   expect_identical(fits(res)[[1]]@mode, "condition")
 

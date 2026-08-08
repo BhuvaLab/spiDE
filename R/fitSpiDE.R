@@ -121,10 +121,20 @@
 #' @param cell_type a character, the colData column of cell type labels.
 #' @param sample_id a character, the colData column identifying samples
 #'   (patients); used only when \code{random != "none"}.
-#' @param random one of "none" (fixed-effects fit, the default), "intercept" or
+#' @param random one of "intercept" (the default), "none" or
 #'   "slope". Adds patient-level random effects (implemented as ridge-penalised
 #'   design columns) to correct anti-conservative inference caused by
-#'   cell-level pseudo-replication. "intercept" adds a per-sample random
+#'   cell-level pseudo-replication.
+#'
+#'   \strong{The default changed from "none" to "intercept".} "none" forms Wald
+#'   standard errors from cell-level information, which treats every cell as an
+#'   independent replicate of a patient-level contrast. On a null with
+#'   per-sample intercepts it rejects at \eqn{\approx 0.71} against a nominal
+#'   0.05, worsening as cell counts become imbalanced, where the random
+#'   intercept holds \eqn{\approx 0.04} against a calibrated pseudobulk
+#'   reference of \eqn{\approx 0.04}. "none" is retained for
+#'   back-compatibility and for reproducing pre-correction results, but it
+#'   should not be used for inference. "intercept" adds a per-sample random
 #'   intercept; "slope" additionally adds per-sample random slopes on the niche
 #'   covariates, which protects the response x niche tests when the niche-slope
 #'   varies between samples. Note that "slope" estimates an extra variance
@@ -253,7 +263,7 @@ setMethod(
   definition = function(spe, condition = NULL, index = NULL, niche = NULL,
                         covariates = character(), sigma = NULL, assay = "counts",
                         cell_type = "cell_type", sample_id = "sample_id",
-                        random = c("none", "intercept", "slope"),
+                        random = c("intercept", "none", "slope"),
                         winsor = 4, lambda.a = 0,
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         re.maxit = 2L, re.tol = 1e-3, tau2.init = 1,
