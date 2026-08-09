@@ -1,6 +1,6 @@
 test_that("fitSpiDE returns a SpiDEResults with one fit per bandwidth", {
   spe <- buildNiches(.toySPE(), sigma = c(10, 20))
-  res <- fitSpiDE(spe, condition = "condition", verbose = FALSE)
+  res <- fitSpiDE(spe, condition = "condition", random = "none", verbose = FALSE)
 
   expect_s4_class(res, "SpiDEResults")
   expect_equal(bandwidths(res), c(10, 20))
@@ -10,7 +10,7 @@ test_that("fitSpiDE returns a SpiDEResults with one fit per bandwidth", {
 
 test_that("the NB fit produces valid dispersions and log-likelihoods", {
   spe <- buildNiches(.toySPE(), sigma = 20)
-  res <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+  res <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
   f <- fits(res)[[1]]
 
   expect_equal(dim(f@alpha), c(f@ngenes, ncol(f@W)))
@@ -24,7 +24,7 @@ test_that("fitSpiDE recovers the planted B-niche effect on G1 in A cells", {
   spe <- buildNiches(.toySPE(), sigma = 20)
   spe <- computeSizeFactors(spe, count = "nCount", area = "Area")
   res <- fitSpiDE(spe,
-    condition = "condition", sigma = 20,
+    condition = "condition", sigma = 20, random = "none",
     covariates = c("Age", "LS"), verbose = FALSE
   )
   f <- fits(res)[[1]]

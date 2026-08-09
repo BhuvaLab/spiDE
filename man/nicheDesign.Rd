@@ -41,10 +41,17 @@ columns are produced.}
 \item{sample_id}{a character, the colData column identifying samples
 (patients); used only when \code{random != "none"}.}
 
-\item{random}{one of "none" (fixed-effects design, the default), "intercept"
+\item{random}{one of "none" (the default), "intercept"
 (add a per-sample random intercept) or "slope" (also add per-sample random
 slopes on the niche covariates). The random-effect columns are penalised at
-fit time to implement a mixed model via ridge (see the vignette).}
+fit time to implement a mixed model via ridge (see the vignette).
+
+This defaults to "none" even though \code{\link[=fitSpiDE]{fitSpiDE()}} defaults to "intercept".
+The asymmetry is deliberate: the random-effect columns are collinear with
+the cell-type block and are identified only by the penalty applied at fit
+time, so a design returned with them included is rank-deficient. That is
+correct for fitting and surprising for a constructor whose job is to hand
+back a design matrix to inspect.}
 
 \item{...}{ignored.}
 }

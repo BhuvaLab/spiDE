@@ -147,31 +147,41 @@ Exported examples and the vignette use the pre-baked `data(toySpiDE)` instead (b
 bandwidths (10/30/50/70) fit without IRLS collinearity failures — don't shrink the field without
 re-checking every bandwidth still converges.
 
-### Known statistical property (not a bug) and the mixed-effects correction
+### The sample-level correction (and the default)
 
-The **default** (`random = "none"`) reduced-design Wald standard errors make the method
-anti-conservative on data with few samples but many cells (cell-level pseudo-replication) — this
-faithfully reproduces the original `batch_nichede_v9.R` behaviour and is the back-compatible path.
+`random = "none"` uses reduced-design Wald standard errors formed from cell-level information. That
+treats every cell as an independent replicate of a patient-level contrast, and is badly
+anti-conservative on data with few samples but many cells: on a null with per-sample intercepts it
+rejects at **~0.71** against a nominal 0.05 (worse as cell counts become imbalanced), where a random
+intercept holds **~0.04** against a calibrated pseudobulk reference of ~0.04.
+
+**The default is therefore `random = "intercept"`.** `"none"` remains available — it reproduces the
+original `batch_nichede_v9.R` behaviour and is the back-compatible path — but it should not be used
+for inference. Note `nicheDesign()` deliberately keeps `"none"` as *its* default: the random-effect
+columns are collinear with the cell-type block and identified only by the penalty applied at fit
+time, so a design returned with them included is rank-deficient (rank 23 of 25 on the toy), which is
+correct for fitting and surprising from a constructor.
 `tests/testthat/test-spiDE-e2e.R` checks niche-*specificity* of the planted G1/A/B signal (is B the
 strongest niche association for G1 in index A) rather than asserting G1 has the single largest test
 statistic genome-wide, since null genes can outrank it on raw |t|.
 
-`fitSpiDE()`/`spiDE()` take a `random = c("none", "intercept", "slope")` argument that turns on a
+`fitSpiDE()`/`spiDE()` take a `random = c("intercept", "none", "slope")` argument that selects the
 **mixed-effects correction** for the pseudo-replication (see `vignettes/spiDE-model.Rmd` and the plan
 in the PR). Random effects are implemented via the ridge = random-effects equivalence, reusing
 `SpaNorm::fitNB`'s per-column `lambda.a` penalty (no SpaNorm change): patient-level random effects are
 added as ridge-penalised design columns (tagged `"Random"` in `covtype`), targeting *only* the
 response-related fixed effects — a random intercept per sample (counterpart of the `Response` main
 effect) and, under `"slope"`, per-sample random slopes on the `CellType:niche` bases (counterparts of
-the `ResponseNiche` β terms). `.fitNBmixed()` (`R/fitSpiDE.R`) estimates the variance components
-`tau2` with a shared-across-genes Schall/PQL loop. That loop is the mixed fit's
+the `ResponseNiche` β terms). `.fitNBmixed()` (`R/mixed.R`) estimates the variance components
+`tau2` with a shared-across-genes Schall/PQL loop. `.fitNBmixed()` and the df machinery live in
+`R/mixed.R`; the batched/GPU helpers live in `R/inference-batch.R`. That loop is the mixed fit's
 dominant cost (it re-fits every gene per iteration), so it is sped up the same
 way `fitNB` subsamples cells for dispersion: the inner iterations fit on a
 stratified cell subsample (`re.prop`, sampled per cell type × sample with a
 `re.min.cells` floor) with a single dispersion iteration (`re.maxit.psi`), then a
 **final fit on all cells with full dispersion** supplies the coefficients/`psi`
 inference uses — so subsampling only perturbs the shared `tau2`, not the per-gene
-effects. Defaults (`re.prop=0.2`, `re.maxit.psi=1L`) speed up the mixed fit on
+effects. Defaults (`re.prop=1`, i.e. subsampling OFF, and `re.maxit.psi=1L`) speed up the mixed fit on
 CPU while keeping the response-niche t-stats highly correlated with the full fit
 (see `vignettes/spiDE-mixed-benchmark.Rmd`); `re.prop=1` restores the
 reproducible, all-cell path. No seed is set internally (set one externally).
@@ -182,6 +192,32 @@ are what restore calibration (see `tests/testthat/test-mixedEffects.R`). New `Sp
 `re_group`, `tau2`, `penalty`, `df` (all `NULL` for a fixed-effects fit). Because a per-sample random
 intercept absorbs all between-sample effects, `checkSample()` rejects sample-constant covariates when
 `random != "none"`.
+
+### `re.maxit`, and a documented failed experiment
+
+`re.maxit` defaults to **2**, lowered from 10 on measurement: for `random = "intercept"` one
+iteration is indistinguishable from ten on null type-I (to three decimal places) and on `tau2` (to
+two), because the loop converges in a couple of steps. It also largely dissolves a hazard of the
+larger cap — `tau2` can enter a 2-cycle, so the answer depends on the **parity** of `re.maxit`.
+**That evidence covers the intercept model only**: under `random = "slope"` the slope variance
+component decays monotonically across all ten iterations without meeting `re.tol`, so slope fits
+should pass `re.maxit = 10`.
+
+A fixed-effects alternative was built and removed: samples coded as `contr.sum` contrasts nested
+within condition, each coefficient tested against its own split-plot error stratum. It is calibrated
+at **one of eighteen** measured design points and collapses to zero rejections as cells per sample
+grow, because the between-sample mean square is the wrong scale for a cell-means condition contrast
+— the inflation the contrast needs is constant while that mean square grows as `sqrt(cells per
+stratum)`. Do not rebuild it without reading `research/reports/between-sample-stratum.html`, which
+records the measurements and the two intermediate findings that *were* correct.
+
+### The toy fixture's effect size
+
+`.toySPE()` plants `log_effect = beta * (x / field)`, so `beta` is the **maximum log-fold-change
+across the field**, not a linear signal knob. G1's dynamic range inflates its own estimated NB
+dispersion, hence its standard error, so the response is **non-monotonic** — measured t of 2.22,
+2.87, **5.28**, 2.49, 1.42, 0.25 at beta 1, 1.5, **2**, 2.5, 3, 4. The default sits at the peak.
+Raising it makes the planted effect *harder* to recover, not easier.
 
 ### Checkers
 

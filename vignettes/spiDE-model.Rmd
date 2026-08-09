@@ -21,8 +21,15 @@ set.seed(1)
 This vignette documents the statistical model behind `spiDE` (Spatial Influence DE) and a **mixed-effects extension** that corrects the anti-conservative inference caused by cell-level pseudo-replication. It has three parts:
 
 1.  the full `spiDE` model — how the effective niche is built and how gene expression is modelled as a function of cell type, neighbourhood, and clinical response;
-2.  why the default (fixed-effects) Wald test is anti-conservative when many cells come from few patients; and
+2.  why a cell-level Wald test (`random = "none"`) is anti-conservative when many cells come from few patients; and
 3.  the mixed-effects correction, implemented through the **ridge = random effects** equivalence so it reuses the same `SpaNorm::fitNB` engine.
+
+`fitSpiDE()` and `spiDE()` **default to `random = "intercept"`**. On a null with
+per-sample intercepts, `random = "none"` rejects at $\approx 0.71$ against a
+nominal $0.05$, while the random intercept holds $\approx 0.04$ against a
+calibrated pseudobulk reference of $\approx 0.04$. `"none"` remains available
+for back-compatibility and for reproducing pre-correction results; it should not
+be used for inference.
 
 For a task-oriented quickstart, see the companion vignette *Neighbourhood-dependent differential expression with spiDE*.
 
@@ -105,7 +112,7 @@ $$
 \qquad D_g = \mathrm{diag}\big(w_{c,g}\big),\ \ w_{c,g} = \frac{\mu_{c,g}}{1+\phi_g\mu_{c,g}},
 $$
 
-sums over all $C$ cells. The standard error of a response contrast therefore shrinks like $1/\sqrt{C}$ instead of $1/\sqrt{S}$, and with $C \gg S$ the Wald $z$-statistics are badly inflated. This reproduces the known behaviour of the original flat-script implementation and is documented as a property of the default fit.
+sums over all $C$ cells. The standard error of a response contrast therefore shrinks like $1/\sqrt{C}$ instead of $1/\sqrt{S}$, and with $C \gg S$ the Wald $z$-statistics are badly inflated. This reproduces the known behaviour of the original flat-script implementation and is documented as a property of `random = "none"`, which is why it is no longer the default.
 
 We can see it directly. Below we simulate a **null** data set: every cell of a patient shares a per-patient random shift, but there is *no* response effect at all — so every response test should be null.
 
@@ -301,8 +308,65 @@ cohort grows (each gene's own between-sample variance then has ample $S-2$ df).
 We use the random-effects model because it delivers that pooling and — the part
 that actually matters for the niche interactions — the per-coefficient degrees of
 freedom (see *Per-coefficient degrees of freedom* below), and because it handles
-the NB-GLM and covariates without hand-assembling error strata; not because a
-nested fixed model fails.
+the NB-GLM and covariates without hand-assembling error strata.
+
+#### A nested fixed model was built, measured, and rejected
+
+The "between-sample df" arm above is an **unweighted $t$-test on the $S$ sample
+means**. That test is calibrated — it is essentially a pseudobulk analysis, and
+holds $0.041$–$0.051$ across every design point we have measured. What does
+*not* work is the natural way of folding that stratum back into the GLM, which
+is worth recording because the reasoning is seductive.
+
+The idea: keep the nested `contr.sum` block in the design, form the whole-plot
+mean square from it, and substitute that for the dispersion in the Wald
+standard error,
+
+$$
+\hat\sigma^2_{\mathrm{b},t}
+  = \frac{1}{S-2}\sum_s W_{st}\bigl(m_{st} - \bar m_{t,q(s)}\bigr)^2,
+\qquad
+\mathrm{SE}_j = \sqrt{\hat\sigma^2_{\mathrm{b},t(j)}\,(\mathbf{A}^{-1})_{jj}},
+$$
+
+with $m_{st}$ the working-weighted mean residual of cell type $t$ in sample $s$,
+centred within condition group. The justification is that
+$\mathbb{E}[\hat\sigma^2_{\mathrm{b},t}] \approx \phi + \bar W_t\sigma^2_u$
+while $\phi(\mathbf{A}^{-1})_{jj} = \tfrac{4}{S}\phi/\bar W_t$, so their ratio
+is exactly the inflation $1 + \bar W_t\sigma^2_u/\phi$ that the contrast needs.
+
+**That step silently assumes $(\mathbf{A}^{-1})_{jj}$ shrinks as $1/\bar W_t$,
+so the two $\bar W_t$ terms cancel. They do not.** Measured against the true
+sampling distribution of $\hat\beta$ (geometry and gene parameters held fixed
+across replicates, so $\mathrm{sd}(\hat\beta)$ is a genuine sampling SD):
+
+```{r stratum_decomp, echo = FALSE}
+knitr::kable(
+  data.frame(
+    `cells per sample` = c(60, 160, 400),
+    `inflation required` = c(2.63, 2.59, 2.35),
+    `inflation applied` = c(3.63, 5.39, 7.60),
+    `null type-I` = c(0.0198, 0.00043, 0.000),
+    check.names = FALSE),
+  caption = paste("The required inflation is CONSTANT in cells per sample;",
+                  "the whole-plot mean square grows as sqrt(Wbar). Nominal",
+                  "type-I is 0.05, and the pseudobulk oracle holds 0.042-0.057",
+                  "at every one of these points."))
+```
+
+Across an 18-cell factorial (varying $S$, cells per sample, and $\sigma_u$, with
+a calibrated oracle and a known-broken negative control in every cell) the
+construction is calibrated at **exactly one** design point and collapses to zero
+rejections as cells per sample grow. The whole-plot mean square is the **wrong
+quantity** for a cell-means condition contrast, not a mis-scaled version of the
+right one, so there is no implementation fix. Details and the full measurements
+are in `research/reports/between-sample-stratum.html`.
+
+Two intermediate findings from that work *were* correct and are reusable: the
+stratum must be **cell-type specific** (pooling it to sample level over-inflates
+the variance by a factor of $k$), and estimating it from residual aggregates
+avoids both a $k(S-2)$ column blow-up — 4,752 columns at 24 cell types and 200
+samples — and a double count that afflicts the design-column form.
 
 ## The model
 
@@ -454,6 +518,21 @@ expect to see:
     $|\log\hat\tau^2_{\text{new}} - \log\hat\tau^2_{\text{old}}| < \texttt{re.tol}$
     — log scale because $\tau^2$ is a variance (strictly positive, and
     naturally multiplicative in how far off a bad starting guess is).
+-   **Iteration cap (`re.maxit`, default `2`).** Lowered from 10 on
+    measurement. For `random = "intercept"` a single iteration is
+    indistinguishable from ten on null type-I error (to three decimal places)
+    and on $\hat\tau^2$ (to two), because the loop converges in a couple of
+    steps; the second iteration is kept as cheap insurance. The smaller cap also
+    largely dissolves a hazard of the larger one: $\hat\tau^2$ can enter a
+    **2-cycle** rather than converging, in which case the value returned depends
+    on the *parity* of `re.maxit` — an unpleasant property for a default.
+
+    **This evidence covers the intercept model only.** Under
+    `random = "slope"` the slope variance component decays *monotonically*
+    across all ten iterations without ever meeting `re.tol`, so a cap of 2
+    leaves it orders of magnitude from where 10 leaves it. Pass
+    `re.maxit = 10` for slope fits.
+
 -   **Cell subsampling for speed (`re.prop`, default `1`, i.e. off).** The
     *inner* loop's fits can optionally run on a stratified subsample of cells
     (every sample $\times$ cell type stays represented) with a single
@@ -850,7 +929,7 @@ res <- spiDE(spe, condition = "condition", sigma = c(10, 30, 50),
 
 -   **Sample-level covariates.** A per-sample random intercept already adjusts for *all* between-sample nuisance variation, so it is confounded with measured sample-level covariates (Age, Sex, Stage) — exactly the collinearity demonstrated at the top of this section. `spiDE` therefore errors if such a covariate is passed together with `random != "none"` — drop it; the random intercept subsumes it.
 -   **Number of samples.** The correction is only as good as the between-sample information: with very few samples the variance components (and the $S-2$ reference df) are unstable, and a warning is issued.
--   **Correct, not merely "fixed with extras".** The mixed fit does more than add a between-patient variance component: it also replaces the default's NB dispersion scaling and sub-design covariance with the correct **working (quasi-NB) dispersion** and **full penalised covariance**. So even when $\tau^2 \to 0$ (no genuine clustering) the mixed fit does *not* reproduce the default fit — it gives the correctly-scaled, and hence more conservative, standard errors. This is deliberate: the default fit is known to be anti-conservative, so its larger apparent "power" is partly spurious.
+-   **Correct, not merely "fixed with extras".** The mixed fit does more than add a between-patient variance component: it also replaces `random = "none"`'s NB dispersion scaling and sub-design covariance with the correct **working (quasi-NB) dispersion** and **full penalised covariance**. So even when $\tau^2 \to 0$ (no genuine clustering) the mixed fit does *not* reproduce the `"none"` fit — it gives the correctly-scaled, and hence more conservative, standard errors. This is deliberate: `"none"` is known to be anti-conservative, so its larger apparent "power" is partly spurious. It is for this reason that `"intercept"` is now the default.
 -   **Power needs samples and effect size.** Because the test is now honest, a real response-niche effect must be visible *between patients* to be declared. With few patients, or an effect seen in only a handful of responders, the between-patient df and the inflated SEs will (correctly) leave it non-significant. `df.method = "satterthwaite"` recovers legitimate power for niche coefficients that carry within-patient information — giving them their larger effective df instead of the flat $S-2$ — without touching the honest between-patient df of the main effect; larger sample sizes restore power further.
 
 # Session info

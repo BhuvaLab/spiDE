@@ -3,7 +3,7 @@
   spe <- buildNiches(.toySPE(), sigma = sigma)
   spe <- computeSizeFactors(spe, count = "nCount", area = "Area")
   res <- fitSpiDE(spe,
-    condition = "condition", sigma = sigma,
+    condition = "condition", sigma = sigma, random = "none",
     covariates = c("Age", "LS"), verbose = FALSE
   )
   list(fit = fits(res)[[1]], Y = as.matrix(SummarizedExperiment::assay(spe, "counts")))

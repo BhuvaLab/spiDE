@@ -8,6 +8,7 @@
 # file starts testing something other than Cauchy loudly rather than silently.
 spe_e2e <- .toySPE()
 res_e2e <- spiDE(spe_e2e, condition = "condition", sigma = c(10, 30, 50),
+                 random = "none",
                  covariates = "Age", combine = "cauchy", verbose = FALSE)
 tab_e2e <- results(res_e2e)
 
@@ -77,15 +78,15 @@ test_that("spiDE is deterministic and invariant to block.size", {
   # sigma doubles the fits without adding coverage. Cross-bandwidth combination
   # is exercised by the shared three-bandwidth run at the top of this file.
   spe <- .toySPE()
-  a <- spiDE(spe, condition = "condition", sigma = 30,
+  a <- spiDE(spe, condition = "condition", sigma = 30, random = "none",
     covariates = "Age", backend = "cpu", verbose = FALSE)
-  b <- spiDE(spe, condition = "condition", sigma = 30,
+  b <- spiDE(spe, condition = "condition", sigma = 30, random = "none",
     covariates = "Age", backend = "cpu", verbose = FALSE, block.size = 3)
   expect_equal(results(a), results(b))
 })
 
 test_that("testSpiDE errors if inference is missing and no spe is supplied", {
   spe <- buildNiches(.toySPE(), sigma = 20)
-  res <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+  res <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
   expect_error(testSpiDE(res), "spe")
 })

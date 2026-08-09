@@ -24,7 +24,7 @@ test_that(".cauchyCombine handles NA entries via na.rm", {
 
 test_that(".geneWeights are relative likelihoods thresholded to zero", {
   spe <- buildNiches(.toySPE(), sigma = c(10, 30))
-  res <- fitSpiDE(spe, condition = "condition", verbose = FALSE)
+  res <- fitSpiDE(spe, condition = "condition", random = "none", verbose = FALSE)
   w <- spiDE:::.geneWeights(fits(res), thresh = 0.1)
   expect_equal(dim(w), c(20L, 2L))
   expect_true(all(w >= 0))

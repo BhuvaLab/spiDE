@@ -8,7 +8,7 @@
 .toyFit <- function(sigma = 20) {
   spe <- buildNiches(.toySPE(), sigma = sigma)
   spe <- computeSizeFactors(spe, count = "nCount", area = "Area")
-  res <- fitSpiDE(spe, condition = "condition", sigma = sigma,
+  res <- fitSpiDE(spe, condition = "condition", sigma = sigma, random = "none",
                   covariates = c("Age", "LS"), verbose = FALSE)
   list(fit = fits(res)[[1]],
        Y = as.matrix(SummarizedExperiment::assay(spe, "counts")))
@@ -62,7 +62,7 @@ test_that("GPU inference matches the CPU path (mixed effects)", {
   set.seed(1)
   # df.method = "between" for speed: this test compares the CPU and GPU
   # inference paths on one shared fit, so the reference df is irrelevant to it.
-  res <- fitSpiDE(spe, condition = "condition", sigma = 20,
+  res <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none",
                   random = "intercept", df.method = "between", verbose = FALSE)
   fm <- fits(res)[[1]]
   Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
@@ -106,10 +106,10 @@ test_that("fitSpiDE GPU backend matches the CPU fit on the toy data", {
   skip_if_no_gpu()
   spe <- buildNiches(.toySPE(), sigma = 20)
   spe <- computeSizeFactors(spe, count = "nCount", area = "Area")
-  cpu <- fitSpiDE(spe, condition = "condition", sigma = 20,
+  cpu <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none",
                   covariates = c("Age", "LS"), backend = "cpu",
                   verbose = FALSE)
-  gpu <- fitSpiDE(spe, condition = "condition", sigma = 20,
+  gpu <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none",
                   covariates = c("Age", "LS"), backend = "gpu",
                   verbose = FALSE)
   expect_equal(fits(gpu)[[1]]@alpha, fits(cpu)[[1]]@alpha, tolerance = gpu_tol())

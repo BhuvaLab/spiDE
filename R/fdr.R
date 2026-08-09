@@ -89,7 +89,7 @@
     cols <- cm$covariate
     # per-column df aligned to the ResponseNiche subset (rn) of the tested cols;
     # a scalar/NULL @df is used as-is (recycled / normal reference).
-    dfn <- if (is.null(f@df) || length(f@df) == 1L) f@df else f@df[rn]
+    dfn <- .dfFor(f, rn)
     lower <- .ptByCol(tmat, dfn)
     pmat <- pmin(lower, 1 - lower)
     do.call(rbind, lapply(seq_along(cols), function(j) {

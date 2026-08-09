@@ -37,7 +37,7 @@ test_that(".geneIndexFDR returns NULL when nothing passes", {
 
 test_that(".hierarchicalFDR returns the empty schema when nothing passes", {
   spe <- buildNiches(.toySPE(), sigma = 20)
-  res <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+  res <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
   fitl <- fits(res)
   gene.w <- spiDE:::.geneWeights(fitl)
   # all-null p-values (gene, plus the three index cell types)
