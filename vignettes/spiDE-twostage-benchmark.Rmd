@@ -63,7 +63,7 @@ if (!is.null(NULLT)) {
   print(ggplot(d, aes(S, type1, colour = method)) +
     geom_hline(yintercept = 0.05, linetype = 2, colour = "grey40") +
     geom_line(linewidth = 0.7) + geom_point(size = 1.9) +
-    facet_wrap(~ layout) +
+    facet_wrap(~ layout) + scale_colour_spide("method") +
     labs(x = "samples (S)", y = "type-I error", colour = NULL,
          title = "Null calibration against a nominal 0.05",
          subtitle = "dashed line = nominal; above it is anti-conservative"))
@@ -99,7 +99,7 @@ if (!is.null(POW)) {
     geom_hline(data = data.frame(metric = "FDP", y = 0.05), aes(yintercept = y),
                linetype = 2, colour = "grey40") +
     geom_line(linewidth = 0.7) + geom_point(size = 1.9) +
-    facet_wrap(~ metric, scales = "free_y") +
+    facet_wrap(~ metric, scales = "free_y") + scale_colour_spide("method") +
     labs(x = "samples (S)", y = NULL, colour = NULL,
          title = "Power and realized FDP, samples sweep, FDR 0.05"))
 }

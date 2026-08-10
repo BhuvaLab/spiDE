@@ -30,7 +30,14 @@
 
 spide_pal <- list(
   # mixed-effects modes (Dark2)
-  method = c(fixed = "#D95F02", intercept = "#1B9E77", slope = "#7570B3"),
+  # mixed-effects modes plus the two-stage estimator (Dark2). twostage is the
+  # fourth Dark2 hue: the family was already three of that set, and Dark2's first
+  # four are the ColorBrewer qualitative sequence built to stay separable under
+  # CVD -- so the addition extends the family rather than introducing a stray hue.
+  # Without an entry here twostage plots as NA grey wherever scale_colour_spide()
+  # is used, which is how it first appeared in the simulation vignette.
+  method = c(fixed = "#D95F02", intercept = "#1B9E77", slope = "#7570B3",
+             twostage = "#E7298A"),
   # within-gene p-value combiners (own figures only; no clash in context)
   combine = c(Brown = "#7570B3", Cauchy = "#D95F02"),
   # one- vs two-sided input to a combiner. Brown keeps its `combine` colour;
