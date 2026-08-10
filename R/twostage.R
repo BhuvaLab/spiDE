@@ -69,7 +69,8 @@
 #' @return a named list of (genes x niches x patients) arrays, one per index.
 #' @noRd
 .patientSlopes <- function(Y, E, nm, ct, pat, idx_types, min.cells,
-                           stage1 = c("pearson", "ols", "nb"), winsor = 4, lambda.a = 0,
+                           stage1 = c("auto", "nbresid", "ols", "analytic", "nb"),
+                          winsor = 4, lambda.a = 0,
                            maxit.psi = 2, backend = "cpu", verbose = FALSE) {
   stage1 <- match.arg(stage1)
   pats <- sort(unique(pat))
@@ -89,7 +90,7 @@
       ss <- colSums(Xc^2)
       ok <- ss > 1e-8
       if (!any(ok)) next
-      if (stage1 %in% c("ols", "pearson")) {
+      if (stage1 %in% c("ols", "nbresid", "analytic")) {
         # Both are a single weighted/unweighted matrix product per subset. E
         # holds log-CPM ("ols") or analytic Pearson residuals ("pearson").
         Ec <- E[, k, drop = FALSE]
@@ -117,6 +118,53 @@
     message(sprintf("  note: %d (patient, index) NB fits failed and were skipped", nfail))
   }
   out
+}
+
+#' Does an assay look like counts?
+#'
+#' Counts and Pearson residuals are told apart by their values, not by their
+#' name, because passing the wrong assay is silent and expensive: running the
+#' variance-stabilisation twice, or not at all, changes power without changing
+#' anything visible in the output.
+#' @noRd
+.looksLikeCounts <- function(Y, n = 2000L) {
+  idx <- if (length(Y) > n) sample(length(Y), n) else seq_along(Y)
+  v <- as.numeric(Y[idx])
+  v <- v[is.finite(v)]
+  if (!length(v)) return(FALSE)
+  all(v >= 0) && all(abs(v - round(v)) < 1e-8)
+}
+
+#' Pearson residuals from an intercept-only negative binomial fit
+#'
+#' One \code{fitNB} over the whole panel with an intercept-only design, then
+#' \eqn{r = (y - \mu)/\sqrt{\mu + \psi\mu^2}}. This is the default when
+#' counts are supplied.
+#'
+#' Intercept-only is deliberate. A richer normalisation model absorbs signal:
+#' \code{SpaNorm()} carries thin-plate-spline SPATIAL terms, and niche density
+#' is a spatial quantity, so its residuals attenuate the very effect under test
+#' -- measured on the toy fixture, the planted effect went from rank 2 (p 0.014)
+#' on intercept-only residuals to rank 4 (p 0.035) on SpaNorm's. Usable, but a
+#' 2.4x cost in p, paid for nothing when a separate intercept-only fit is one
+#' call.
+#'
+#' A per-cell library-size term is deliberately NOT included: on a panel where a
+#' few genes dominate the library, a planted effect raises the depth of the very
+#' cells carrying it, so adjusting for depth removes signal (on the toy that
+#' moved the planted effect from rank 11 to rank 36).
+#' @noRd
+.nbPearsonResiduals <- function(Y, winsor = 4, lambda.a = 0, maxit.psi = 2,
+                                backend = "cpu", verbose = FALSE) {
+  W <- matrix(1, ncol(Y), 1, dimnames = list(NULL, "(Intercept)"))
+  if (verbose) message("stage 1: intercept-only NB fit for Pearson residuals")
+  f <- SpaNorm::fitNB(Y, W, lambda.a = lambda.a, winsor = winsor,
+                      maxit.psi = maxit.psi, backend = backend, verbose = FALSE)
+  mu <- as.matrix(SpaNorm::calculateMu(f$gmean, f$alpha, W))
+  r <- (as.matrix(Y) - mu) / sqrt(pmax(mu + sweep(mu^2, 1, f$psi, "*"), 1e-8))
+  r[!is.finite(r)] <- 0
+  dimnames(r) <- dimnames(Y)
+  r
 }
 
 #' Analytic Pearson residuals
@@ -273,7 +321,8 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
                           patient.covariates = character(), assay = "counts",
                           cell_type = "cell_type", sample_id = "sample_id",
                           name = "Niche", min.cells = 30L, fdr = 0.05,
-                          stage1 = c("pearson", "ols", "nb"), winsor = 4, lambda.a = 0,
+                          stage1 = c("auto", "nbresid", "ols", "analytic", "nb"),
+                          winsor = 4, lambda.a = 0,
                           maxit.psi = 2, backend = "cpu", verbose = TRUE) {
   stage1 <- match.arg(stage1)
   checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
@@ -301,11 +350,34 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
   if (!length(idx_types)) stop("no requested index cell types found")
 
   Y <- SummarizedExperiment::assay(spe, assay)
-  checkCounts(Y)
+  # AUTO: counts in -> variance-stabilise them here; residuals in -> trust them.
+  # Pearson residuals are the natural input (a SpaNorm normalisation run already
+  # produces them via adj.method = "pearson"), and running OLS on residuals that
+  # are ALREADY variance-stabilised is the correct thing -- re-standardising
+  # would be wrong. Counts are detected rather than declared, because passing the
+  # wrong assay silently is the expensive mistake here.
+  is_counts <- .looksLikeCounts(Y)
+  if (identical(stage1, "auto")) {
+    stage1 <- if (is_counts) "nbresid" else "ols"
+    if (verbose) {
+      message(sprintf("stage1 = \"%s\" (assay '%s' %s)", stage1, assay,
+                      if (is_counts) "looks like counts" else
+                        "is not counts -- assumed pre-stabilised, e.g. Pearson residuals"))
+    }
+  }
+  if (stage1 %in% c("nbresid", "nb", "analytic") && !is_counts) {
+    stop("stage1 = '", stage1, "' needs counts, but assay '", assay,
+         "' does not look like counts")
+  }
+  if (is_counts) checkCounts(Y)
   # log-CPM is only needed by the "ols" path, and densifying 13k x 77k costs
   # 8 GB -- do not pay for it when fitting NB.
   E <- NULL
-  if (stage1 == "pearson") {
+  if (stage1 == "nbresid") {
+    E <- .nbPearsonResiduals(Y, winsor = winsor, lambda.a = lambda.a,
+                             maxit.psi = maxit.psi, backend = backend,
+                             verbose = verbose)
+  } else if (stage1 == "analytic") {
     E <- .pearsonResiduals(Y)
   } else if (stage1 == "ols") {
     lib <- Matrix::colSums(Y)
