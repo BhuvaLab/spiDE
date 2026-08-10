@@ -451,8 +451,11 @@ bench <- function(f, keep_df_method = FALSE) {
   # "between" arm by default; the null-calibration section below passes
   # keep_df_method = TRUE to see both arms, since that comparison is the point
   # of that figure.
+  # twostage is kept alongside: it has no df.method choice at all (its reference
+  # is the Welch df of the patient-level contrast), so collapsing to the
+  # "between" arm would drop it from every figure rather than collapse it.
   if (!is.null(d) && !is.null(d$df.method) && !keep_df_method) {
-    d <- d[d$df.method == "between", ]
+    d <- d[d$df.method %in% c("between", "twostage"), ]
   }
   # The model-design arm is a third axis, handled the same way: this report
   # characterises the design the package SHIPS, and the demoted arm is compared
@@ -588,14 +591,16 @@ t1 <- bench("null_type1.csv", keep_df_method = TRUE)
 if (!is.null(t1)) {
   t1$method <- factor(t1$method, levels = names(spide_pal$method))
   if (is.null(t1$df.method)) t1$df.method <- "between"
-  t1$df.method <- factor(t1$df.method, levels = c("between", "satterthwaite"))
+  t1$df.method <- factor(t1$df.method, levels = c("between", "satterthwaite", "twostage"))
   ggplot(t1, aes(S, type1, colour = method, linetype = df.method)) +
     geom_hline(yintercept = 0.05, linetype = 2, colour = spide_pal$ref) +
     errbars(t1, "type1") +
     geom_line(linewidth = 0.8) + geom_point(size = 2) +
     facet_wrap(~ layout) +
     scale_colour_spide("method") +
-    scale_linetype_manual(values = c(between = "solid", satterthwaite = "22")) +
+    scale_linetype_manual(values = c(between = "solid", satterthwaite = "22",
+                                     twostage = "solid"),
+                          breaks = c("between", "satterthwaite")) +
     labs(x = "number of patient samples (S)",
          y = "P(reject | null) at alpha = 0.05",
          colour = "mode", linetype = "reference df",
@@ -609,7 +614,7 @@ Under the legacy **between-patient** reference (solid lines), the mixed modes ar
 
 The **Satterthwaite** reference (dashed) targets precisely this, giving each coefficient the df its own information content earns rather than one flat $S-2$. It holds close to nominal across the *entire* sampled range. The honest caveat is that it does **overshoot mildly** at larger $S$ — worst measured $\approx 0.065$, a $\approx 30\%$ relative inflation — so it is slightly liberal where `between` is drastically conservative. That residual points at the covariance, and a Kenward–Roger correction is the indicated next step (see *The spiDE model*). Trading a bounded $30\%$ overshoot for a 50-fold undershoot, plus the power it unlocks, is why Satterthwaite is now the package default.
 
-The **fixed** mode has no `df.method` to vary (it never uses a between-patient reference), so it appears solid throughout and stays low here regardless — the within-gene combination of many niche tests is itself conservative under a pure null. Its real problem surfaces not here but in the false-discovery-rate figure below, where between-patient variance under a *real* effect makes it anti-conservative.
+The **fixed** and **two-stage** modes have no `df.method` to vary (neither uses a between-patient reference — two-stage takes its df from the patient-level Welch contrast), so they appear solid throughout and stays low here regardless — the within-gene combination of many niche tests is itself conservative under a pure null. Its real problem surfaces not here but in the false-discovery-rate figure below, where between-patient variance under a *real* effect makes it anti-conservative.
 
 A quantile–quantile (QQ) plot makes the same calibration check across the whole distribution of p-values rather than at one threshold. Because each point is an order statistic pooled over many genes and replicates rather than an independent replicate mean, there is no per-point standard error to draw here — the type-I error and FDP figures above and below are where replicate-to-replicate uncertainty is quantified.
 
@@ -638,19 +643,21 @@ The Satterthwaite reference does not just fix small-$S$ calibration — it also 
 
 **How it is computed.** From the *power* family, in which \~9 % of genes (900 of \~`r format(n_genes_total, big.mark = ",")`: 300 markers + 300 housekeeping + 300 background) carry the planted effect. Raw power is the fraction of those 900 true genes whose uncorrected ResponseNiche p-value is below 0.05, averaged over `r n_reps` replicates. Each panel sweeps one axis while the other two are held at their fixed values (`S = ` `r S_fixed`, `r npc_fixed` cells, `β = ` `r beta_fixed`).
 
-```{r bench-power, fig.height = 4, fig.cap = "Raw (uncorrected) power to detect the planted niche effect versus the number of patient samples, the number of cells per sample, and the effect size. Higher is better. Colour is the inference mode; linetype is the reference-df method (between vs Satterthwaite) -- the fixed mode has no df.method and always appears solid."}
+```{r bench-power, fig.height = 4, fig.cap = "Raw (uncorrected) power to detect the planted niche effect versus the number of patient samples, the number of cells per sample, and the effect size. Higher is better. Colour is the inference mode; linetype is the reference-df method (between vs Satterthwaite) -- the fixed and two-stage modes have no df.method and always appear solid."}
 pp <- bench("power_points.csv", keep_df_method = TRUE)
 if (!is.null(pp)) {
   pp$method <- factor(pp$method, levels = names(spide_pal$method))
   if (is.null(pp$df.method)) pp$df.method <- "between"
-  pp$df.method <- factor(pp$df.method, levels = c("between", "satterthwaite"))
+  pp$df.method <- factor(pp$df.method, levels = c("between", "satterthwaite", "twostage"))
   base <- function(df, x, xlab, title) ggplot(df, aes(.data[[x]], power_raw,
                                                       colour = method,
                                                       linetype = df.method)) +
     errbars(df, "power_raw") +
     geom_line(linewidth = 0.8) + geom_point(size = 2) + ylim(0, 1) +
     scale_colour_spide("method") +
-    scale_linetype_manual(values = c(between = "solid", satterthwaite = "22")) +
+    scale_linetype_manual(values = c(between = "solid", satterthwaite = "22",
+                                     twostage = "solid"),
+                          breaks = c("between", "satterthwaite")) +
     labs(x = xlab, y = "power", colour = "mode", linetype = "reference df",
          title = title)
   p1 <- base(subset(pp, sweep == "samples"), "S", "patient samples (S)",
@@ -710,20 +717,22 @@ if (!is.null(pp) && !is.null(pf)) {
 
 **What is plotted.** Recall at a fixed 5 % FDR as each experimental axis is swept in turn, for all three modes, **pooled across all three gene categories** (see "Which genes are detected?" below for the category-resolved version). Higher is better; there is no reference line.
 
-```{r bench-recall, fig.height = 4, fig.cap = "Recall at 5% FDR versus samples, cells per sample, and effect size. The same detection threshold appears on every axis: recall is near zero until the signal is strong enough, then rises. Colour is the inference mode; linetype is the reference-df method (between vs Satterthwaite) -- the fixed mode has no df.method and always appears solid."}
+```{r bench-recall, fig.height = 4, fig.cap = "Recall at 5% FDR versus samples, cells per sample, and effect size. The same detection threshold appears on every axis: recall is near zero until the signal is strong enough, then rises. Colour is the inference mode; linetype is the reference-df method (between vs Satterthwaite) -- the fixed and two-stage modes have no df.method and always appear solid."}
 pf <- bench("power_fdr.csv", keep_df_method = TRUE)
 if (!is.null(pf)) {
   d5 <- subset(pf, fdr == 0.05)
   d5$method <- factor(d5$method, levels = names(spide_pal$method))
   if (is.null(d5$df.method)) d5$df.method <- "between"
-  d5$df.method <- factor(d5$df.method, levels = c("between", "satterthwaite"))
+  d5$df.method <- factor(d5$df.method, levels = c("between", "satterthwaite", "twostage"))
   rc <- function(df, x, xlab, title) ggplot(df, aes(.data[[x]], tpr,
                                                     colour = method,
                                                     linetype = df.method)) +
     errbars(df, "tpr") +
     geom_line(linewidth = 0.8) + geom_point(size = 2) + ylim(0, 1) +
     scale_colour_spide("method") +
-    scale_linetype_manual(values = c(between = "solid", satterthwaite = "22")) +
+    scale_linetype_manual(values = c(between = "solid", satterthwaite = "22",
+                                     twostage = "solid"),
+                          breaks = c("between", "satterthwaite")) +
     labs(x = xlab, y = "recall @ 5% FDR", colour = "mode",
          linetype = "reference df", title = title)
   r1 <- rc(subset(d5, sweep == "samples"), "S", "patient samples (S)",
