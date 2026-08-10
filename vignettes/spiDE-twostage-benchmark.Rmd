@@ -24,8 +24,15 @@ bench <- function(f) {
   if (!nzchar(p) || !file.exists(p)) return(NULL)
   readRDS(p)
 }
-NULLT <- bench("null_type1_twostage.rds")
-POW   <- bench("power_fdr_twostage.rds")
+# One canonical table per scenario -- the two-stage arm is additional ROWS in the
+# published tables, selected by `method`, not a parallel file that would carry a
+# stale copy of the other arms.
+NULLT <- bench("null_type1.rds")
+if (!is.null(NULLT)) NULLT <- NULLT[NULLT$design == "celltype-response", ]
+POW <- bench("power_fdr.rds")
+if (!is.null(POW)) POW <- POW[POW$sweep == "samples" & POW$fdr == 0.05 &
+                              POW$design == "celltype-response" & POW$layout == "gradient" &
+                              (POW$df.method %in% c("satterthwaite", "twostage")), ]
 ```
 
 # What is being compared
