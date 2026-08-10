@@ -292,7 +292,15 @@ validSpiDEResults <- function(object) {
   if (length(object@fits) > 0 && !all(vapply(object@fits, is, logical(1), "SpiDEFit"))) {
     stop("'fits' should be a list of SpiDEFit objects")
   }
-  if (length(object@fits) != length(object@sigma)) {
+  # The fits/sigma pairing is an invariant of the GLM path, where there is one
+  # SpiDEFit per bandwidth. twoStageSpiDE() has no per-gene GLM fit at all -- it
+  # estimates per-patient slopes and contrasts them -- so it carries its
+  # bandwidth in `sigma` with an EMPTY `fits`. Keyed on the empty list rather
+  # than on a new `mode` value, because `mode` drives .testedCols() /
+  # .nicheTestCols() and a third level there would silently change which columns
+  # downstream code treats as tested.
+  if (length(object@fits) > 0 &&
+      length(object@fits) != length(object@sigma)) {
     stop("length of 'fits' does not match length of 'sigma'")
   }
   .checkMode(object@mode)
