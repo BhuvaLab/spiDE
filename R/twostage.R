@@ -30,24 +30,58 @@
 
 #' Per-patient niche slopes (stage 1)
 #'
-#' For each patient and index cell type, regresses each gene's log-CPM on each
-#' niche density across that patient's cells of that type. Vectorised as one
-#' matrix product per (patient, index): all genes and niches at once.
+#' Two estimators, selected by \code{stage1}:
 #'
-#' @param E genes x cells log-CPM matrix.
+#' \describe{
+#'   \item{\code{"nb"}}{the default. Per (patient, index cell type), fits a
+#'     negative binomial GLM over ALL genes at once with
+#'     \code{SpaNorm::fitNB} on the design \code{[1, log lib, niches]}; the
+#'     niche coefficients are the slopes. This is the same count model the
+#'     one-stage path uses, so a gene's mean-variance behaviour is respected
+#'     rather than assumed away.}
+#'   \item{\code{"ols"}}{regresses log-CPM on niche density by a single matrix
+#'     product per (patient, index). Far faster, but log-CPM of a gene averaging
+#'     0.08 counts is mostly log1p(0), so it is weak exactly where this panel
+#'     lives. Retained because it is ~10x cheaper and adequate for well-expressed
+#'     genes.}
+#' }
+#'
+#' \code{log lib} enters the NB design explicitly. The one-stage spiDE design
+#' carries no per-cell library-size term, but a WITHIN-patient slope is
+#' vulnerable in a way the pooled fit is not: if sequencing depth varies with
+#' local density inside a patient, an unadjusted slope absorbs it. The "ols"
+#' path handles the same thing by using CPM.
+#'
+#' Dispersion is estimated within each (patient, index) subset, which is a
+#' genuine cost of the design: those subsets are small (tens to hundreds of
+#' cells), so the moderated estimate is noisier than the pooled one the
+#' one-stage fit enjoys. \code{maxit.psi} caps that work.
+#'
+#' @param Y counts (genes x cells).
+#' @param E genes x cells log-CPM (used by "ols" only).
 #' @param nm cells x niches density matrix.
 #' @param ct,pat per-cell index cell type and patient labels.
 #' @param idx_types index cell types to fit.
 #' @param min.cells minimum cells for a patient to contribute a slope.
+#' @param stage1 "nb" or "ols".
+#' @param winsor,lambda.a,maxit.psi,backend passed to \code{SpaNorm::fitNB}.
+#' @param verbose a logical.
 #' @return a named list of (genes x niches x patients) arrays, one per index.
 #' @noRd
-.patientSlopes <- function(E, nm, ct, pat, idx_types, min.cells) {
+.patientSlopes <- function(Y, E, nm, ct, pat, idx_types, min.cells,
+                           stage1 = c("ols", "nb"), winsor = 4, lambda.a = 0,
+                           maxit.psi = 2, backend = "cpu", verbose = FALSE) {
+  stage1 <- match.arg(stage1)
   pats <- sort(unique(pat))
   niches <- colnames(nm)
+  ng <- if (stage1 == "nb") nrow(Y) else nrow(E)
+  gn <- if (stage1 == "nb") rownames(Y) else rownames(E)
+  loglib <- log(pmax(Matrix::colSums(Y), 1))
   out <- setNames(vector("list", length(idx_types)), idx_types)
+  nfail <- 0L
   for (ix in idx_types) {
-    A <- array(NA_real_, c(nrow(E), length(niches), length(pats)),
-               dimnames = list(rownames(E), niches, pats))
+    A <- array(NA_real_, c(ng, length(niches), length(pats)),
+               dimnames = list(gn, niches, pats))
     for (pp in seq_along(pats)) {
       k <- which(ct == ix & pat == pats[pp])
       if (length(k) < min.cells) next
@@ -55,12 +89,30 @@
       ss <- colSums(Xc^2)
       ok <- ss > 1e-8
       if (!any(ok)) next
-      Ec <- E[, k, drop = FALSE]
-      Ec <- Ec - rowMeans(Ec)
-      A[, ok, pp] <- (Ec %*% Xc[, ok, drop = FALSE]) %*%
-        diag(1 / ss[ok], sum(ok))
+      if (stage1 == "ols") {
+        Ec <- E[, k, drop = FALSE]
+        Ec <- Ec - rowMeans(Ec)
+        A[, ok, pp] <- (Ec %*% Xc[, ok, drop = FALSE]) %*% diag(1 / ss[ok], sum(ok))
+      } else {
+        W <- cbind(`(Intercept)` = 1, loglib = loglib[k] - mean(loglib[k]),
+                   Xc[, ok, drop = FALSE])
+        if (qr(W)$rank < ncol(W)) next          # collinear within this subset
+        fit <- try(SpaNorm::fitNB(Y[, k, drop = FALSE], W, lambda.a = lambda.a,
+                                  winsor = winsor, maxit.psi = maxit.psi,
+                                  backend = backend, verbose = FALSE),
+                   silent = TRUE)
+        if (inherits(fit, "try-error")) { nfail <- nfail + 1L; next }
+        A[, ok, pp] <- fit$alpha[, -(1:2), drop = FALSE]
+      }
     }
     out[[ix]] <- A
+    if (verbose) {
+      message(sprintf("  %-22s %d patients >= %d cells", ix,
+                      sum(apply(!is.na(A[1, , , drop = FALSE]), 3, any)), min.cells))
+    }
+  }
+  if (nfail > 0L) {
+    message(sprintf("  note: %d (patient, index) NB fits failed and were skipped", nfail))
   }
   out
 }
@@ -137,6 +189,28 @@
 #'   columns to adjust for in stage 2 (e.g. sex, stage, histology). These are
 #'   exactly the covariates [fitSpiDE()] rejects under \code{random != "none"}.
 #' @param assay,cell_type,sample_id,name column/assay names.
+#' @param stage1 one of "ols" (the default) or "nb".
+#'
+#'   \strong{"nb" is currently impractical at panel scale and the default is
+#'   "ols" on measurement, not preference.} A single \code{fitNB} call on one
+#'   (patient, index) subset of the YTMA cohort costs \strong{23 s} even at
+#'   \code{maxit.psi = 1} -- and for a 158-cell subset, so the expense is
+#'   per-GENE (dispersion estimation and IRLS setup over 13,348 genes), not per
+#'   cell. Across 1,320 (patient, index) combinations that is \strong{8.5
+#'   hours}, four times the one-stage fit this estimator exists to replace.
+#'
+#'   "nb" is also not obviously better where it has been checked: on the toy
+#'   fixture it ranked the planted effect 17th where "ols" ranked it 2nd, though
+#'   that fixture is unfair to it (27-cell subsets, dispersion moderated over 40
+#'   genes).
+#'
+#'   The route to making "nb" viable is FEWER CALLS, not faster ones: one fit per
+#'   patient carrying \code{CellType:niche} interactions (55 calls) rather than
+#'   one per (patient, index) (1,320), which the cost profile above predicts
+#'   would land near the one-stage runtime. Until that is built, "nb" is offered
+#'   for small index/niche restrictions where the call count is low.
+#' @param winsor,lambda.a,maxit.psi,backend forwarded to
+#'   \code{\link[SpaNorm]{fitNB}} by the "nb" path.
 #' @param min.cells minimum cells for a patient to contribute a slope (default
 #'   30). Patients below it are dropped for that index type and the count is
 #'   reported, rather than contributing an unstable slope.
@@ -157,7 +231,9 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
                           patient.covariates = character(), assay = "counts",
                           cell_type = "cell_type", sample_id = "sample_id",
                           name = "Niche", min.cells = 30L, fdr = 0.05,
-                          verbose = TRUE) {
+                          stage1 = c("ols", "nb"), winsor = 4, lambda.a = 0,
+                          maxit.psi = 2, backend = "cpu", verbose = TRUE) {
+  stage1 <- match.arg(stage1)
   checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
   checkCondition(spe, condition)
   checkNiche(spe, sigma, name = name)
@@ -184,14 +260,22 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
 
   Y <- SummarizedExperiment::assay(spe, assay)
   checkCounts(Y)
-  lib <- Matrix::colSums(Y)
-  E <- log1p(as.matrix(Y) %*% Matrix::Diagonal(x = mean(pmax(lib, 1)) / pmax(lib, 1)))
-  E <- as.matrix(E)
+  # log-CPM is only needed by the "ols" path, and densifying 13k x 77k costs
+  # 8 GB -- do not pay for it when fitting NB.
+  E <- NULL
+  if (stage1 == "ols") {
+    lib <- Matrix::colSums(Y)
+    E <- as.matrix(log1p(as.matrix(Y) %*%
+                           Matrix::Diagonal(x = mean(pmax(lib, 1)) / pmax(lib, 1))))
+  }
   if (verbose) {
     message(sprintf("stage 1: %d genes x %d index types x %d niches x %d patients",
                     nrow(E), length(idx_types), ncol(nm), length(unique(pat))))
   }
-  sl <- .patientSlopes(E, nm, ct, pat, idx_types, min.cells)
+  sl <- .patientSlopes(Y, E, nm, ct, pat, idx_types, min.cells,
+                       stage1 = stage1, winsor = winsor, lambda.a = lambda.a,
+                       maxit.psi = maxit.psi, backend = backend,
+                       verbose = verbose)
 
   pats <- sort(unique(pat))
   pgrp <- factor(vapply(pats, function(p) grp_cell[match(p, pat)], character(1)))

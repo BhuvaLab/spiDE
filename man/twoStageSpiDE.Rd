@@ -17,6 +17,11 @@ twoStageSpiDE(
   name = "Niche",
   min.cells = 30L,
   fdr = 0.05,
+  stage1 = c("ols", "nb"),
+  winsor = 4,
+  lambda.a = 0,
+  maxit.psi = 2,
+  backend = "cpu",
   verbose = TRUE
 )
 }
@@ -42,6 +47,30 @@ exactly the covariates \code{\link[=fitSpiDE]{fitSpiDE()}} rejects under \code{r
 reported, rather than contributing an unstable slope.}
 
 \item{fdr}{the target false discovery rate for the reported table.}
+
+\item{stage1}{one of "ols" (the default) or "nb".
+
+\strong{"nb" is currently impractical at panel scale and the default is
+"ols" on measurement, not preference.} A single \code{fitNB} call on one
+(patient, index) subset of the YTMA cohort costs \strong{23 s} even at
+\code{maxit.psi = 1} -- and for a 158-cell subset, so the expense is
+per-GENE (dispersion estimation and IRLS setup over 13,348 genes), not per
+cell. Across 1,320 (patient, index) combinations that is \strong{8.5
+hours}, four times the one-stage fit this estimator exists to replace.
+
+"nb" is also not obviously better where it has been checked: on the toy
+fixture it ranked the planted effect 17th where "ols" ranked it 2nd, though
+that fixture is unfair to it (27-cell subsets, dispersion moderated over 40
+genes).
+
+The route to making "nb" viable is FEWER CALLS, not faster ones: one fit per
+patient carrying \code{CellType:niche} interactions (55 calls) rather than
+one per (patient, index) (1,320), which the cost profile above predicts
+would land near the one-stage runtime. Until that is built, "nb" is offered
+for small index/niche restrictions where the call count is low.}
+
+\item{winsor, lambda.a, maxit.psi, backend}{forwarded to
+\code{\link[SpaNorm]{fitNB}} by the "nb" path.}
 
 \item{verbose}{a logical.}
 }
