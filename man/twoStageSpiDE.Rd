@@ -17,7 +17,7 @@ twoStageSpiDE(
   name = "Niche",
   min.cells = 30L,
   fdr = 0.05,
-  stage1 = c("ols", "nb"),
+  stage1 = c("pearson", "ols", "nb"),
   winsor = 4,
   lambda.a = 0,
   maxit.psi = 2,

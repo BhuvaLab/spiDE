@@ -69,7 +69,7 @@
 #' @return a named list of (genes x niches x patients) arrays, one per index.
 #' @noRd
 .patientSlopes <- function(Y, E, nm, ct, pat, idx_types, min.cells,
-                           stage1 = c("ols", "nb"), winsor = 4, lambda.a = 0,
+                           stage1 = c("pearson", "ols", "nb"), winsor = 4, lambda.a = 0,
                            maxit.psi = 2, backend = "cpu", verbose = FALSE) {
   stage1 <- match.arg(stage1)
   pats <- sort(unique(pat))
@@ -89,7 +89,9 @@
       ss <- colSums(Xc^2)
       ok <- ss > 1e-8
       if (!any(ok)) next
-      if (stage1 == "ols") {
+      if (stage1 %in% c("ols", "pearson")) {
+        # Both are a single weighted/unweighted matrix product per subset. E
+        # holds log-CPM ("ols") or analytic Pearson residuals ("pearson").
         Ec <- E[, k, drop = FALSE]
         Ec <- Ec - rowMeans(Ec)
         A[, ok, pp] <- (Ec %*% Xc[, ok, drop = FALSE]) %*% diag(1 / ss[ok], sum(ok))
@@ -115,6 +117,46 @@
     message(sprintf("  note: %d (patient, index) NB fits failed and were skipped", nfail))
   }
   out
+}
+
+#' Analytic Pearson residuals
+#'
+#' \deqn{r_{gc} = (y_{gc} - \mu_{gc}) / \sqrt{\mu_{gc} + \mu_{gc}^2/\theta},
+#'       \quad \mu_{gc} = (\textrm{gene total})(\textrm{cell total}) /
+#'       \textrm{grand total}}
+#'
+#' Variance-stabilises counts without fitting anything: one outer product against
+#' hours of IRLS. The independence model for \eqn{\mu} is sufficient here
+#' precisely because stage 1 computes slopes WITHIN a (patient, index cell type)
+#' subset -- patient and cell type are conditioned on by the subsetting, so
+#' \eqn{\mu} only has to carry sequencing depth and gene abundance.
+#'
+#' Preferred over log-CPM on sparse panels: \code{log1p(CPM)} of a gene
+#' averaging 0.08 counts is mostly \code{log1p(0)}, which treats a structural
+#' zero and a sampled zero as equally informative. Preferred over voom weights
+#' here too, which rest on the same log-CPM footing and need a genes x cells
+#' weight matrix.
+#'
+#' Residuals are clipped at \code{+/- sqrt(n_cells)}, the standard guard against
+#' a single high count in a near-zero gene dominating a slope.
+#'
+#' @param Y counts (genes x cells).
+#' @param theta NB overdispersion for the variance term; 100 is the usual
+#'   default and makes the denominator close to Poisson for low counts.
+#' @return a dense genes x cells matrix of residuals.
+#' @noRd
+.pearsonResiduals <- function(Y, theta = 100) {
+  gs <- Matrix::rowSums(Y)
+  cs <- Matrix::colSums(Y)
+  tot <- sum(gs)
+  mu <- outer(as.numeric(gs), as.numeric(cs)) / tot
+  r <- (as.matrix(Y) - mu) / sqrt(mu + mu^2 / theta)
+  cl <- sqrt(ncol(Y))
+  r[r > cl] <- cl
+  r[r < -cl] <- -cl
+  r[!is.finite(r)] <- 0
+  dimnames(r) <- dimnames(Y)
+  r
 }
 
 #' Patient-level contrast of the per-patient slopes (stage 2)
@@ -231,7 +273,7 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
                           patient.covariates = character(), assay = "counts",
                           cell_type = "cell_type", sample_id = "sample_id",
                           name = "Niche", min.cells = 30L, fdr = 0.05,
-                          stage1 = c("ols", "nb"), winsor = 4, lambda.a = 0,
+                          stage1 = c("pearson", "ols", "nb"), winsor = 4, lambda.a = 0,
                           maxit.psi = 2, backend = "cpu", verbose = TRUE) {
   stage1 <- match.arg(stage1)
   checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
@@ -263,7 +305,9 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
   # log-CPM is only needed by the "ols" path, and densifying 13k x 77k costs
   # 8 GB -- do not pay for it when fitting NB.
   E <- NULL
-  if (stage1 == "ols") {
+  if (stage1 == "pearson") {
+    E <- .pearsonResiduals(Y)
+  } else if (stage1 == "ols") {
     lib <- Matrix::colSums(Y)
     E <- as.matrix(log1p(as.matrix(Y) %*%
                            Matrix::Diagonal(x = mean(pmax(lib, 1)) / pmax(lib, 1))))
