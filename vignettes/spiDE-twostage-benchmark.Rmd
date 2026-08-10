@@ -1,0 +1,138 @@
+---
+title: "Two-stage estimation: benchmarked against the published simulation study"
+author: "Dharmesh D. Bhuva"
+package: spiDE
+output:
+  BiocStyle::html_document:
+    toc_float: true
+vignette: >
+  %\VignetteIndexEntry{Two-stage estimation benchmark}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, collapse = TRUE, comment = "#>",
+  message = FALSE, warning = FALSE, fig.width = 7, fig.height = 4, dpi = 150)
+```
+
+```{r libs}
+library(spiDE); library(ggplot2)
+source(system.file("spide_palette.R", package = "spiDE"))
+bench <- function(f) {
+  p <- system.file("extdata", "benchmark", f, package = "spiDE")
+  if (!nzchar(p) || !file.exists(p)) return(NULL)
+  readRDS(p)
+}
+NULLT <- bench("null_type1_twostage.rds")
+POW   <- bench("power_fdr_twostage.rds")
+```
+
+# What is being compared
+
+`condition` is assigned per **patient**, so patients are the experimental units.
+[fitSpiDE()] treats cells as replicates of that contrast and corrects for it with
+patient random effects (`random = "none" | "intercept" | "slope"`).
+[twoStageSpiDE()] instead estimates each patient's niche slope and contrasts
+those slopes — 55 numbers rather than 77,000.
+
+This benchmarks the two-stage estimator on the **same simulator, the same design
+points and the same measured quantity** as the published study: type-I from the
+p-value of the single `CellTypeA:conditionResponder:B` coefficient per gene, and
+TPR/FDP from discoveries restricted to that A:B triplet. 10,000 genes, 300 cells
+per sample, sigma 50, 40 replicates per point — 600 replicates, 2.2 min each.
+
+The comparison is **unpaired**: the published arms seed each job by hashing its
+specification, this arm uses independent seeds. At 40 replicates x 10,000 genes
+the type-I estimates are precise enough that this does not affect the reading,
+but small differences should not be over-interpreted.
+
+# Null calibration
+
+```{r null-fig, fig.height = 3.6}
+if (!is.null(NULLT)) {
+  d <- NULLT[NULLT$df.method %in% c("satterthwaite", "twostage") | NULLT$method == "fixed", ]
+  d$method <- factor(d$method, c("fixed", "intercept", "slope", "twostage"))
+  print(ggplot(d, aes(S, type1, colour = method)) +
+    geom_hline(yintercept = 0.05, linetype = 2, colour = "grey40") +
+    geom_line(linewidth = 0.7) + geom_point(size = 1.9) +
+    facet_wrap(~ layout) +
+    labs(x = "samples (S)", y = "type-I error", colour = NULL,
+         title = "Null calibration against a nominal 0.05",
+         subtitle = "dashed line = nominal; above it is anti-conservative"))
+}
+```
+
+```{r null-tab}
+if (!is.null(NULLT)) {
+  d <- NULLT[NULLT$df.method %in% c("satterthwaite", "twostage") | NULLT$method == "fixed",
+             c("layout", "S", "method", "type1")]
+  w <- reshape(d, idvar = c("layout", "S"), timevar = "method", direction = "wide")
+  names(w) <- sub("^type1\\.", "", names(w))
+  knitr::kable(w[order(w$layout, w$S), ], digits = 4, row.names = FALSE,
+               caption = "Type-I error, nominal 0.05, 40 replicates per point.")
+}
+```
+
+**`intercept` and `slope` exceed nominal from S >= 10** (up to 0.076 on the
+clustered layout), **`fixed` is drastically conservative** (~0.004-0.009), and
+**two-stage is conservative everywhere** (0.017 at S = 4 rising to 0.043 at
+S = 30). The trend is what the estimator's construction predicts: the
+patient-level contrast has little to work with at S = 4 and approaches nominal
+as patients accumulate.
+
+# Power, and where the methods cross over
+
+```{r pow-fig, fig.height = 3.6}
+if (!is.null(POW)) {
+  p <- POW; p$method <- factor(p$method, c("intercept", "slope", "twostage"))
+  long <- rbind(data.frame(S = p$S, method = p$method, value = p$tpr, metric = "TPR"),
+                data.frame(S = p$S, method = p$method, value = p$fdp, metric = "FDP"))
+  print(ggplot(long, aes(S, value, colour = method)) +
+    geom_hline(data = data.frame(metric = "FDP", y = 0.05), aes(yintercept = y),
+               linetype = 2, colour = "grey40") +
+    geom_line(linewidth = 0.7) + geom_point(size = 1.9) +
+    facet_wrap(~ metric, scales = "free_y") +
+    labs(x = "samples (S)", y = NULL, colour = NULL,
+         title = "Power and realized FDP, samples sweep, FDR 0.05"))
+}
+```
+
+```{r pow-tab}
+if (!is.null(POW)) {
+  knitr::kable(POW[order(POW$S, POW$method), c("S","method","tpr","fdp","n_disc")],
+               digits = 3, row.names = FALSE,
+               caption = "Samples sweep, gradient layout, FDR 0.05.")
+}
+```
+
+There is a **crossover at S ~ 24**:
+
+* **Below it, two-stage is badly underpowered.** At S = 4 it makes no
+  discoveries at all where `intercept` reaches TPR 0.040 — but note `intercept`
+  buys that with **FDP 0.346**, so those discoveries are mostly false.
+* **At S = 24 they are comparable** (TPR 0.265 vs 0.315) with two-stage at less
+  than half the FDP (0.014 vs 0.034).
+* **At S = 30 two-stage dominates outright**: TPR **0.432** against 0.361, with
+  FDP **0.018** against 0.033. More power *and* better error control.
+
+# Reading this for a real study
+
+The crossover is the practical result. Two-stage needs patients, because that is
+what it treats as replicates; below roughly 20 samples it should not be used.
+Above it, the honest error structure stops costing power and starts paying.
+
+The YTMA CosMx cohort has **55 patients**, comfortably past the crossover — and
+on that cohort, with condition labels permuted so every triplet is null,
+`fitSpiDE(random = "intercept")` returns ~576 false calls in every replicate
+(realized FDR 1.00) where two-stage returns **zero**, in 3.7 minutes against 128.
+
+Two limits worth carrying:
+
+* **Multiplicity is untouched.** Two-stage fixes the error structure, not the
+  size of the hypothesis space, and the hierarchical cascade does not help for
+  sparse per-gene signal — combining a gene's mostly-null triplets dilutes a
+  single true effect to no better than Bonferroni. Restrict `index`, `niche` and
+  the gene set to a pre-specified hypothesis.
+* **These are simulations.** The generative model is the package's own, so it
+  cannot expose a mismatch shared by simulator and method.
