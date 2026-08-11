@@ -33,11 +33,22 @@
 #' Counts and Pearson residuals are told apart by their values, not by their
 #' name, because passing the wrong assay is silent and expensive: running the
 #' variance-stabilisation twice, or not at all, changes power without changing
-#' anything visible in the output.
+#' anything visible in the output. Samples a compact genes x cells BLOCK
+#' (never a full-length linear index, which forces a full realisation for a
+#' sparse/DelayedArray assay) and densifies only that block, so this check
+#' never materialises the whole matrix.
 #' @noRd
 .looksLikeCounts <- function(Y, n = 2000L) {
-  idx <- if (length(Y) > n) sample(length(Y), n) else seq_along(Y)
-  v <- as.numeric(Y[idx])
+  ng <- nrow(Y); nc <- ncol(Y)
+  if (!ng || !nc) return(FALSE)
+  if (as.double(ng) * as.double(nc) <= n) {
+    v <- as.numeric(as.matrix(Y))
+  } else {
+    nr <- max(1L, min(ng, ceiling(sqrt(n))))
+    ncl <- max(1L, min(nc, ceiling(n / nr)))
+    v <- as.numeric(as.matrix(Y[sample.int(ng, nr), sample.int(nc, ncl),
+                               drop = FALSE]))
+  }
   v <- v[is.finite(v)]
   if (!length(v)) return(FALSE)
   all(v >= 0) && all(abs(v - round(v)) < 1e-8)
@@ -176,7 +187,11 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
   if (!is.null(index)) idx_types <- intersect(index, idx_types)
   if (!length(idx_types)) stop("no requested index cell types found")
 
-  Y <- as.matrix(SummarizedExperiment::assay(spe, assay))
+  # Y is left as assay() returns it (dense, sparse, or DelayedArray) -- at
+  # panel scale a full as.matrix() here costs ~8 GB (13k genes x 77k cells).
+  # Only "ols" needs a fully dense working response (E); "spanorm" and "nb"
+  # densify per (sample, index) subset only, inside .stage1Epsilon()/fitNB().
+  Y <- SummarizedExperiment::assay(spe, assay)
   if (stage1 %in% c("spanorm", "nb") && !.looksLikeCounts(Y)) {
     stop("stage1 = '", stage1, "' needs counts, but assay '", assay,
          "' does not look like counts")
@@ -184,8 +199,9 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
   comp <- if (stage1 == "spanorm") .spanormComponents(spe) else NULL
   E <- NULL
   if (stage1 == "ols") {
-    lib <- colSums(Y)
-    E <- log1p(sweep(Y, 2, mean(pmax(lib, 1)) / pmax(lib, 1), "*"))
+    Yd <- as.matrix(Y)                  # ols is the one path that needs it
+    lib <- colSums(Yd)
+    E <- log1p(sweep(Yd, 2, mean(pmax(lib, 1)) / pmax(lib, 1), "*"))
   }
   if (verbose) {
     message(sprintf("stage 1 (%s): %d genes x %d index types x %d niches x %d samples",
@@ -198,12 +214,46 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
                       backend = backend, verbose = verbose)
 
   pats <- unique(unname(s2p))
+  cv_list <- NULL
+  if (length(patient.covariates)) {
+    # NA in a patient-level covariate would otherwise reach model.matrix(),
+    # which silently drops that row -- misaligning Xdes against the (still
+    # full-length) B/V slope matrices and crashing limma downstream with an
+    # opaque "(subscript) logical subscript too long". Drop such patients
+    # from pats up front instead: every later use of `pats` (pgrp, Xdes, and
+    # the pooled$beta/var[, , pats] slices in the loop below) then stays in
+    # sync automatically.
+    cv_list <- lapply(patient.covariates, function(v) {
+      x <- tapply(cd[[v]], pat, function(z) z[1]); x[pats]
+    })
+    bad <- Reduce(`|`, lapply(cv_list, is.na))
+    if (any(bad)) {
+      dropped <- pats[bad]
+      if (verbose) {
+        message(sprintf(
+          "stage 2: dropping %d patient(s) with missing patient.covariates (%s): %s",
+          length(dropped), paste(patient.covariates, collapse = ", "),
+          paste(dropped, collapse = ", ")))
+      }
+      pats <- pats[!bad]
+      cv_list <- lapply(cv_list, `[`, !bad)
+      lvl <- unique(grp_cell[!is.na(grp_cell)])
+      remaining <- table(factor(
+        vapply(pats, function(p) grp_cell[match(p, pat)], character(1)),
+        levels = lvl))
+      if (any(remaining < 2)) {
+        stop("fewer than 2 patients remain in a condition after dropping ",
+             "patient(s) with missing patient.covariates (",
+             paste(patient.covariates, collapse = ", "),
+             "); cannot fit the stage-2 contrast")
+      }
+    }
+  }
   pgrp <- factor(stats::setNames(
     vapply(pats, function(p) grp_cell[match(p, pat)], character(1)), pats))
   Xdes <- if (length(patient.covariates)) {
-    cv <- as.data.frame(lapply(patient.covariates, function(v) {
-      x <- tapply(cd[[v]], pat, function(z) z[1]); x[pats]
-    }), col.names = patient.covariates, stringsAsFactors = TRUE)
+    cv <- as.data.frame(stats::setNames(cv_list, patient.covariates),
+                        stringsAsFactors = TRUE)
     stats::model.matrix(~ g + ., data = cbind(data.frame(g = pgrp[pats]), cv))
   } else {
     stats::model.matrix(~ g, data = data.frame(g = pgrp[pats]))

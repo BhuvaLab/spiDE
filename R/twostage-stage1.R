@@ -35,7 +35,8 @@
 #' point: handles zeros, no baseline leakage) and, under "addback", returns
 #' the biology component so that, net, only the LS (and batch) effect is
 #' removed. Materialises genes x subset matrices only.
-#' @param Y counts matrix (genes x all cells; dense).
+#' @param Y counts matrix (genes x all cells; dense, sparse, or DelayedArray
+#'   -- only the `cells` subset is ever densified).
 #' @param comp the .spanormComponents() list.
 #' @param cells integer/logical index of the subset's cells.
 #' @param epsilon "addback" (default; eta_bio + z) or "residual" (z).
@@ -46,7 +47,10 @@
   Wc <- comp$W[cells, , drop = FALSE]
   eta <- comp$gmean + tcrossprod(comp$alpha, Wc)
   mu <- exp(eta)
-  z <- (Y[, cells, drop = FALSE] - mu) / mu
+  # Densify only this (sample, index) subset -- Y itself may be sparse/
+  # DelayedArray (twoStageSpiDE() no longer densifies the whole matrix).
+  Yc <- as.matrix(Y[, cells, drop = FALSE])
+  z <- (Yc - mu) / mu
   w <- mu / (1 + comp$psi * mu)
   eps <- if (epsilon == "addback") {
     comp$gmean + tcrossprod(comp$alpha[, comp$bio, drop = FALSE],
@@ -129,7 +133,12 @@
   stage1 <- match.arg(stage1); epsilon <- match.arg(epsilon)
   smps <- sort(unique(smp)); niches <- colnames(nm)
   gn <- rownames(Y)
-  loglib <- log(pmax(colSums(Y), 1))
+  # Matrix::colSums(), not the bare generic: base::colSums() has no method
+  # for a sparse Matrix unless the Matrix package is attached (not just
+  # loaded), and Matrix::colSums() also handles plain matrices and
+  # DelayedArray correctly, so one call covers every Y this function accepts
+  # without densifying it.
+  loglib <- log(pmax(Matrix::colSums(Y), 1))
   beta <- var <- stats::setNames(vector("list", length(idx_types)), idx_types)
   r2 <- list(); ncl <- list()
   for (ix in idx_types) {

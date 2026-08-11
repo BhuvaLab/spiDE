@@ -110,3 +110,52 @@ test_that("removed stage1 options are rejected by match.arg", {
   expect_error(twoStageSpiDE(spe, condition = "condition", sigma = 30,
                              stage1 = "nbresid", verbose = FALSE))
 })
+
+test_that("a sparse counts assay gives identical results to the dense one", {
+  # twoStageSpiDE() must not densify the whole counts matrix up front (it
+  # costs ~8 GB at panel scale); only "ols" needs a fully dense working
+  # response, and "spanorm"/"nb" should densify per (sample, index) subset.
+  # Correctness, not just memory, is what this test actually checks: a
+  # sparse assay must produce numerically identical results to the dense one.
+  spe_dense <- toy_spanorm_spe(n_genes = 20)
+  spe_sparse <- spe_dense
+  SummarizedExperiment::assay(spe_sparse, "counts") <- Matrix::Matrix(
+    SummarizedExperiment::assay(spe_dense, "counts"), sparse = TRUE)
+  expect_true(methods::is(SummarizedExperiment::assay(spe_sparse, "counts"),
+                          "sparseMatrix"))
+
+  for (s1 in c("ols", "spanorm")) {
+    d <- twoStageSpiDE(spe_dense, condition = "condition", sigma = 30,
+                       min.cells = 10, fdr = 1, stage1 = s1, verbose = FALSE)
+    s <- twoStageSpiDE(spe_sparse, condition = "condition", sigma = 30,
+                       min.cells = 10, fdr = 1, stage1 = s1, verbose = FALSE)
+    expect_equal(results(s), results(d), info = paste("stage1 =", s1))
+  }
+})
+
+test_that("a patient with an NA covariate is dropped, not a crash", {
+  # Before the fix, an NA in patient.covariates reached model.matrix(), which
+  # silently drops that row; Xdes then had fewer rows than the (still
+  # full-length) slope matrices, and .tau2DL()'s `X[ok, , drop = FALSE]`
+  # errored with "(subscript) logical subscript too long".
+  spe <- toy_spanorm_spe(n_genes = 20)
+  spe$Age[spe$sample_id == "S1"] <- NA       # S1 is a Responder patient
+  expect_message(
+    r <- twoStageSpiDE(spe, condition = "condition", sigma = 30,
+                       min.cells = 10, patient.covariates = "Age", fdr = 1,
+                       verbose = TRUE),
+    "dropping 1 patient.*Age")
+  expect_s4_class(r, "SpiDEResults")
+  expect_true(is.data.frame(results(r)))
+})
+
+test_that("too few patients per condition after an NA-covariate drop errors clearly", {
+  spe <- toy_spanorm_spe(n_genes = 20)
+  # S1, S3, S5 are the three Responder patients (default toy layout); drop
+  # two of them, leaving only one Responder patient.
+  spe$Age[spe$sample_id %in% c("S1", "S3")] <- NA
+  expect_error(
+    twoStageSpiDE(spe, condition = "condition", sigma = 30, min.cells = 10,
+                 patient.covariates = "Age", fdr = 1, verbose = FALSE),
+    "fewer than 2 patients")
+})
