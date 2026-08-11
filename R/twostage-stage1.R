@@ -56,3 +56,45 @@
   }
   list(eps = eps, w = w)
 }
+
+#' Joint WLS of the working response on all niche columns, per gene
+#'
+#' Design [1, X] (the intercept absorbs each gene's level, so no per-gene
+#' weighted centring is needed). Per-gene weights preclude one shared Gram
+#' matrix, so cross-products are batched as matrix products over the
+#' upper-triangle column pairs, then each gene's small (k+1) system is
+#' solved in a loop. Degenerate columns (weighted variance ~ 0) are dropped
+#' up front and return NA. Variance is the usual WLS sandwich-free form
+#' phi_g * (X'W_gX)^{-1} with phi_g the weighted RSS over n - rank.
+#' @param eps,w genes x cells response and weights (Task 3).
+#' @param X cells x k centred niche matrix.
+#' @return list(beta, var): genes x k, NA for dropped columns.
+#' @noRd
+.jointSlopes <- function(eps, w, X) {
+  G <- nrow(eps); n <- ncol(eps); k <- ncol(X)
+  out_b <- out_v <- matrix(NA_real_, G, k,
+                           dimnames = list(rownames(eps), colnames(X)))
+  keep <- apply(X, 2, function(x) stats::var(x) > 1e-10)
+  if (!any(keep)) return(list(beta = out_b, var = out_v))
+  D <- cbind(`(Intercept)` = 1, X[, keep, drop = FALSE])
+  p <- ncol(D)
+  # per-gene Gram entries: (X'W_gX)_{ij} = sum_c w_gc D_ci D_cj
+  ut <- which(upper.tri(diag(p), diag = TRUE), arr.ind = TRUE)
+  P <- D[, ut[, 1], drop = FALSE] * D[, ut[, 2], drop = FALSE]  # n x npairs
+  Gm <- w %*% P                                                  # G x npairs
+  Rhs <- (w * eps) %*% D                                         # G x p
+  wrss_tot <- rowSums(w * eps^2)
+  for (g in seq_len(G)) {
+    A <- matrix(0, p, p)
+    A[cbind(ut[, 1], ut[, 2])] <- Gm[g, ]
+    A[cbind(ut[, 2], ut[, 1])] <- Gm[g, ]
+    Ai <- tryCatch(solve(A), error = function(e) NULL)
+    if (is.null(Ai)) next
+    bg <- Ai %*% Rhs[g, ]
+    df <- max(n - p, 1)
+    phi <- max((wrss_tot[g] - sum(bg * Rhs[g, ])) / df, 1e-12)
+    out_b[g, keep] <- bg[-1]
+    out_v[g, keep] <- phi * diag(Ai)[-1]
+  }
+  list(beta = out_b, var = out_v)
+}

@@ -34,3 +34,33 @@ test_that(".stage1Epsilon linearises log counts minus the LS effect", {
   sr <- spiDE:::.stage1Epsilon(Y, comp, cells, epsilon = "residual")
   expect_equal(se$eps - sr$eps, eta_bio, tolerance = 1e-12)
 })
+
+test_that(".jointSlopes recovers planted slopes and matches lm() weights", {
+  set.seed(7)
+  n <- 200; k <- 2; G <- 5
+  X <- cbind(a = rnorm(n), b = rnorm(n))
+  X <- sweep(X, 2, colMeans(X))
+  beta_true <- matrix(c(0.5, -0.2), nrow = G, ncol = k, byrow = TRUE)
+  eps <- beta_true %*% t(X) + matrix(rnorm(G * n, sd = 0.3), G, n)
+  w <- matrix(runif(G * n, 0.5, 2), G, n)
+  js <- spiDE:::.jointSlopes(eps, w, X)
+  expect_equal(dim(js$beta), c(G, k))
+  # gene 1 must agree with a weighted lm to numerical precision
+  fit <- lm(eps[1, ] ~ X, weights = w[1, ])
+  expect_equal(unname(js$beta[1, ]), unname(coef(fit)[-1]), tolerance = 1e-8)
+  sm <- summary(fit)
+  expect_equal(unname(js$var[1, ]), unname(sm$coefficients[-1, 2]^2),
+               tolerance = 1e-6)
+})
+
+test_that(".jointSlopes drops degenerate niche columns to NA", {
+  set.seed(8)
+  n <- 100
+  X <- cbind(a = rnorm(n), b = 0)          # b has no variance
+  X <- sweep(X, 2, colMeans(X))
+  eps <- matrix(rnorm(3 * n), 3, n)
+  w <- matrix(1, 3, n)
+  js <- spiDE:::.jointSlopes(eps, w, X)
+  expect_true(all(is.na(js$beta[, "b"])) && all(is.na(js$var[, "b"])))
+  expect_true(all(is.finite(js$beta[, "a"])))
+})
