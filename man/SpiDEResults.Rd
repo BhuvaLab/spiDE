@@ -64,6 +64,9 @@ abundance-weighted contrast per gene. Empty unless the design carries the
 \code{CellType:condition} block. Retrieved with
 \code{results(object, type = "patient")}.}
 
+\item{\code{diagnostics}}{a list of two-stage diagnostic tables (\code{r2}, \code{inclusion},
+\code{tau2}); empty for the GLM path.}
+
 \item{\code{fdr}}{a numeric, the FDR threshold used.}
 
 \item{\code{call}}{the matched call that produced the object.}

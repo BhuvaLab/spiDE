@@ -26,7 +26,7 @@ The method proceeds in three steps:
 
 1.  **Niche construction** (`buildNiches()`): for each sample and each spatial bandwidth, a Gaussian kernel density estimate of every cell type is evaluated at each cell, giving per-cell "effective niche" densities.
 2.  **Model fitting** (`fitSpiDE()`): a per-gene negative binomial GLM is fit over a design containing the three-way `cell type : condition : niche` interactions, using the `r BiocStyle::Biocpkg("SpaNorm")` `fitNB()` engine.
-3.  **Testing** (`testSpiDE()`): per-gene Wald statistics for the neighbourhood interactions are combined across correlated covariates with Brown's method and across bandwidths with a Cauchy combination, then subjected to a hierarchical (gene → index cell type → niche cell type) FDR correction.
+3.  **Testing** (`testSpiDE()`): per-gene Wald statistics for the neighbourhood interactions are combined across correlated covariates (a Cauchy combination by default; Brown's method via `combine = "brown"`) and across bandwidths with a Cauchy combination, then subjected to a hierarchical (gene → index cell type → niche cell type) FDR correction.
 
 `spiDE()` wraps the three steps.
 
@@ -189,7 +189,9 @@ res <- spiDE(toySpiDE, condition = "condition", sigma = c(10, 30, 50),
              random = "slope")
 ```
 
-The model, the ridge = random-effects equivalence, and a worked calibration example are described in the companion vignette *The spiDE model and mixed-effects inference*. Note that a per-sample random intercept absorbs all between-sample effects, so sample-level covariates (e.g. `Age`) must be dropped when random effects are used.
+The model, the ridge = random-effects equivalence, and a worked calibration example are described in the companion vignette *The spiDE model, mixed-effects inference, and two-stage estimation*. Note that a per-sample random intercept absorbs all between-sample effects, so sample-level covariates (e.g. `Age`) must be dropped when random effects are used.
+
+An alternative, structurally different route to the same question is `twoStageSpiDE()`, which estimates each patient's niche slope first and then contrasts the patient slopes with a moderated *t*-test — removing the pseudo-replication by construction rather than by correction. It trades power for the best-calibrated error control measured in the package's benchmark suite and is intended for pre-specified (restricted) hypotheses; the model vignette documents it in full, and the *Two-stage estimation* benchmark report on the spiDE-research site (https://bhuvalab.github.io/spiDE-research/) reports its operating characteristics.
 
 # Session info
 

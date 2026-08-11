@@ -18,28 +18,15 @@ navbar:
         href: articles/spiDE-model.html
     validation:
       text: Statistical validation
-      menu:
-      - text: Combining niche p-values — Brown vs Cauchy
-        href: articles/spiDE-cauchy-vs-brown.html
-      - text: Speeding up the mixed-effects fit
-        href: articles/spiDE-mixed-benchmark.html
-      - text: Simulation study — power & FDR control
-        href: articles/spiDE-simulation.html
+      href: https://bhuvalab.github.io/spiDE-research/
 
-# Group the /articles/ index page to match the navbar split.
+# The validation reports (simulation study, combiner, PQL, two-stage, GSEA)
+# live in the research repo and are published at https://bhuvalab.github.io/spiDE-research/
+# -- the navbar's "Statistical validation" entry links there.
 articles:
 - title: Articles
   navbar: ~
   contents:
   - spiDE
   - spiDE-model
-- title: Statistical validation
-  desc: >
-    Calibration, power/FDR, and performance studies behind the method. Figures
-    are read from summary tables shipped in inst/extdata/benchmark; the study
-    that produces them lives in research/.
-  contents:
   - spiDE-calibration
-  - spiDE-cauchy-vs-brown
-  - spiDE-mixed-benchmark
-  - spiDE-simulation

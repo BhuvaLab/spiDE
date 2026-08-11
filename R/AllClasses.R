@@ -217,6 +217,8 @@ setValidity("SpiDEFit", validSpiDEFit)
 #'   abundance-weighted contrast per gene. Empty unless the design carries the
 #'   `CellType:condition` block. Retrieved with
 #'   `results(object, type = "patient")`.
+#' @slot diagnostics a list of two-stage diagnostic tables (`r2`, `inclusion`,
+#'   `tau2`); empty for the GLM path.
 #' @slot fdr a numeric, the FDR threshold used.
 #' @slot call the matched call that produced the object.
 #'
@@ -246,12 +248,17 @@ setClass(
     # design carries a CellType:condition block.
     results.celltype = "data.frame",
     results.patient = "data.frame",
+    # Two-stage estimator diagnostics: R2 of niche columns on the biology
+    # basis, the per-index patient inclusion table, and the tau2 table.
+    # Empty for the GLM path.
+    diagnostics = "list",
     fdr = "numeric",
     call = "ANY"
   ),
   prototype = list(
     results.celltype = data.frame(),
     results.patient = data.frame(),
+    diagnostics = list(),
     mode = "condition"
   )
 )
@@ -292,7 +299,15 @@ validSpiDEResults <- function(object) {
   if (length(object@fits) > 0 && !all(vapply(object@fits, is, logical(1), "SpiDEFit"))) {
     stop("'fits' should be a list of SpiDEFit objects")
   }
-  if (length(object@fits) != length(object@sigma)) {
+  # The fits/sigma pairing is an invariant of the GLM path, where there is one
+  # SpiDEFit per bandwidth. twoStageSpiDE() has no per-gene GLM fit at all -- it
+  # estimates per-patient slopes and contrasts them -- so it carries its
+  # bandwidth in `sigma` with an EMPTY `fits`. Keyed on the empty list rather
+  # than on a new `mode` value, because `mode` drives .testedCols() /
+  # .nicheTestCols() and a third level there would silently change which columns
+  # downstream code treats as tested.
+  if (length(object@fits) > 0 &&
+      length(object@fits) != length(object@sigma)) {
     stop("length of 'fits' does not match length of 'sigma'")
   }
   .checkMode(object@mode)

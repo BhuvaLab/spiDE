@@ -29,8 +29,25 @@
 # without ambiguity.
 
 spide_pal <- list(
-  # mixed-effects modes (Dark2)
-  method = c(fixed = "#D95F02", intercept = "#1B9E77", slope = "#7570B3"),
+  # mixed-effects modes plus the two-stage estimator. The first three are
+  # Dark2; the fourth is NOT Dark2's own pink #E7298A -- that hex fails the
+  # dataviz validator against this family outright (worst all-pairs deutan
+  # dE 1.7 against the intercept teal: a deuteranope cannot tell the twostage
+  # line from the intercept line at all). #C51B7D is the best fourth hue found
+  # under the validator with the trio held fixed: every check passes except
+  # that its worst pair (vs #1B9E77, deutan) sits at dE 7.0, in the 6-8 floor
+  # band that is legal only WITH a secondary encoding. The twostage series
+  # therefore always carries a triangle point marker (`method_shape` below) in
+  # line figures; grouped-bar figures get their secondary channel from the
+  # dodge gaps. Without an entry here twostage plots as NA grey wherever
+  # scale_colour_spide() is used, which is how it first appeared in the
+  # simulation vignette.
+  method = c(fixed = "#D95F02", intercept = "#1B9E77", slope = "#7570B3",
+             twostage = "#C51B7D"),
+  # point markers for the method family: the secondary identity channel the
+  # floor-band twostage/intercept pair requires (see above). Map BOTH
+  # colour and shape to `method` and the legends merge into one.
+  method_shape = c(fixed = 16, intercept = 16, slope = 16, twostage = 17),
   # within-gene p-value combiners (own figures only; no clash in context)
   combine = c(Brown = "#7570B3", Cauchy = "#D95F02"),
   # one- vs two-sided input to a combiner. Brown keeps its `combine` colour;
@@ -63,10 +80,13 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
   )
 }
 
-# convenience scale constructors ------------------------------------------------
+# convenience scale constructors -----------------------------------------------
 scale_colour_spide <- function(which, name = NULL, ...) {
   ggplot2::scale_colour_manual(values = spide_pal[[which]], name = name, ...)
 }
 scale_fill_spide <- function(which, name = NULL, ...) {
   ggplot2::scale_fill_manual(values = spide_pal[[which]], name = name, ...)
+}
+scale_shape_spide <- function(which = "method_shape", name = NULL, ...) {
+  ggplot2::scale_shape_manual(values = spide_pal[[which]], name = name, ...)
 }

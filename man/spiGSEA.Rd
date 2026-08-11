@@ -157,3 +157,10 @@ Wu D, Lim E, Vaillant F, Asselin-Labat ML, Visvader JE, Smyth GK
 experiments." \emph{Bioinformatics} 26(17):2176-2182. (Self-contained
 gene-set null.)
 }
+\seealso{
+The \emph{Gene-set inference} benchmark report on the spiDE-research
+site (\url{https://bhuvalab.github.io/spiDE-research/}) for the calibration
+study behind the competitive default: on a fully null benchmark at realistic
+inter-gene correlation the self-contained test's realised FDP is 1.00
+against a reported 0.05, and no choice of \code{rho} repairs it.
+}

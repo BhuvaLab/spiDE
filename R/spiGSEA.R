@@ -447,6 +447,11 @@
 #'   (2010). "ROAST: rotation gene set tests for complex microarray
 #'   experiments." \emph{Bioinformatics} 26(17):2176-2182. (Self-contained
 #'   gene-set null.)
+#' @seealso The *Gene-set inference* benchmark report on the spiDE-research
+#'   site (<https://bhuvalab.github.io/spiDE-research/>) for the calibration
+#'   study behind the competitive default: on a fully null benchmark at realistic
+#'   inter-gene correlation the self-contained test's realised FDP is 1.00
+#'   against a reported 0.05, and no choice of \code{rho} repairs it.
 #' @examples
 #' data(toySpiDE)
 #' spe <- buildNiches(toySpiDE, sigma = 20)
