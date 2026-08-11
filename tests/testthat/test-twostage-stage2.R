@@ -46,3 +46,23 @@ test_that(".tau2DL recovers heterogeneity and floors at zero", {
   t2 <- spiDE:::.tau2DL(B1, v, X)
   expect_gt(t2, 0.25); expect_lt(t2, 1)
 })
+
+test_that(".limmaStage2 matches a weighted lm directionally and handles NA", {
+  set.seed(12)
+  S <- 30; G <- 50
+  grp <- rep(0:1, each = S / 2)
+  X <- cbind(`(Intercept)` = 1, g = grp)
+  V <- matrix(0.1, G, S)
+  B <- matrix(rnorm(G * S, sd = 0.4), G, S,
+              dimnames = list(paste0("g", 1:G), paste0("p", 1:S)))
+  B[1, grp == 1] <- B[1, grp == 1] + 2          # strong true effect in g1
+  B[2, 1:3] <- NA                               # missing patients tolerated
+  st <- spiDE:::.limmaStage2(B, V, tau2 = 0.05, X)
+  expect_named(st, c("gene", "coef", "t", "p"))
+  expect_equal(nrow(st), G)
+  expect_lt(st$p[1], 1e-4)
+  expect_gt(st$coef[1], 1)
+  expect_true(is.finite(st$p[2]))               # NA cells downweighted, not fatal
+  # moderation shares variance: nulls should not all be extreme
+  expect_gt(median(st$p[-1]), 0.05)
+})

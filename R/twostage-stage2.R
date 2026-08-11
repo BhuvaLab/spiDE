@@ -56,3 +56,25 @@
   med <- stats::median(t2, na.rm = TRUE)
   if (!is.finite(med)) 0 else med
 }
+
+#' Moderated condition contrast on the patient slope matrix
+#'
+#' Observation weights 1/(v + tau2): random-effects weighting that degrades
+#' toward equal weights when between-patient variation dominates (the
+#' pseudobulk pitfall guard) and does real work when subset precision varies.
+#' NA slopes enter with weight 0 and value 0 (the standard limma idiom).
+#' @importFrom limma lmFit eBayes
+#' @noRd
+.limmaStage2 <- function(B, V, tau2, X) {
+  Wt <- 1 / (V + tau2)
+  bad <- !is.finite(B) | !is.finite(Wt)
+  Bf <- B; Bf[bad] <- 0; Wt[bad] <- 0
+  fit <- limma::lmFit(Bf, design = X, weights = Wt)
+  fit <- limma::eBayes(fit, robust = TRUE)
+  cn <- colnames(X)[2]
+  data.frame(gene = rownames(B),
+             coef = fit$coefficients[, cn],
+             t = fit$t[, cn],
+             p = fit$p.value[, cn],
+             row.names = NULL, stringsAsFactors = FALSE)
+}

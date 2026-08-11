@@ -43,6 +43,7 @@ Imports:
     spatstat.geom,
     spatstat.explore,
     BiocParallel,
+    limma,
     matrixStats,
     methods,
     stats,
