@@ -87,6 +87,12 @@
 #' roughly 4,000 tests is the order at which a \eqn{p \approx 10^{-5}} effect
 #' survives.
 #'
+#' @seealso The model vignette (`vignette("spiDE-model")`) documents the
+#'   estimator's two stages with full equations; the *Two-stage estimation*
+#'   benchmark report on the spiDE-research site
+#'   (<https://bhuvalab.github.io/spiDE-research/>) reports its measured operating
+#'   characteristics against the published simulation study, paired on the
+#'   same simulated datasets.
 #' @param spe a SpatialExperiment with niche reducedDims (see [buildNiches()]).
 #' @param condition a character, the colData column of the tested condition,
 #'   constant within patient.

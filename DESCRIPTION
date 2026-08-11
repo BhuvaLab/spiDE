@@ -60,8 +60,6 @@ Suggests:
     DelayedArray,
     HDF5Array,
     ggplot2,
-    patchwork,
-    scales,
     MASS,
     nlme,
     lme4,

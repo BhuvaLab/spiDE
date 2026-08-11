@@ -1,28 +1,33 @@
 ---
-title: "The spiDE model: neighbourhood-dependent DE and mixed-effects inference"
+title: "The spiDE model: neighbourhood-dependent DE, mixed-effects inference, and two-stage estimation"
 author: "Dharmesh D. Bhuva"
 package: spiDE
 output:
   BiocStyle::html_document:
     toc_float: true
 vignette: >
-  %\VignetteIndexEntry{The spiDE model and mixed-effects inference}
+  %\VignetteIndexEntry{The spiDE model, mixed-effects inference, and two-stage estimation}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
 
 ```{r setup, include = FALSE}
-knitr::opts_chunk$set(echo = FALSE, collapse = TRUE, comment = "#>")
+# echo = TRUE: this vignette is a code-along walkthrough ("a small worked
+# example you can run and modify yourself") -- its prose narrates the chunks,
+# so hiding them orphans sentences that end in a colon. Pure display tables
+# opt out per-chunk with echo = FALSE.
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE, comment = "#>")
 set.seed(1)
 ```
 
 # Overview
 
-This vignette documents the statistical model behind `spiDE` (Spatial Influence DE) and a **mixed-effects extension** that corrects the anti-conservative inference caused by cell-level pseudo-replication. It has three parts:
+This vignette documents the statistical models behind `spiDE` (Spatial Influence DE). It has four parts:
 
 1.  the full `spiDE` model — how the effective niche is built and how gene expression is modelled as a function of cell type, neighbourhood, and clinical response;
-2.  why a cell-level Wald test (`random = "none"`) is anti-conservative when many cells come from few patients; and
-3.  the mixed-effects correction, implemented through the **ridge = random effects** equivalence so it reuses the same `SpaNorm::fitNB` engine.
+2.  why a cell-level Wald test (`random = "none"`) is anti-conservative when many cells come from few patients;
+3.  the mixed-effects correction, implemented through the **ridge = random effects** equivalence so it reuses the same `SpaNorm::fitNB` engine; and
+4.  the **two-stage estimator** (`twoStageSpiDE()`) — a structurally different route to the same scientific question that removes the pseudo-replication *by construction* rather than by correction: it estimates each patient's niche slope first, then contrasts the patient slopes.
 
 `fitSpiDE()` and `spiDE()` **default to `random = "intercept"`**. On a null with
 per-sample intercepts, `random = "none"` rejects at $\approx 0.71$ against a
@@ -544,8 +549,8 @@ expect to see:
     replicate study found `tau2` systematically biased *downward* at every
     `re.prop < 1` tested, not just noisier, and averaging replicates does not
     fix it. `re.prop = 1` (no subsampling) is therefore the default; see the
-    companion vignette *Speeding up the mixed-effects fit* for the full
-    speed/accuracy trade-off.
+    *Speeding up the mixed-effects fit* report on the benchmark site for
+    the full speed/accuracy trade-off.
 
 ### Watching it work: a worked example
 
@@ -871,7 +876,9 @@ The study has since been run at realistic scale (thousands of cells over tens of
 patients, 40 replicates per design point) in the package's benchmark harness
 (`research/`), sweeping both `df.method` arms on identically seeded data. The
 full figures are in the *Simulating realistic spatial data and benchmarking
-spiDE* vignette; the result matters enough to state here.
+spiDE* report on the spiDE-research benchmark site
+(https://bhuvalab.github.io/spiDE-research/); the result matters enough to
+state here.
 
 The first criterion is met and the second is met **only partially**, which is
 worth being explicit about rather than glossing:
@@ -920,7 +927,7 @@ carry more.
 
 ## Usage and caveats
 
-```{r usage, eval = FALSE}
+```{r usage, eval = FALSE, echo = TRUE}
 # random intercept + random niche slopes (fullest correction; use with an
 # adequate number of samples). For few samples, random = "intercept" is safer.
 res <- spiDE(spe, condition = "condition", sigma = c(10, 30, 50),
@@ -931,6 +938,391 @@ res <- spiDE(spe, condition = "condition", sigma = c(10, 30, 50),
 -   **Number of samples.** The correction is only as good as the between-sample information: with very few samples the variance components (and the $S-2$ reference df) are unstable, and a warning is issued.
 -   **Correct, not merely "fixed with extras".** The mixed fit does more than add a between-patient variance component: it also replaces `random = "none"`'s NB dispersion scaling and sub-design covariance with the correct **working (quasi-NB) dispersion** and **full penalised covariance**. So even when $\tau^2 \to 0$ (no genuine clustering) the mixed fit does *not* reproduce the `"none"` fit — it gives the correctly-scaled, and hence more conservative, standard errors. This is deliberate: `"none"` is known to be anti-conservative, so its larger apparent "power" is partly spurious. It is for this reason that `"intercept"` is now the default.
 -   **Power needs samples and effect size.** Because the test is now honest, a real response-niche effect must be visible *between patients* to be declared. With few patients, or an effect seen in only a handful of responders, the between-patient df and the inflated SEs will (correctly) leave it non-significant. `df.method = "satterthwaite"` recovers legitimate power for niche coefficients that carry within-patient information — giving them their larger effective df instead of the flat $S-2$ — without touching the honest between-patient df of the main effect; larger sample sizes restore power further.
+
+# The two-stage estimator: patient-level inference by construction
+
+Everything above *corrects* a cell-level fit: the design still has one row per
+cell, and the random effects and reference df repair the standard errors that
+pseudo-replication breaks. `twoStageSpiDE()` takes the other route: it never
+tests a cell-level coefficient at all. It first reduces each patient to a
+small set of **niche slopes** — one per (index cell type, niche cell type)
+pair — and then runs the condition contrast on those patient-level numbers,
+where the sample size *is* the number of patients and no correction is needed.
+
+This section documents the estimator end to end for a reader meeting it for
+the first time: what each stage computes, the exact equations with every term
+defined, why the design choices were made, and what the estimator does and
+does not fix.
+
+## Why a second estimator?
+
+`random = "none"`, `"intercept"` and `"slope"` all fit the *same* cell-level
+design and differ only in which columns are ridge-penalised. The two-stage
+route is **not a fourth `random` mode** — it never fits the niche design of
+Part 1. Instead it operationalises the observation that drives this whole
+vignette: `condition` is assigned per patient, so patients are the
+experimental units. If the quantity we ultimately compare between conditions
+is "how strongly this gene tracks this niche in this patient", we can
+estimate that quantity per patient *first* and compare afterwards.
+
+The division of labour between the stages is the estimator's key property:
+
+-   **Stage 1 needs to be *reasonable*, not perfect.** Each per-patient slope
+    is an estimate with a variance attached, and stage 2 tests the condition
+    contrast against the *empirical* spread of the patient slopes. A
+    misspecified stage 1 inflates that spread and costs power — it does not
+    invalidate the test. Validity comes from contrasting patients.
+-   **Stage 2 is an ordinary small-sample regression problem** — tens of
+    numbers per triplet, one per patient — which is exactly the setting
+    `limma`'s moderated $t$ machinery was built for.
+
+## The pipeline at a glance
+
+$$
+\underbrace{\text{SpaNorm-fitted SPE}}_{\text{input}}
+\;\longrightarrow\;
+\underbrace{\hat\beta^{(s,t)}_{g},\ v^{(s,t)}_{g}}_{\substack{\text{stage 1: joint WLS}\\ \text{per (sample, index type)}}}
+\;\longrightarrow\;
+\underbrace{\hat\beta_{g,p},\ v_{g,p}}_{\substack{\text{pool cores}\\ \text{within patient}}}
+\;\longrightarrow\;
+\underbrace{\hat\tau^2}_{\substack{\text{DerSimonian–Laird,}\\ \text{median over genes}}}
+\;\longrightarrow\;
+\underbrace{t_g,\ p_g}_{\substack{\text{stage 2: weighted}\\ \text{moderated limma}}}
+\;\longrightarrow\;
+\text{BH over triplets}
+$$
+
+Throughout, $g$ indexes genes, $c$ cells, $s$ samples (tissue cores), $p$
+patients (a patient may contribute several cores; with no `patient` column
+each sample is its own patient), $t$ the **index** cell type whose expression
+is modelled, and $t'$ the **niche** cell type whose local density is the
+predictor. A *triplet* is one $(g, t, t')$ hypothesis. The niche covariates
+$N_{c,t'}(\sigma)$ are exactly the effective-niche columns of Part 1, at one
+bandwidth $\sigma$.
+
+## Stage 1: one joint slope fit per (sample, index type)
+
+Stage 1 asks, within one sample $s$ and one index cell type $t$ at a time:
+*across the cells of this type in this core, how does this gene's expression
+co-vary with the local density of each surrounding cell type?* The answer is
+a vector of slopes with variances, obtained by weighted least squares of a
+**working response** $\varepsilon$ on the niche columns. The three `stage1`
+options differ only in what $\varepsilon$ (and its weights) are; the fit
+itself is shared.
+
+### The working response (`stage1 = "spanorm"`, the default)
+
+The default response is a one-step linearisation anchored on a stored
+[SpaNorm::SpaNorm()] fit — the same normalisation model the rest of the
+package relies on — read from `metadata(spe)$SpaNorm`. That fit provides,
+for every gene $g$ and cell $c$:
+
+$$
+\hat\eta_{c,g}
+  \;=\; \hat g_g \;+\; \sum_{k} \hat a_{g,k}\, W_{c,k}
+  \;=\; \underbrace{\hat\eta^{\text{bio}}_{c,g}}_{\text{biology columns}}
+  \;+\; \underbrace{\hat\eta^{\text{LS}}_{c,g}}_{\text{library-size / batch columns}},
+$$
+
+where $W$ is the SpaNorm design matrix, $\hat a_{g,k}$ its fitted per-gene
+coefficients, $\hat g_g$ the per-gene baseline, and the split into
+$\hat\eta^{\text{bio}}$ and $\hat\eta^{\text{LS}}$ follows SpaNorm's own
+labelling of its columns (`wtype`) into a smooth *biology* block and a
+*library-size/batch* block. From the full fitted mean
+$\hat\mu_{c,g} = \exp(\hat\eta_{c,g})$ and the stored NB dispersion
+$\hat\psi_g$, stage 1 forms:
+
+$$
+z_{c,g} = \frac{Y_{c,g} - \hat\mu_{c,g}}{\hat\mu_{c,g}},
+\qquad
+w_{c,g} = \frac{\hat\mu_{c,g}}{1 + \hat\psi_g\,\hat\mu_{c,g}},
+\qquad
+\varepsilon_{c,g} \;=\; \hat\eta^{\text{bio}}_{c,g} + z_{c,g},
+$$
+
+| symbol | meaning |
+|---|-----------------------------------------------|
+| $Y_{c,g}$ | the raw count of gene $g$ in cell $c$ |
+| $z_{c,g}$ | the GLM **working residual** — the first-order (log-link) expansion of $\log Y$ around the fitted mean, which is finite even at $Y = 0$ (where $z = -1$), so no pseudocount is needed |
+| $w_{c,g}$ | the NB **working weight** — precisely the IRLS weight of Part 1, down-weighting cells where the linearisation is least reliable (low counts) |
+| $\varepsilon_{c,g}$ | the stage-1 response: approximately $\log Y_{c,g} - \hat\eta^{\text{LS}}_{c,g}$, i.e. log expression with **only the library-size/batch effect removed** |
+
+Three deliberate choices are folded into those three lines:
+
+-   **Linearise at the *full* fitted mean.** The residual and the weights use
+    $\hat\mu$ with the depth effect *included*. Expanding around a
+    biology-only or depth-only mean re-introduces exactly the confounding
+    the estimator must avoid: a depth-free expansion point leaves the
+    depth–density correlation inside a core unadjusted, and a biology-free
+    one leaks the baseline into the slope.
+-   **Add the biology component back** (`epsilon = "addback"`, the default).
+    The bare working residual $z$ has the *entire* SpaNorm fit removed —
+    including the smooth biology surface, which can absorb part of a genuine
+    niche signal (the niche columns are themselves smooth functions of
+    space). Adding $\hat\eta^{\text{bio}}$ back means that, net, only the
+    library-size/batch part is subtracted, undoing that attenuation.
+    `epsilon = "residual"` keeps the bare residual for sensitivity analysis;
+    it under-states the slope by a factor of about $1 - R^2$ whenever a niche
+    column overlaps the biology basis, which is why that $R^2$ is reported
+    per subset in the diagnostics (below).
+-   **Slopes live on the log-mean scale.** Because $\varepsilon$ is a
+    linearised *log* expression, a flat condition fold-change moves a gene's
+    intercept, not its niche slope — so condition main effects do not leak
+    into the slope contrast at any expression level. (An identity-scale
+    response fails exactly this test: a $2\times$ baseline shift times a
+    niche-correlated baseline *looks* like a slope. The `ctresp` and
+    `maineffect` scenarios in the benchmark vignette measure this leak
+    directly.)
+
+### The joint weighted fit
+
+Within the subset of cells of index type $t$ in sample $s$ (kept only if it
+has at least `min.cells` cells), let $\tilde N$ be the niche columns
+**centred within the subset** and with the index type's own column removed —
+the same symmetric self-interaction rule the Part 1 design applies ($A$'s
+local density of $A$ is not a meaningful niche predictor for $A$ cells). With
+design $D = [\,\mathbf 1 \mid \tilde N\,]$ (the intercept absorbs each gene's
+level) and $\Omega_g = \mathrm{diag}(w_{c,g})$, each gene's slopes and their
+variances are the standard weighted-least-squares quantities:
+
+$$
+\hat\beta^{(s,t)}_{g}
+  = \big(D^\top \Omega_g D\big)^{-1} D^\top \Omega_g\, \varepsilon_g,
+\qquad
+v^{(s,t)}_{g,t'}
+  = \hat\varphi_g \Big[\big(D^\top \Omega_g D\big)^{-1}\Big]_{t't'},
+\qquad
+\hat\varphi_g
+  = \frac{\sum_c w_{c,g}\,r_{c,g}^2}{n_{s,t} - p},
+$$
+
+where $r_{c,g}$ are the weighted-fit residuals, $n_{s,t}$ is the subset's
+cell count, $p$ the number of design columns, and $\hat\varphi_g$ the
+per-gene working dispersion within the subset. Degenerate niche columns
+(no variance within the subset) are dropped and report `NA`.
+
+**Why joint, not one niche at a time?** Niche densities are spatially smooth
+and therefore correlated with each other. A *marginal* slope per niche lets
+one true association bleed into every correlated niche column — triplet
+attribution becomes unreliable. Estimated jointly, correlated columns must
+*compete* for the same variation, so a smooth trend (including the biology
+surface the add-back re-admits) loads onto the column that genuinely carries
+it. The add-back and the joint fit ship together for this reason, and the
+`attribution` scenario in the benchmark vignette (a decoy cell type whose
+density correlates with the true niche's) measures the result. A practical
+consequence worth knowing: restricting `niche =` changes the *fit*, not just
+the report — every remaining slope is re-estimated in the smaller joint
+design.
+
+### The other stage-1 responses
+
+-   **`"ols"`** regresses library-size-scaled log counts,
+    $\varepsilon_{c,g} = \log\!\big(1 + Y_{c,g}\,\bar L / L_c\big)$ with
+    $L_c$ cell $c$'s total count and $\bar L$ their mean, with **unit
+    weights**. It needs no stored SpaNorm fit and no dispersion, so it is
+    the dependency-free fallback (the toy examples use it). Its global
+    per-cell scaling cannot absorb *spatially structured* depth, a
+    vulnerability the benchmark's `depth` scenario quantifies.
+-   **`"nb"`** fits a fresh negative binomial GLM per subset with design
+    $[\,\mathbf 1,\ \log L_c - \overline{\log L},\ \tilde N\,]$ and reads the
+    slopes and variances from the GLM coefficients and the inverse Fisher
+    information. It is the slow reference implementation the one-step
+    response is validated against: its cost is per-*gene* (dispersion
+    estimation per subset), so it suits small `index`/`niche` restrictions,
+    not panel-wide runs.
+
+Which of the two fallbacks to prefer is an empirical question that depends on
+what they are fed. The completed benchmark measured `ols` on **raw counts**
+(see the *Two-stage estimation* benchmark report); interim results from the structured-simulator
+re-run, where both fallbacks analyse SpaNorm-*adjusted* expression, point the
+other way — `ols`'s null rate inflating with sample size while `nb` holds
+near nominal — so treat any `ols`-favourable reading as scoped to the
+raw-counts setting until that run completes and its table ships.
+
+## Between the stages: pooling cores into patients
+
+When a patient $p$ contributed several cores, the per-core slopes are pooled
+by **inverse-variance (precision) weighting**:
+
+$$
+\hat\beta_{g,p}
+ = \frac{\sum_{s \in p} \hat\beta^{(s)}_{g} \big/ v^{(s)}_{g}}
+        {\sum_{s \in p} 1 \big/ v^{(s)}_{g}},
+\qquad
+v_{g,p} = \Big(\sum_{s \in p} 1 \big/ v^{(s)}_{g}\Big)^{-1}.
+$$
+
+Fixed-effect pooling is the *correct* choice at this level — the cores share
+their patient's true slope, so their estimates differ only by sampling noise
+— while genuine patient-to-patient variation enters the model at the next
+step, through $\tau^2$. `condition` is checked to be constant within each
+patient, and so must any `patient.covariates`.
+
+## Stage 2: the patient-level contrast
+
+For each (index, niche) pair, stage 2 has a genes × patients matrix of
+pooled slopes $\hat\beta_{g,p}$ with per-entry variances $v_{g,p}$, and a
+patient-level design
+
+$$
+x_p = \big(1,\ r_p,\ \text{patient covariates}\dots\big)^\top,
+$$
+
+with $r_p$ the condition indicator. The working model is a random-effects
+meta-regression, familiar from meta-analysis:
+
+$$
+\hat\beta_{g,p} \;=\; x_p^\top \theta_g \;+\; b_{g,p} \;+\; e_{g,p},
+\qquad
+b_{g,p} \sim \mathcal N(0, \tau^2),
+\qquad
+e_{g,p} \sim \mathcal N(0, v_{g,p}),
+$$
+
+| symbol | meaning |
+|---|-----------------------------------------------|
+| $\theta_g$ | the patient-level regression coefficients; its condition entry is the **tested quantity** — the difference in mean niche slope between conditions |
+| $b_{g,p}$ | genuine patient-to-patient variation in the slope, with one variance $\tau^2$ per (index, niche) pair |
+| $e_{g,p}$ | stage-1 estimation noise, whose variance $v_{g,p}$ is *known* (carried up from stage 1) |
+
+### The between-patient variance $\tau^2$
+
+$\tau^2$ is estimated by the **DerSimonian–Laird** moment method, per gene,
+then pooled. For one gene, fit the weighted regression with weights
+$w_p = 1/v_{g,p}$, take residuals $r_p$, and form Cochran's heterogeneity
+statistic and the moment estimate:
+
+$$
+Q_g = \sum_p w_p\, r_p^2,
+\qquad
+\hat\tau^2_g
+ = \max\!\Bigg(0,\;
+   \frac{Q_g - (S_g - q)}
+        {\sum_p w_p - \mathrm{tr}\!\big[(X^\top W X)^{-1} X^\top W^2 X\big]}
+   \Bigg),
+$$
+
+where $S_g$ is the number of patients with a finite slope for this gene, $q$
+the number of design columns, $X$ the stacked $x_p^\top$ and
+$W = \mathrm{diag}(w_p)$. The intuition: if the slopes scattered only by
+their known stage-1 noise, $Q_g$ would average $S_g - q$; any excess is
+between-patient variation, and the denominator converts that excess onto the
+variance scale. The per-gene estimates are noisy (they come from tens of
+numbers), so — exactly as the mixed model of Part 3 shares $\tau^2$ across
+genes — the reported $\hat\tau^2$ is the **median over genes**, one value per
+(index, niche) pair, floored at 0.
+
+### The weighted, moderated contrast
+
+Each triplet is then tested with `limma`: `lmFit()` on the slope matrix with
+observation weights
+
+$$
+u_{g,p} \;=\; \frac{1}{v_{g,p} + \hat\tau^2},
+$$
+
+followed by `eBayes(robust = TRUE)`, and the moderated $t$ and p-value of the
+condition column are reported. The weight formula is the estimator's second
+load-bearing choice:
+
+-   When **$\tau^2$ dominates** (patients genuinely differ more than stage-1
+    noise), $u_{g,p} \to 1/\tau^2$ — near-equal weights, recovering the
+    validity of an unweighted patient-level test. This guards against the
+    classic pseudobulk pitfall of over-weighting cell-rich patients: a
+    patient with $10\times$ the cells has a smaller $v$, but *not* a more
+    informative draw of $b_{g,p}$.
+-   When **$v$ dominates** (small or imbalanced subsets), the weights do
+    real work, down-weighting patients whose slopes are poorly estimated.
+
+`eBayes` moderation shrinks each gene's residual variance toward a
+gene-shared prior (borrowing strength across genes, the same instinct as the
+shared $\tau^2$), lifting the reference df of the $t$-statistic above the
+handful of patients a single gene alone would provide; `robust = TRUE`
+protects the prior from hypervariable outlier genes. Finally the p-values
+are corrected with a **flat Benjamini–Hochberg across all tested triplets**
+— deliberately *not* the hierarchical cascade of Part 1, because a gene's
+triplets here are mostly null and combining them dilutes a single true
+effect to no better than Bonferroni.
+
+## Diagnostics
+
+The returned `SpiDEResults` carries three diagnostic tables in
+`@diagnostics`, one per known failure mode:
+
+| table | what it reports | the failure mode it makes visible |
+|---|---------------------------|---------------------------|
+| `r2` | per (sample, index) subset: the $R^2$ of each niche column on the SpaNorm biology basis (`stage1 = "spanorm"` only) | how much smooth-trend overlap the add-back is exposed to — and how much attenuation `epsilon = "residual"` would have suffered |
+| `inclusion` | per index type: which patients passed `min.cells`, with their condition | **informative dropout** — cell-type abundance can correlate with condition, silently biasing the tested patient subset; a Fisher test warns at $p < 0.05$ |
+| `tau2` | the pooled $\hat\tau^2$ per (index, niche) | a large value flags triplets where patient heterogeneity, not stage-1 noise, limits power |
+
+## A worked example
+
+The toy data has no stored SpaNorm fit, so the example uses the
+dependency-free `stage1 = "ols"` path (each sample is its own patient here):
+
+```{r twostage_demo, echo = TRUE, message = FALSE}
+data(toySpiDE)
+spe2 <- buildNiches(toySpiDE, sigma = 30)
+ts <- twoStageSpiDE(spe2, condition = "condition", sigma = 30,
+                    min.cells = 10, stage1 = "ols", fdr = 0.3,
+                    verbose = FALSE)
+head(results(ts), 3)
+head(ts$diagnostics$tau2, 3)
+```
+
+The results table keeps the familiar schema — `gene`, `ct_index`,
+`ct_niche`, the slope contrast `coef`, its moderated `t`, `p.niche` and
+`fdr.niche` — so downstream code is agnostic to which estimator produced it.
+
+## What it fixes, what it does not, and how it measured
+
+**Fixed: the error structure.** In the paired benchmark against the
+published simulation study (the *Two-stage estimation* report on the
+spiDE-research benchmark site, https://bhuvalab.github.io/spiDE-research/),
+the two-stage arm is the best-calibrated
+method at every null design point — essentially nominal at $S = 4$ and
+drifting mildly conservative as patients accrue, where the mixed GLM arms
+drift anti-conservative and `fixed` is drastically conservative. On the
+spatially random negative control it makes essentially no false calls where
+the GLM arms accumulate them.
+
+**The price: power.** On the same simulator it is uniformly less powerful
+than the mixed GLM arms at delivered FDR, and it is **cells-hungry**: each
+patient contributes exactly one slope per triplet, so per-patient precision —
+cells — is what sharpens the test, and below `min.cells` a patient
+contributes nothing at all.
+
+**Not fixed: multiplicity.** The estimator carries real signal, but a
+full-panel hypothesis space (order $10^6$ triplets on a large panel) buries
+it — BH needs the best p-value below $0.05/m$. Restrict `index`, `niche` and
+the gene set to a pre-specified hypothesis; roughly 4,000 tests is the order
+at which a $p \approx 10^{-5}$ effect survives.
+
+Two measurement caveats, stated so they are not over-read: the widely-quoted
+real-cohort permutation numbers (zero false calls where the mixed GLM
+returned hundreds) were measured on this function's *predecessor* estimator
+and await re-measurement on the current one; and the benchmark's two-stage
+arm is `stage1 = "ols"` on raw counts, because the published simulator's
+i.i.d. library sizes make the default `"spanorm"` path unmeasurable there (a
+structured-library-size re-run is in progress — the benchmark report's
+Methods section has the full story).
+
+## Choosing between `fitSpiDE()` and `twoStageSpiDE()`
+
+-   **Prefer `fitSpiDE(random = "intercept")`** (the package default) for
+    genome-wide discovery: it is more powerful, its mild anti-conservatism
+    is quantified, and the hierarchical FDR is designed for the full
+    hypothesis space.
+-   **Prefer `twoStageSpiDE()`** when the conclusion must survive a
+    sceptical error audit on a *pre-specified* hypothesis — a restricted set
+    of index types, niches and genes — with enough patients ($S \gtrsim 16$
+    on the benchmark's operating characteristics) and enough cells per
+    patient. Its calibration is the best measured in the suite, and its
+    diagnostics (`inclusion` in particular) surface the cohort-level biases
+    a cell-level fit hides.
+-   On real data, run it on a **SpaNorm-normalised object with
+    `stage1 = "spanorm"`** — the `depth` adversarial scenario shows exactly
+    what the unnormalised fallback is vulnerable to.
 
 # Session info
 

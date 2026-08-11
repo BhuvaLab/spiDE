@@ -216,7 +216,7 @@ removes it.
 
 The productive response is to stop testing coefficients that cannot support
 inference, filtering on **patients contributing cells** rather than on total
-cells. This helps twice: the anti-powered tail stops consuming the
+cells. This helps twice: the under-powered tail stops consuming the
 multiple-testing budget, so the well-calibrated compartments gain power, and the
 output stops presenting uninformative nulls as though they were evidence.
 

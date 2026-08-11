@@ -148,3 +148,11 @@ res <- twoStageSpiDE(spe, condition = "condition", sigma = 30,
                      min.cells = 10, stage1 = "ols", verbose = FALSE)
 head(results(res))
 }
+\seealso{
+The model vignette (\code{vignette("spiDE-model")}) documents the
+estimator's two stages with full equations; the \emph{Two-stage estimation}
+benchmark report on the spiDE-research site
+(\url{https://bhuvalab.github.io/spiDE-research/}) reports its measured operating
+characteristics against the published simulation study, paired on the
+same simulated datasets.
+}
