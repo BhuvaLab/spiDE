@@ -64,3 +64,14 @@ test_that(".jointSlopes drops degenerate niche columns to NA", {
   expect_true(all(is.na(js$beta[, "b"])) && all(is.na(js$var[, "b"])))
   expect_true(all(is.finite(js$beta[, "a"])))
 })
+
+test_that(".nicheBasisR2 is 1 in-span and ~0 orthogonal", {
+  set.seed(9)
+  n <- 120
+  B <- cbind(rnorm(n), rnorm(n))
+  in_span <- 2 * B[, 1] - B[, 2] + 3
+  ortho <- residuals(lm(rnorm(n) ~ B))
+  r2 <- spiDE:::.nicheBasisR2(cbind(s = in_span, o = ortho), B)
+  expect_equal(unname(r2["s"]), 1, tolerance = 1e-8)
+  expect_equal(unname(r2["o"]), 0, tolerance = 1e-8)
+})

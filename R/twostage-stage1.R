@@ -98,3 +98,17 @@
   }
   list(beta = out_b, var = out_v)
 }
+
+#' R2 of each niche column on the biology basis, within a subset
+#'
+#' Measures the attenuation the "residual" response would suffer and the
+#' smooth-trend overlap the "addback" response is exposed to. Reported per
+#' (sample, index) subset in the diagnostics.
+#' @noRd
+.nicheBasisR2 <- function(X, B) {
+  f <- stats::lm.fit(cbind(1, B), X)
+  res <- as.matrix(f$residuals)
+  tss <- colSums(sweep(X, 2, colMeans(X))^2)
+  r2 <- 1 - colSums(res^2) / pmax(tss, 1e-12)
+  stats::setNames(pmin(pmax(r2, 0), 1), colnames(X))
+}
