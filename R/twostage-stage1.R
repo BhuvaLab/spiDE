@@ -28,3 +28,31 @@
   list(alpha = fit$alpha, gmean = fit$gmean, psi = fit$psi, W = fit$W,
        bio = wt == "biology")
 }
+
+#' One-step working response and weights for a cell subset
+#'
+#' Linearises log counts at the FULL fitted mean (the correct expansion
+#' point: handles zeros, no baseline leakage) and, under "addback", returns
+#' the biology component so that, net, only the LS (and batch) effect is
+#' removed. Materialises genes x subset matrices only.
+#' @param Y counts matrix (genes x all cells; dense).
+#' @param comp the .spanormComponents() list.
+#' @param cells integer/logical index of the subset's cells.
+#' @param epsilon "addback" (default; eta_bio + z) or "residual" (z).
+#' @return list(eps, w): the response and NB working weights, genes x cells.
+#' @noRd
+.stage1Epsilon <- function(Y, comp, cells, epsilon = c("addback", "residual")) {
+  epsilon <- match.arg(epsilon)
+  Wc <- comp$W[cells, , drop = FALSE]
+  eta <- comp$gmean + tcrossprod(comp$alpha, Wc)
+  mu <- exp(eta)
+  z <- (Y[, cells, drop = FALSE] - mu) / mu
+  w <- mu / (1 + comp$psi * mu)
+  eps <- if (epsilon == "addback") {
+    comp$gmean + tcrossprod(comp$alpha[, comp$bio, drop = FALSE],
+                            Wc[, comp$bio, drop = FALSE]) + z
+  } else {
+    z
+  }
+  list(eps = eps, w = w)
+}
