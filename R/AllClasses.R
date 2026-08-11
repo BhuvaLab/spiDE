@@ -217,6 +217,8 @@ setValidity("SpiDEFit", validSpiDEFit)
 #'   abundance-weighted contrast per gene. Empty unless the design carries the
 #'   `CellType:condition` block. Retrieved with
 #'   `results(object, type = "patient")`.
+#' @slot diagnostics a list of two-stage diagnostic tables (`r2`, `inclusion`,
+#'   `tau2`); empty for the GLM path.
 #' @slot fdr a numeric, the FDR threshold used.
 #' @slot call the matched call that produced the object.
 #'
@@ -246,12 +248,17 @@ setClass(
     # design carries a CellType:condition block.
     results.celltype = "data.frame",
     results.patient = "data.frame",
+    # Two-stage estimator diagnostics: R2 of niche columns on the biology
+    # basis, the per-index patient inclusion table, and the tau2 table.
+    # Empty for the GLM path.
+    diagnostics = "list",
     fdr = "numeric",
     call = "ANY"
   ),
   prototype = list(
     results.celltype = data.frame(),
     results.patient = data.frame(),
+    diagnostics = list(),
     mode = "condition"
   )
 )
