@@ -27,3 +27,32 @@
   }
   list(beta = Bp, var = Vp)
 }
+
+#' Between-patient variance component, DerSimonian-Laird, pooled over genes
+#'
+#' Per gene: weighted (1/v) regression on the stage-2 design, Cochran's
+#' Q from the weighted residuals, DL moment estimate
+#' (Q - (S - p)) / (sum(w) - tr((X'WX)^{-1} X'W^2X)); then the median over
+#' genes, floored at 0. One tau2 per (index, niche) -- matching how the
+#' package shares strength across genes elsewhere.
+#' @noRd
+.tau2DL <- function(B, V, X) {
+  p <- ncol(X)
+  t2 <- apply(cbind(B, V), 1, function(row) {
+    S <- length(row) / 2
+    b <- row[seq_len(S)]; v <- row[S + seq_len(S)]
+    ok <- is.finite(b) & is.finite(v) & v > 0
+    if (sum(ok) < p + 2) return(NA_real_)
+    w <- 1 / v[ok]; Xo <- X[ok, , drop = FALSE]; bo <- b[ok]
+    XtW <- t(Xo * w)
+    M <- tryCatch(solve(XtW %*% Xo), error = function(e) NULL)
+    if (is.null(M)) return(NA_real_)
+    res <- bo - Xo %*% (M %*% (XtW %*% bo))
+    Q <- sum(w * res^2)
+    denom <- sum(w) - sum(diag(M %*% (t(Xo * w^2) %*% Xo)))
+    if (denom <= 0) return(NA_real_)
+    max((Q - (sum(ok) - p)) / denom, 0)
+  })
+  med <- stats::median(t2, na.rm = TRUE)
+  if (!is.finite(med)) 0 else med
+}
