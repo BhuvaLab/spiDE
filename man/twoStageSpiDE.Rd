@@ -10,6 +10,7 @@ twoStageSpiDE(
   sigma,
   index = NULL,
   niche = NULL,
+  patient = NULL,
   patient.covariates = character(),
   assay = "counts",
   cell_type = "cell_type",
@@ -17,7 +18,8 @@ twoStageSpiDE(
   name = "Niche",
   min.cells = 30L,
   fdr = 0.05,
-  stage1 = c("auto", "nbresid", "ols", "analytic", "nb"),
+  stage1 = c("spanorm", "ols", "nb"),
+  epsilon = c("addback", "residual"),
   winsor = 4,
   lambda.a = 0,
   maxit.psi = 2,
@@ -36,38 +38,55 @@ constant within patient.}
 \item{index, niche}{character vectors restricting index / niche cell types.
 \strong{Use them}: the full space is usually too large to detect anything.}
 
+\item{patient}{a character, the colData column identifying the patient a
+sample (core) belongs to. Defaults to \code{NULL}, in which case each
+sample is its own patient (no pooling). Multiple samples per patient are
+pooled by precision (stage 2) before the condition contrast is taken;
+\code{condition} must still be constant within patient.}
+
 \item{patient.covariates}{a character vector of \emph{patient-level} colData
 columns to adjust for in stage 2 (e.g. sex, stage, histology). These are
 exactly the covariates \code{\link[=fitSpiDE]{fitSpiDE()}} rejects under \code{random != "none"}.}
 
 \item{assay, cell_type, sample_id, name}{column/assay names.}
 
-\item{min.cells}{minimum cells for a patient to contribute a slope (default
-30). Patients below it are dropped for that index type and the count is
-reported, rather than contributing an unstable slope.}
+\item{min.cells}{minimum cells for a sample to contribute a slope (default
+30). Samples below it are dropped for that index type and the count is
+reported in \code{diagnostics$inclusion}, rather than contributing an
+unstable slope.}
 
 \item{fdr}{the target false discovery rate for the reported table.}
 
-\item{stage1}{one of "ols" (the default) or "nb".
+\item{stage1}{one of "spanorm" (the default), "ols" or "nb", the working
+response stage-1 slopes are estimated from.
 
-\strong{"nb" is currently impractical at panel scale and the default is
-"ols" on measurement, not preference.} A single \code{fitNB} call on one
-(patient, index) subset of the YTMA cohort costs \strong{23 s} even at
-\code{maxit.psi = 1} -- and for a 158-cell subset, so the expense is
-per-GENE (dispersion estimation and IRLS setup over 13,348 genes), not per
-cell. Across 1,320 (patient, index) combinations that is \strong{8.5
-hours}, four times the one-stage fit this estimator exists to replace.
+\strong{"spanorm"} linearises the one-step working response at a stored
+\code{\link[SpaNorm:SpaNorm]{SpaNorm::SpaNorm()}} fit (\code{metadata(spe)$SpaNorm}; see \code{stage1}
+errors if none is found) and, under \code{epsilon = "addback"}, adds the
+fitted biology component back so that only the library-size/batch part of
+the fit is removed. This is the intended default: it reuses the
+normalisation the rest of the package already relies on and needs a
+single joint per-(sample, index) weighted fit, not one \code{fitNB} call
+per subset.
 
-"nb" is also not obviously better where it has been checked: on the toy
-fixture it ranked the planted effect 17th where "ols" ranked it 2nd, though
-that fixture is unfair to it (27-cell subsets, dispersion moderated over 40
-genes).
+\strong{"ols"} regresses log-CPM directly on the niche columns with unit
+weights. It needs no stored SpaNorm fit and no dispersion estimate, so it
+is the fallback when one is not available (e.g. \code{data(toySpiDE)}).
 
-The route to making "nb" viable is FEWER CALLS, not faster ones: one fit per
-patient carrying \code{CellType:niche} interactions (55 calls) rather than
-one per (patient, index) (1,320), which the cost profile above predicts
-would land near the one-stage runtime. Until that is built, "nb" is offered
-for small index/niche restrictions where the call count is low.}
+\strong{"nb" remains the most expensive path.} It fits a fresh
+\code{SpaNorm::fitNB} per (sample, index) subset carrying
+\code{[1, log-library-size, niche columns]}; at panel scale (thousands of
+genes) this cost is per-GENE (dispersion estimation and IRLS setup), not
+per cell, so it is offered for small index/niche restrictions where the
+subset count is low rather than as a default.}
+
+\item{epsilon}{one of "addback" (the default) or "residual", only used by
+\code{stage1 = "spanorm"}. "addback" linearises at the fitted mean and
+adds the biology (non-library/batch) component back to the working
+response, removing only the library-size/batch effect; "residual" leaves
+the bare working residual, which under-states the niche slope when a
+niche column overlaps the biology basis (see
+\code{diagnostics$r2}).}
 
 \item{winsor, lambda.a, maxit.psi, backend}{forwarded to
 \code{\link[SpaNorm]{fitNB}} by the "nb" path.}
@@ -75,12 +94,24 @@ for small index/niche restrictions where the call count is low.}
 \item{verbose}{a logical.}
 }
 \value{
-a \link{SpiDEResults} with the tidy \code{results} table populated.
+a \link{SpiDEResults} with the tidy \code{results} table populated
+(unchanged schema: \code{gene}, \code{ct_index}, \code{ct_niche},
+\code{coef}, \code{t}, \code{p.niche}, \code{fdr.niche},
+\code{DirectionNiche}, \code{bandwidth.max}). \code{@fits} is empty (no
+per-bandwidth GLM fit exists for this estimator). Diagnostics are
+attached at \code{r@diagnostics}, a list of three tables: \code{r2} (the
+niche columns' R2 against the SpaNorm biology basis, per sample x index,
+"spanorm" stage1 only), \code{inclusion} (the per-index patient inclusion
+table, with a warning when \code{min.cells} dropout is associated with
+\code{condition}), and \code{tau2} (the DerSimonian-Laird between-patient
+variance per index x niche used to weight the stage-2 contrast).
 }
 \description{
-Estimates each patient's niche slope, then contrasts those slopes between
-conditions. Because \code{condition} is assigned per patient, patients are
-the experimental units; the one-stage \code{\link[=fitSpiDE]{fitSpiDE()}} path treats cells as
+Estimates each core's (sample's) niche slope from a one-step response
+anchored on a SpaNorm fit, pools those slopes per patient, then contrasts
+the patient slopes between conditions with a variance-moderated limma fit.
+Because \code{condition} is assigned per patient, patients are the
+experimental units; the one-stage \code{\link[=fitSpiDE]{fitSpiDE()}} path treats cells as
 replicates of that contrast, which is anti-conservative when between-patient
 variation in the niche-expression relationship is real.
 }
@@ -103,6 +134,6 @@ survives.
 data(toySpiDE)
 spe <- buildNiches(toySpiDE, sigma = 30)
 res <- twoStageSpiDE(spe, condition = "condition", sigma = 30,
-                     min.cells = 10, verbose = FALSE)
+                     min.cells = 10, stage1 = "ols", verbose = FALSE)
 head(results(res))
 }

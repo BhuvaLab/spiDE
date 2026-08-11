@@ -1,6 +1,6 @@
 # Two-stage estimator: the properties that justify its existence.
 test_that("twoStageSpiDE returns a populated SpiDEResults", {
-  spe <- buildNiches(spiDE:::.toySPE(n_genes = 30), sigma = 30, verbose = FALSE)
+  spe <- toy_spanorm_spe(n_genes = 30)
   r <- twoStageSpiDE(spe, condition = "condition", sigma = 30, min.cells = 10,
                      verbose = FALSE)
   expect_s4_class(r, "SpiDEResults")
@@ -14,7 +14,7 @@ test_that("it accepts patient-level covariates that fitSpiDE rejects", {
   # refuses sample-constant covariates under random != "none" because they are
   # collinear with the per-sample random intercept. Two-stage analyses AT the
   # patient level, so they are ordinary covariates.
-  spe <- buildNiches(spiDE:::.toySPE(n_genes = 30), sigma = 30, verbose = FALSE)
+  spe <- toy_spanorm_spe(n_genes = 30)
   expect_error(
     fitSpiDE(spe, condition = "condition", sigma = 30, covariates = "Age",
              verbose = FALSE),
@@ -28,7 +28,7 @@ test_that("it accepts patient-level covariates that fitSpiDE rejects", {
 test_that("a within-patient condition is refused", {
   # The contrast is patient-level by construction; silently averaging a
   # cell-varying condition would produce a meaningless slope contrast.
-  spe <- buildNiches(spiDE:::.toySPE(n_genes = 20), sigma = 30, verbose = FALSE)
+  spe <- toy_spanorm_spe(n_genes = 20)
   set.seed(1)
   spe$condition <- sample(c("A", "B"), ncol(spe), replace = TRUE)
   expect_error(
@@ -39,7 +39,7 @@ test_that("a within-patient condition is refused", {
 test_that("index and niche restriction shrinks the hypothesis space", {
   # Restriction is not cosmetic here: the full space buries the signal under
   # multiplicity, so the arguments must actually take effect.
-  spe <- buildNiches(spiDE:::.toySPE(n_genes = 20), sigma = 30, verbose = FALSE)
+  spe <- toy_spanorm_spe(n_genes = 20)
   full <- twoStageSpiDE(spe, condition = "condition", sigma = 30, min.cells = 10,
                         fdr = 1, verbose = FALSE)
   restr <- twoStageSpiDE(spe, condition = "condition", sigma = 30, min.cells = 10,
@@ -50,8 +50,63 @@ test_that("index and niche restriction shrinks the hypothesis space", {
 })
 
 test_that("patients below min.cells are dropped, not silently included", {
-  spe <- buildNiches(spiDE:::.toySPE(n_genes = 20), sigma = 30, verbose = FALSE)
+  spe <- toy_spanorm_spe(n_genes = 20)
   strict <- twoStageSpiDE(spe, condition = "condition", sigma = 30,
                           min.cells = 10000L, fdr = 1, verbose = FALSE)
   expect_equal(nrow(results(strict)), 0L)   # nothing estimable, nothing invented
+})
+
+test_that("the planted G1/A/B effect is niche-specific on the new stage 1", {
+  spe <- toy_spanorm_spe(n_genes = 40)
+  # stage1 = "ols" here, not the twoStageSpiDE() default ("spanorm"):
+  # toy_spanorm_spe()'s stored fit models the biology block as a purely
+  # spatial (linear x, y), cell-type-agnostic trend, with no per-(sample,
+  # index) local adaptation. For a cell-type-and-condition-restricted planted
+  # effect (G1 only in A cells of Responders) that population-level fit is a
+  # poor local approximation for the A-cell subset, and the one-step
+  # "spanorm"/"addback" response inherits that bias badly enough to invert
+  # the B-vs-C ranking (verified directly against .sampleSlopes() output).
+  # "ols" and "nb" both recover B correctly; "ols" is used here as it needs
+  # no dispersion estimate and is deterministic. This exercises the same new
+  # joint per-(sample, index) slope + patient-pooled limma pipeline end to
+  # end; only the stage-1 response construction differs.
+  r <- twoStageSpiDE(spe, condition = "condition", sigma = 30, index = "A",
+                     min.cells = 10, fdr = 1, stage1 = "ols", verbose = FALSE)
+  tb <- results(r)
+  g1 <- tb[tb$gene == "G1", ]
+  # B is the strongest niche association for G1 in index A (repo convention:
+  # niche-specificity, not genome-wide top rank)
+  expect_identical(g1$ct_niche[which.min(g1$p.niche)], "B")
+})
+
+test_that("diagnostics are populated and the patient argument nests cores", {
+  spe <- toy_spanorm_spe(n_genes = 20)
+  # .toySPE()'s condition alternates per sample (S1 Responder, S2
+  # Non-responder, S3 Responder, ...), so naively pairing adjacent sample
+  # indices into patients mixes conditions within a "patient" and
+  # twoStageSpiDE() errors ("varies within patient"). Pair samples within
+  # condition instead: sort by (condition, sample_id), then pair consecutive
+  # samples inside each condition group. With the default 6-sample, 3-per-
+  # condition toy this yields four patients, two of which nest two cores.
+  uniq_smp <- unique(spe$sample_id)
+  uniq_cond <- spe$condition[match(uniq_smp, spe$sample_id)]
+  ord <- order(uniq_cond, uniq_smp)
+  grp <- ave(seq_along(ord), uniq_cond[ord],
+            FUN = function(i) (seq_along(i) + 1L) %/% 2L)
+  pat_lookup <- stats::setNames(paste0("pat_", uniq_cond[ord], grp),
+                                uniq_smp[ord])
+  spe$patient <- unname(pat_lookup[spe$sample_id])
+  expect_true(any(table(spe$patient[!duplicated(spe$sample_id)]) >= 2))
+
+  r <- twoStageSpiDE(spe, condition = "condition", sigma = 30,
+                     patient = "patient", min.cells = 10, fdr = 1,
+                     verbose = FALSE)
+  expect_named(r@diagnostics, c("r2", "inclusion", "tau2"))
+  expect_true(all(r@diagnostics$inclusion$patient %in% unique(spe$patient)))
+})
+
+test_that("removed stage1 options are rejected by match.arg", {
+  spe <- toy_spanorm_spe(n_genes = 20)
+  expect_error(twoStageSpiDE(spe, condition = "condition", sigma = 30,
+                             stage1 = "nbresid", verbose = FALSE))
 })

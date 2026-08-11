@@ -43,51 +43,13 @@
   all(v >= 0) && all(abs(v - round(v)) < 1e-8)
 }
 
-#' Patient-level contrast of the per-patient slopes (stage 2)
-#'
-#' With no covariates this is a Welch two-sample t-test on the patient slopes --
-#' valid without assuming equal variances, and the right test when the two
-#' groups may differ in how precisely their slopes are estimated.
-#'
-#' With `patient.covariates` it becomes a linear model on the patient slopes.
-#' That is the capability the one-stage path CANNOT offer: `checkSample()`
-#' rejects sample-constant covariates under `random != "none"`, because they are
-#' collinear with the per-sample random intercept. Here the unit of analysis IS
-#' the patient, so Sex, Stage, Histology and treatment arm are ordinary
-#' covariates -- which matters on cohorts where composition is confounded with
-#' the condition.
-#' @noRd
-.patientContrast <- function(sl, grp, cov_df = NULL) {
-  ok <- !is.na(sl)
-  if (sum(ok) < 4L) return(c(NA_real_, NA_real_, NA_real_))
-  y <- sl[ok]; g <- grp[ok]
-  if (length(unique(g)) < 2L) return(c(NA_real_, NA_real_, NA_real_))
-  if (is.null(cov_df)) {
-    a <- y[g == levels(g)[1]]; b <- y[g != levels(g)[1]]
-    if (length(a) < 2L || length(b) < 2L) return(c(NA_real_, NA_real_, NA_real_))
-    va <- stats::var(a); vb <- stats::var(b)
-    se <- sqrt(va / length(a) + vb / length(b))
-    if (!is.finite(se) || se <= 0) return(c(NA_real_, NA_real_, NA_real_))
-    est <- mean(b) - mean(a)
-    df <- (va / length(a) + vb / length(b))^2 /
-      ((va / length(a))^2 / (length(a) - 1) + (vb / length(b))^2 / (length(b) - 1))
-    tt <- est / se
-    return(c(est, tt, 2 * stats::pt(-abs(tt), df)))
-  }
-  d <- data.frame(y = y, g = g, cov_df[ok, , drop = FALSE])
-  fit <- try(stats::lm(y ~ ., data = d), silent = TRUE)
-  if (inherits(fit, "try-error")) return(c(NA_real_, NA_real_, NA_real_))
-  cf <- summary(fit)$coefficients
-  r <- grep("^g", rownames(cf))
-  if (!length(r)) return(c(NA_real_, NA_real_, NA_real_))
-  c(cf[r[1], 1], cf[r[1], 3], cf[r[1], 4])
-}
-
 #' Two-stage niche differential expression
 #'
-#' Estimates each patient's niche slope, then contrasts those slopes between
-#' conditions. Because \code{condition} is assigned per patient, patients are
-#' the experimental units; the one-stage [fitSpiDE()] path treats cells as
+#' Estimates each core's (sample's) niche slope from a one-step response
+#' anchored on a SpaNorm fit, pools those slopes per patient, then contrasts
+#' the patient slopes between conditions with a variance-moderated limma fit.
+#' Because \code{condition} is assigned per patient, patients are the
+#' experimental units; the one-stage [fitSpiDE()] path treats cells as
 #' replicates of that contrast, which is anti-conservative when between-patient
 #' variation in the niche-expression relationship is real.
 #'
@@ -111,70 +73,99 @@
 #' @param sigma a numeric, the bandwidth (one value; slopes are per bandwidth).
 #' @param index,niche character vectors restricting index / niche cell types.
 #'   \strong{Use them}: the full space is usually too large to detect anything.
+#' @param patient a character, the colData column identifying the patient a
+#'   sample (core) belongs to. Defaults to \code{NULL}, in which case each
+#'   sample is its own patient (no pooling). Multiple samples per patient are
+#'   pooled by precision (stage 2) before the condition contrast is taken;
+#'   \code{condition} must still be constant within patient.
 #' @param patient.covariates a character vector of \emph{patient-level} colData
 #'   columns to adjust for in stage 2 (e.g. sex, stage, histology). These are
 #'   exactly the covariates [fitSpiDE()] rejects under \code{random != "none"}.
 #' @param assay,cell_type,sample_id,name column/assay names.
-#' @param stage1 one of "ols" (the default) or "nb".
+#' @param min.cells minimum cells for a sample to contribute a slope (default
+#'   30). Samples below it are dropped for that index type and the count is
+#'   reported in \code{diagnostics$inclusion}, rather than contributing an
+#'   unstable slope.
+#' @param fdr the target false discovery rate for the reported table.
+#' @param stage1 one of "spanorm" (the default), "ols" or "nb", the working
+#'   response stage-1 slopes are estimated from.
 #'
-#'   \strong{"nb" is currently impractical at panel scale and the default is
-#'   "ols" on measurement, not preference.} A single \code{fitNB} call on one
-#'   (patient, index) subset of the YTMA cohort costs \strong{23 s} even at
-#'   \code{maxit.psi = 1} -- and for a 158-cell subset, so the expense is
-#'   per-GENE (dispersion estimation and IRLS setup over 13,348 genes), not per
-#'   cell. Across 1,320 (patient, index) combinations that is \strong{8.5
-#'   hours}, four times the one-stage fit this estimator exists to replace.
+#'   \strong{"spanorm"} linearises the one-step working response at a stored
+#'   [SpaNorm::SpaNorm()] fit (\code{metadata(spe)$SpaNorm}; see \code{stage1}
+#'   errors if none is found) and, under \code{epsilon = "addback"}, adds the
+#'   fitted biology component back so that only the library-size/batch part of
+#'   the fit is removed. This is the intended default: it reuses the
+#'   normalisation the rest of the package already relies on and needs a
+#'   single joint per-(sample, index) weighted fit, not one \code{fitNB} call
+#'   per subset.
 #'
-#'   "nb" is also not obviously better where it has been checked: on the toy
-#'   fixture it ranked the planted effect 17th where "ols" ranked it 2nd, though
-#'   that fixture is unfair to it (27-cell subsets, dispersion moderated over 40
-#'   genes).
+#'   \strong{"ols"} regresses log-CPM directly on the niche columns with unit
+#'   weights. It needs no stored SpaNorm fit and no dispersion estimate, so it
+#'   is the fallback when one is not available (e.g. \code{data(toySpiDE)}).
 #'
-#'   The route to making "nb" viable is FEWER CALLS, not faster ones: one fit per
-#'   patient carrying \code{CellType:niche} interactions (55 calls) rather than
-#'   one per (patient, index) (1,320), which the cost profile above predicts
-#'   would land near the one-stage runtime. Until that is built, "nb" is offered
-#'   for small index/niche restrictions where the call count is low.
+#'   \strong{"nb" remains the most expensive path.} It fits a fresh
+#'   \code{SpaNorm::fitNB} per (sample, index) subset carrying
+#'   \code{[1, log-library-size, niche columns]}; at panel scale (thousands of
+#'   genes) this cost is per-GENE (dispersion estimation and IRLS setup), not
+#'   per cell, so it is offered for small index/niche restrictions where the
+#'   subset count is low rather than as a default.
+#' @param epsilon one of "addback" (the default) or "residual", only used by
+#'   \code{stage1 = "spanorm"}. "addback" linearises at the fitted mean and
+#'   adds the biology (non-library/batch) component back to the working
+#'   response, removing only the library-size/batch effect; "residual" leaves
+#'   the bare working residual, which under-states the niche slope when a
+#'   niche column overlaps the biology basis (see
+#'   \code{diagnostics$r2}).
 #' @param winsor,lambda.a,maxit.psi,backend forwarded to
 #'   \code{\link[SpaNorm]{fitNB}} by the "nb" path.
-#' @param min.cells minimum cells for a patient to contribute a slope (default
-#'   30). Patients below it are dropped for that index type and the count is
-#'   reported, rather than contributing an unstable slope.
-#' @param fdr the target false discovery rate for the reported table.
 #' @param verbose a logical.
-#' @return a [SpiDEResults] with the tidy \code{results} table populated.
+#' @return a [SpiDEResults] with the tidy \code{results} table populated
+#'   (unchanged schema: \code{gene}, \code{ct_index}, \code{ct_niche},
+#'   \code{coef}, \code{t}, \code{p.niche}, \code{fdr.niche},
+#'   \code{DirectionNiche}, \code{bandwidth.max}). \code{@fits} is empty (no
+#'   per-bandwidth GLM fit exists for this estimator). Diagnostics are
+#'   attached at \code{r@diagnostics}, a list of three tables: \code{r2} (the
+#'   niche columns' R2 against the SpaNorm biology basis, per sample x index,
+#'   "spanorm" stage1 only), \code{inclusion} (the per-index patient inclusion
+#'   table, with a warning when \code{min.cells} dropout is associated with
+#'   \code{condition}), and \code{tau2} (the DerSimonian-Laird between-patient
+#'   variance per index x niche used to weight the stage-2 contrast).
 #' @examples
 #' data(toySpiDE)
 #' spe <- buildNiches(toySpiDE, sigma = 30)
 #' res <- twoStageSpiDE(spe, condition = "condition", sigma = 30,
-#'                      min.cells = 10, verbose = FALSE)
+#'                      min.cells = 10, stage1 = "ols", verbose = FALSE)
 #' head(results(res))
 #' @rdname twoStageSpiDE
 #' @importFrom SummarizedExperiment assay colData
 #' @importFrom SingleCellExperiment reducedDim
 #' @export
 twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
-                          patient.covariates = character(), assay = "counts",
-                          cell_type = "cell_type", sample_id = "sample_id",
-                          name = "Niche", min.cells = 30L, fdr = 0.05,
-                          stage1 = c("auto", "nbresid", "ols", "analytic", "nb"),
-                          winsor = 4, lambda.a = 0,
-                          maxit.psi = 2, backend = "cpu", verbose = TRUE) {
-  stage1 <- match.arg(stage1)
+                          patient = NULL, patient.covariates = character(),
+                          assay = "counts", cell_type = "cell_type",
+                          sample_id = "sample_id", name = "Niche",
+                          min.cells = 30L, fdr = 0.05,
+                          stage1 = c("spanorm", "ols", "nb"),
+                          epsilon = c("addback", "residual"),
+                          winsor = 4, lambda.a = 0, maxit.psi = 2,
+                          backend = "cpu", verbose = TRUE) {
+  stage1 <- match.arg(stage1); epsilon <- match.arg(epsilon)
   checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
   checkCondition(spe, condition)
   checkNiche(spe, sigma, name = name)
   cd <- SummarizedExperiment::colData(spe)
-  pat <- as.character(cd[[sample_id]])
+  smp <- as.character(cd[[sample_id]])
+  pat <- if (is.null(patient)) smp else as.character(cd[[patient]])
   ct <- as.character(cd[[cell_type]])
   grp_cell <- as.character(cd[[condition]])
-  # the contrast is patient-level; refuse anything else rather than silently
-  # averaging a within-patient condition into nonsense
   chk <- tapply(grp_cell, pat, function(z) length(unique(z[!is.na(z)])))
   if (any(chk > 1)) {
-    stop("condition '", condition, "' varies within patient; two-stage needs a ",
-         "patient-level condition")
+    stop("condition '", condition, "' varies within patient; two-stage needs ",
+         "a patient-level condition")
   }
+  s2p <- stats::setNames(vapply(unique(smp),
+                                function(s) pat[match(s, smp)], character(1)),
+                         unique(smp))
   nm <- as.matrix(SingleCellExperiment::reducedDim(spe, paste0(name, sigma)))
   if (!is.null(niche)) {
     keep <- intersect(niche, colnames(nm))
@@ -185,96 +176,84 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
   if (!is.null(index)) idx_types <- intersect(index, idx_types)
   if (!length(idx_types)) stop("no requested index cell types found")
 
-  Y <- SummarizedExperiment::assay(spe, assay)
-  # AUTO: counts in -> variance-stabilise them here; residuals in -> trust them.
-  # Pearson residuals are the natural input (a SpaNorm normalisation run already
-  # produces them via adj.method = "pearson"), and running OLS on residuals that
-  # are ALREADY variance-stabilised is the correct thing -- re-standardising
-  # would be wrong. Counts are detected rather than declared, because passing the
-  # wrong assay silently is the expensive mistake here.
-  is_counts <- .looksLikeCounts(Y)
-  if (identical(stage1, "auto")) {
-    stage1 <- if (is_counts) "nbresid" else "ols"
-    if (verbose) {
-      message(sprintf("stage1 = \"%s\" (assay '%s' %s)", stage1, assay,
-                      if (is_counts) "looks like counts" else
-                        "is not counts -- assumed pre-stabilised, e.g. Pearson residuals"))
-    }
-  }
-  if (stage1 %in% c("nbresid", "nb", "analytic") && !is_counts) {
+  Y <- as.matrix(SummarizedExperiment::assay(spe, assay))
+  if (stage1 %in% c("spanorm", "nb") && !.looksLikeCounts(Y)) {
     stop("stage1 = '", stage1, "' needs counts, but assay '", assay,
          "' does not look like counts")
   }
-  if (is_counts) checkCounts(Y)
-  # log-CPM is only needed by the "ols" path, and densifying 13k x 77k costs
-  # 8 GB -- do not pay for it when fitting NB.
+  comp <- if (stage1 == "spanorm") .spanormComponents(spe) else NULL
   E <- NULL
-  if (stage1 == "nbresid") {
-    E <- .nbPearsonResiduals(Y, winsor = winsor, lambda.a = lambda.a,
-                             maxit.psi = maxit.psi, backend = backend,
-                             verbose = verbose)
-  } else if (stage1 == "analytic") {
-    E <- .pearsonResiduals(Y)
-  } else if (stage1 == "ols") {
-    lib <- Matrix::colSums(Y)
-    E <- as.matrix(log1p(as.matrix(Y) %*%
-                           Matrix::Diagonal(x = mean(pmax(lib, 1)) / pmax(lib, 1))))
+  if (stage1 == "ols") {
+    lib <- colSums(Y)
+    E <- log1p(sweep(Y, 2, mean(pmax(lib, 1)) / pmax(lib, 1), "*"))
   }
   if (verbose) {
-    message(sprintf("stage 1: %d genes x %d index types x %d niches x %d patients",
-                    nrow(E), length(idx_types), ncol(nm), length(unique(pat))))
+    message(sprintf("stage 1 (%s): %d genes x %d index types x %d niches x %d samples",
+                    stage1, nrow(Y), length(idx_types), ncol(nm),
+                    length(unique(smp))))
   }
-  sl <- .patientSlopes(Y, E, nm, ct, pat, idx_types, min.cells,
-                       stage1 = stage1, winsor = winsor, lambda.a = lambda.a,
-                       maxit.psi = maxit.psi, backend = backend,
-                       verbose = verbose)
+  sl <- .sampleSlopes(Y, E, comp, nm, ct, smp, idx_types, min.cells,
+                      stage1 = stage1, epsilon = epsilon, winsor = winsor,
+                      lambda.a = lambda.a, maxit.psi = maxit.psi,
+                      backend = backend, verbose = verbose)
 
-  pats <- sort(unique(pat))
-  pgrp <- factor(vapply(pats, function(p) grp_cell[match(p, pat)], character(1)))
-  cov_df <- NULL
-  if (length(patient.covariates)) {
-    cov_df <- as.data.frame(lapply(patient.covariates, function(cv) {
-      v <- tapply(cd[[cv]], pat, function(z) z[1])
-      v[pats]
+  pats <- unique(unname(s2p))
+  pgrp <- factor(stats::setNames(
+    vapply(pats, function(p) grp_cell[match(p, pat)], character(1)), pats))
+  Xdes <- if (length(patient.covariates)) {
+    cv <- as.data.frame(lapply(patient.covariates, function(v) {
+      x <- tapply(cd[[v]], pat, function(z) z[1]); x[pats]
     }), col.names = patient.covariates, stringsAsFactors = TRUE)
-    if (verbose) message("stage 2 adjusting for: ", paste(patient.covariates, collapse = ", "))
+    stats::model.matrix(~ g + ., data = cbind(data.frame(g = pgrp[pats]), cv))
+  } else {
+    stats::model.matrix(~ g, data = data.frame(g = pgrp[pats]))
   }
+  diag_incl <- .inclusionDiagnostics(sl$ncells, s2p, pgrp, min.cells)
 
-  recs <- list()
+  recs <- list(); tau_tab <- list()
   for (ix in idx_types) {
-    A <- sl[[ix]]
-    if (is.null(A)) next
-    npat <- sum(apply(!is.na(A[1, , , drop = FALSE]), 3, any))
-    if (verbose) message(sprintf("  %-22s %d patients >= %d cells", ix, npat, min.cells))
+    pooled <- .poolPatientSlopes(sl$beta[[ix]], sl$var[[ix]], s2p)
     for (nn in colnames(nm)) {
-      if (identical(nn, ix)) next          # self-interaction, as the GLM design drops
-      M <- A[, nn, ]
-      st <- t(apply(M, 1, .patientContrast, grp = pgrp, cov_df = cov_df))
-      recs[[length(recs) + 1]] <- data.frame(
-        gene = rownames(M), ct_index = ix, ct_niche = nn,
-        coef = st[, 1], t = st[, 2], p.niche = st[, 3],
+      if (identical(nn, ix)) next            # self-interaction, as the GLM drops
+      B <- pooled$beta[, nn, pats, drop = TRUE]
+      V <- pooled$var[, nn, pats, drop = TRUE]
+      if (is.null(dim(B))) {
+        B <- matrix(B, nrow = nrow(Y), dimnames = list(rownames(Y), pats))
+        V <- matrix(V, nrow = nrow(Y), dimnames = list(rownames(Y), pats))
+      }
+      if (all(!is.finite(B))) next
+      t2 <- .tau2DL(B, V, Xdes)
+      st <- .limmaStage2(B, V, t2, Xdes)
+      st <- st[is.finite(st$p), , drop = FALSE]
+      if (!nrow(st)) next
+      tau_tab[[length(tau_tab) + 1L]] <-
+        data.frame(ct_index = ix, ct_niche = nn, tau2 = t2)
+      recs[[length(recs) + 1L]] <- data.frame(
+        gene = st$gene, ct_index = ix, ct_niche = nn,
+        coef = st$coef, t = st$t, p.niche = st$p,
         stringsAsFactors = FALSE)
     }
   }
-  # An empty result is a legitimate outcome, not an error: if no patient clears
-  # min.cells for any index type there is nothing estimable, and the honest
-  # answer is an empty table rather than an invented one.
   empty <- data.frame(gene = character(), ct_index = character(),
                       ct_niche = character(), coef = numeric(), t = numeric(),
                       p.niche = numeric(), fdr.niche = numeric(),
                       DirectionNiche = character(), bandwidth.max = numeric(),
                       stringsAsFactors = FALSE)
-  out <- if (length(recs)) do.call(rbind, recs) else empty[, seq_len(6)]
-  out <- out[is.finite(out$p.niche), , drop = FALSE]
-  if (!nrow(out)) {
+  diagnostics <- list(
+    r2 = sl$r2, inclusion = diag_incl,
+    tau2 = if (length(tau_tab)) do.call(rbind, tau_tab) else
+      data.frame(ct_index = character(), ct_niche = character(),
+                 tau2 = numeric()))
+  if (!length(recs)) {
     if (verbose) message("stage 2: no estimable triplets")
     return(new("SpiDEResults", fits = list(), sigma = sigma,
                condition = condition, mode = "condition", index = idx_types,
                niche = colnames(nm), covariates = patient.covariates,
                coldata = cd, gene.weights = NULL, p.cauchy.pos = NULL,
                p.cauchy.neg = NULL, results = empty, fdr = fdr,
-               call = match.call()))
+               call = match.call(), diagnostics = diagnostics))
   }
+  out <- do.call(rbind, recs)
   out$fdr.niche <- stats::p.adjust(out$p.niche, "BH")
   out$DirectionNiche <- ifelse(out$t > 0, "Up", "Down")
   out$bandwidth.max <- sigma
@@ -289,5 +268,5 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
       covariates = patient.covariates, coldata = cd, gene.weights = NULL,
       p.cauchy.pos = NULL, p.cauchy.neg = NULL,
       results = out[out$fdr.niche <= fdr, , drop = FALSE],
-      fdr = fdr, call = match.call())
+      fdr = fdr, call = match.call(), diagnostics = diagnostics)
 }
