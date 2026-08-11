@@ -16,8 +16,11 @@
     b <- B[, , ss, drop = FALSE]; v <- V[, , ss, drop = FALSE]
     wt <- 1 / v
     wt[is.na(b) | !is.finite(wt)] <- NA
-    swt <- apply(wt, 1:2, sum, na.rm = TRUE)
-    num <- apply(b * wt, 1:2, sum, na.rm = TRUE)
+    # rowSums(x, na.rm = TRUE, dims = 2) collapses the 3rd (core) dimension
+    # exactly like apply(x, 1:2, sum, na.rm = TRUE), vectorised in C rather
+    # than looped in R.
+    swt <- rowSums(wt, na.rm = TRUE, dims = 2)
+    num <- rowSums(b * wt, na.rm = TRUE, dims = 2)
     est <- num / swt
     est[swt == 0] <- NA_real_
     Bp[, , p] <- est
@@ -69,7 +72,19 @@
   Wt <- 1 / (V + tau2)
   bad <- !is.finite(B) | !is.finite(Wt)
   Bf <- B; Bf[bad] <- 0; Wt[bad] <- 0
-  fit <- limma::lmFit(Bf, design = X, weights = Wt)
+  # Zero-weighting NA slopes (above) routinely leaves some genes with an
+  # inestimable coefficient in this triplet's design; lmFit() warns "Partial
+  # NA coefficients for k probe(s)" every time that happens, and the NA rows
+  # are filtered downstream (twoStageSpiDE() drops non-finite p). Muffle only
+  # that specific, expected warning -- anything else lmFit()/eBayes() raises
+  # still propagates.
+  fit <- withCallingHandlers(
+    limma::lmFit(Bf, design = X, weights = Wt),
+    warning = function(w) {
+      if (grepl("^Partial NA coefficients for", conditionMessage(w))) {
+        invokeRestart("muffleWarning")
+      }
+    })
   fit <- limma::eBayes(fit, robust = TRUE)
   cn <- colnames(X)[2]
   data.frame(gene = rownames(B),

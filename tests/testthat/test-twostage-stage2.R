@@ -67,6 +67,21 @@ test_that(".limmaStage2 matches a weighted lm directionally and handles NA", {
   expect_gt(median(st$p[-1]), 0.05)
 })
 
+test_that(".limmaStage2 muffles limma's partial-NA-coefficient warning", {
+  # Zero-weighting an entire group for one gene (via an NA slope) makes that
+  # gene's group coefficient inestimable, which is routine (genes drop out of
+  # a triplet's design all the time) and is already handled downstream by the
+  # finite-p filter -- it should not surface as a warning.
+  set.seed(13)
+  S <- 10; G <- 3
+  X <- cbind(`(Intercept)` = 1, g = rep(0:1, each = S / 2))
+  V <- matrix(0.1, G, S)
+  B <- matrix(rnorm(G * S, sd = 0.4), G, S,
+              dimnames = list(paste0("g", 1:G), NULL))
+  B[1, X[, "g"] == 1] <- NA          # gene 1's group coefficient -> NA
+  expect_silent(spiDE:::.limmaStage2(B, V, tau2 = 0.05, X))
+})
+
 test_that(".inclusionDiagnostics warns on condition-associated dropout", {
   ncells <- data.frame(sample = paste0("s", 1:12), index = "A",
                        n = c(rep(100, 6), rep(5, 6)))
