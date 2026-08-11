@@ -57,7 +57,13 @@
     max((Q - (sum(ok) - p)) / denom, 0)
   })
   med <- stats::median(t2, na.rm = TRUE)
-  if (!is.finite(med)) 0 else med
+  if (!is.finite(med)) {
+    warning("between-patient variance tau2 was inestimable for every gene ",
+            "(too few patients for the stage-2 design); using tau2 = 0, so ",
+            "the weights reduce to fixed-effect 1/v pooling", call. = FALSE)
+    return(0)
+  }
+  med
 }
 
 #' Moderated condition contrast on the patient slope matrix

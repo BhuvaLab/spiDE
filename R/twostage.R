@@ -18,13 +18,17 @@
 # The one-stage model treats cells as replicates of a patient-level contrast; on
 # a patient-label permutation of the YTMA cohort (55 patients, every triplet null
 # by construction) that returns ~576 false calls in every replicate, realized FDR
-# 1.00 against a nominal 0.05. Two-stage on the same permuted data gives raw
-# type-I 0.036 and ZERO false calls, in 1.5 minutes against 128.
+# 1.00 against a nominal 0.05. NOTE the two-stage numbers below are HISTORICAL,
+# measured on this function's predecessor (the nbresid/Welch estimator) -- see
+# the roxygen: that predecessor gave raw type-I 0.036 and ZERO false calls on
+# the same permuted data, in 1.5 minutes against 128. Re-measurement on the
+# current estimator is pending.
 #
 # WHAT IT DOES NOT FIX
 # --------------------
 # Multiplicity. The estimator carries real signal (true triplets enriched 5x at
-# alpha 0.05 and 65x at alpha 0.001 on a spiked plasmode) but a full-panel
+# alpha 0.05 and 65x at alpha 0.001 on a spiked plasmode -- also predecessor
+# measurements, pending re-measurement) but a full-panel
 # hypothesis space of ~1.8M triplets buries it: BH needs the best p below
 # 0.05/m, and the hierarchical cascade does not help either, because ACAT over a
 # gene's ~137 mostly-null triplets dilutes a single true effect to no better than
@@ -47,14 +51,36 @@
   if (as.double(ng) * as.double(nc) <= n) {
     v <- as.numeric(as.matrix(Y))
   } else {
-    nr <- max(1L, min(ng, ceiling(sqrt(n))))
-    ncl <- max(1L, min(nc, ceiling(n / nr)))
-    v <- as.numeric(as.matrix(Y[sample.int(ng, nr), sample.int(nc, ncl),
-                               drop = FALSE]))
+    nr <- max(1L, min(ng, as.integer(ceiling(sqrt(n)))))
+    ncl <- max(1L, min(nc, as.integer(ceiling(n / nr))))
+    # evenly spaced, not sampled: sample.int() would advance the global RNG
+    # stream (a seeded pipeline's downstream draws would then depend on
+    # whether this gate ran at all), and a borderline assay could pass the
+    # check on one run and fail it on the next
+    ri <- unique(as.integer(round(seq(1L, ng, length.out = nr))))
+    ci <- unique(as.integer(round(seq(1L, nc, length.out = ncl))))
+    v <- as.numeric(as.matrix(Y[ri, ci, drop = FALSE]))
   }
   v <- v[is.finite(v)]
   if (!length(v)) return(FALSE)
   all(v >= 0) && all(abs(v - round(v)) < 1e-8)
+}
+
+#' First non-missing value of a cell-level vector, per patient
+#'
+#' Indexes the original vector rather than going through tapply(), which
+#' unlists a factor into bare integer level codes -- a factor patient
+#' covariate would then enter the stage-2 design as a continuous trend in
+#' arbitrary codes, silently. Taking the first NON-missing cell also keeps a
+#' patient whose first cell happens to be NA while its value is known
+#' elsewhere.
+#' @noRd
+.patientValue <- function(x, pat, pats) {
+  idx <- vapply(pats, function(p) {
+    i <- which(pat == p & !is.na(x))
+    if (length(i)) i[1L] else which(pat == p)[1L]
+  }, integer(1))
+  stats::setNames(x[idx], pats)
 }
 
 #' Two-stage niche differential expression
@@ -181,6 +207,16 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
                           winsor = 4, lambda.a = 0, maxit.psi = 2,
                           backend = "cpu", verbose = TRUE) {
   stage1 <- match.arg(stage1); epsilon <- match.arg(epsilon)
+  if (length(sigma) != 1L || !is.finite(sigma)) {
+    stop("twoStageSpiDE() takes a single bandwidth (stage-1 slopes are per ",
+         "bandwidth); got sigma of length ", length(sigma),
+         ". Fit one bandwidth at a time -- spiDE()/fitSpiDE() are the ",
+         "multi-bandwidth path.")
+  }
+  checkFdr(fdr)
+  if (length(min.cells) != 1L || is.na(min.cells) || min.cells < 1) {
+    stop("min.cells must be a single number >= 1")
+  }
   checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
   checkCondition(spe, condition)
   checkNiche(spe, sigma, name = name)
@@ -214,6 +250,15 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
            "; two-stage needs patient-level covariates")
     }
   }
+  # the precision pooling below attributes each core wholly to one patient;
+  # a sample spanning patients (a colData merge error) would silently hand
+  # the whole core to whichever patient its first cell carries
+  n_pat_per_smp <- tapply(pat, smp, function(z) length(unique(z)))
+  if (any(n_pat_per_smp > 1)) {
+    stop("sample(s) span more than one patient: ",
+         paste(names(n_pat_per_smp)[n_pat_per_smp > 1], collapse = ", "),
+         "; each sample (core) must belong to exactly one patient")
+  }
   s2p <- stats::setNames(vapply(unique(smp),
                                 function(s) pat[match(s, smp)], character(1)),
                          unique(smp))
@@ -221,10 +266,26 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
   if (!is.null(niche)) {
     keep <- intersect(niche, colnames(nm))
     if (!length(keep)) stop("no requested niche cell types found")
+    miss <- setdiff(niche, keep)
+    if (length(miss)) {
+      # stage-1 slopes are JOINT across niche columns, so silently dropping
+      # a misspelled niche changes every remaining slope, not just the
+      # reported rows -- surface it
+      warning("requested niche cell type(s) not found, dropped: ",
+              paste(miss, collapse = ", "), call. = FALSE)
+    }
     nm <- nm[, keep, drop = FALSE]
   }
   idx_types <- sort(unique(ct))
-  if (!is.null(index)) idx_types <- intersect(index, idx_types)
+  if (!is.null(index)) {
+    found <- intersect(index, idx_types)
+    miss <- setdiff(index, found)
+    if (length(miss)) {
+      warning("requested index cell type(s) not found, dropped: ",
+              paste(miss, collapse = ", "), call. = FALSE)
+    }
+    idx_types <- found
+  }
   if (!length(idx_types)) stop("no requested index cell types found")
 
   # Y is left as assay() returns it (dense, sparse, or DelayedArray) -- at
@@ -261,6 +322,26 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
                       backend = backend, verbose = verbose)
 
   pats <- unique(unname(s2p))
+  # condition per patient, first non-missing cell. checkCondition() allows NA
+  # condition values; an NA patient would otherwise reach model.matrix(),
+  # which silently drops that row and misaligns Xdes against the slope
+  # matrices (the same failure mode handled for patient.covariates below).
+  cond_pat <- .patientValue(grp_cell, pat, pats)
+  if (anyNA(cond_pat)) {
+    dropped <- pats[is.na(cond_pat)]
+    if (verbose) {
+      message(sprintf("stage 2: dropping %d patient(s) with missing '%s': %s",
+                      length(dropped), condition,
+                      paste(dropped, collapse = ", ")))
+    }
+    pats <- pats[!is.na(cond_pat)]
+    cond_pat <- cond_pat[pats]
+    lvl <- unique(grp_cell[!is.na(grp_cell)])
+    if (any(table(factor(cond_pat, levels = lvl)) < 2)) {
+      stop("fewer than 2 patients remain in a condition after dropping ",
+           "patient(s) with missing '", condition, "'")
+    }
+  }
   cv_list <- NULL
   if (length(patient.covariates)) {
     # NA in a patient-level covariate would otherwise reach model.matrix(),
@@ -270,9 +351,8 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
     # from pats up front instead: every later use of `pats` (pgrp, Xdes, and
     # the pooled$beta/var[, , pats] slices in the loop below) then stays in
     # sync automatically.
-    cv_list <- lapply(patient.covariates, function(v) {
-      x <- tapply(cd[[v]], pat, function(z) z[1]); x[pats]
-    })
+    cv_list <- lapply(patient.covariates, function(v)
+      .patientValue(cd[[v]], pat, pats))
     bad <- Reduce(`|`, lapply(cv_list, is.na))
     if (any(bad)) {
       dropped <- pats[bad]
@@ -285,9 +365,7 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
       pats <- pats[!bad]
       cv_list <- lapply(cv_list, `[`, !bad)
       lvl <- unique(grp_cell[!is.na(grp_cell)])
-      remaining <- table(factor(
-        vapply(pats, function(p) grp_cell[match(p, pat)], character(1)),
-        levels = lvl))
+      remaining <- table(factor(cond_pat[pats], levels = lvl))
       if (any(remaining < 2)) {
         stop("fewer than 2 patients remain in a condition after dropping ",
              "patient(s) with missing patient.covariates (",
@@ -296,8 +374,7 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
       }
     }
   }
-  pgrp <- factor(stats::setNames(
-    vapply(pats, function(p) grp_cell[match(p, pat)], character(1)), pats))
+  pgrp <- factor(stats::setNames(unname(cond_pat[pats]), pats))
   Xdes <- if (length(patient.covariates)) {
     cv <- as.data.frame(stats::setNames(cv_list, patient.covariates),
                         stringsAsFactors = TRUE)
@@ -341,24 +418,24 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
     tau2 = if (length(tau_tab)) do.call(rbind, tau_tab) else
       data.frame(ct_index = character(), ct_niche = character(),
                  tau2 = numeric()))
-  if (!length(recs)) {
-    if (verbose) message("stage 2: no estimable triplets")
-    return(new("SpiDEResults", fits = list(), sigma = sigma,
-               condition = condition, mode = "condition", index = idx_types,
-               niche = colnames(nm), covariates = patient.covariates,
-               coldata = cd, gene.weights = NULL, p.cauchy.pos = NULL,
-               p.cauchy.neg = NULL, results = empty, fdr = fdr,
-               call = match.call(), diagnostics = diagnostics))
+  out <- if (length(recs)) {
+    o <- do.call(rbind, recs)
+    o$fdr.niche <- stats::p.adjust(o$p.niche, "BH")
+    o$DirectionNiche <- ifelse(o$t > 0, "Up", "Down")
+    o$bandwidth.max <- sigma
+    o <- o[order(o$p.niche), , drop = FALSE]
+    rownames(o) <- NULL
+    o
+  } else {
+    empty
   }
-  out <- do.call(rbind, recs)
-  out$fdr.niche <- stats::p.adjust(out$p.niche, "BH")
-  out$DirectionNiche <- ifelse(out$t > 0, "Up", "Down")
-  out$bandwidth.max <- sigma
-  out <- out[order(out$p.niche), , drop = FALSE]
-  rownames(out) <- NULL
   if (verbose) {
-    message(sprintf("stage 2: %d triplets tested, %d at FDR %.2g",
-                    nrow(out), sum(out$fdr.niche <= fdr), fdr))
+    if (nrow(out)) {
+      message(sprintf("stage 2: %d triplets tested, %d at FDR %.2g",
+                      nrow(out), sum(out$fdr.niche <= fdr), fdr))
+    } else {
+      message("stage 2: no estimable triplets")
+    }
   }
   new("SpiDEResults", fits = list(), sigma = sigma, condition = condition,
       mode = "condition", index = idx_types, niche = colnames(nm),

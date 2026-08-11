@@ -1,3 +1,35 @@
+# spiDE 0.99.14
+
+## New Features
+
+* `twoStageSpiDE()`: a second, structurally different estimator of
+  condition-dependent niche effects that removes cell-level
+  pseudo-replication *by construction* rather than by correction. Stage 1
+  estimates each patient's niche slopes with a joint weighted fit per
+  (sample, index cell type) -- anchored on a stored `SpaNorm` fit by default
+  (`stage1 = "spanorm"`), with `"ols"` and `"nb"` alternatives -- pools
+  cores within patients by precision, and stage 2 contrasts the patient
+  slopes with a `limma` moderated t-test weighted by `1/(v + tau2)`
+  (DerSimonian-Laird `tau2`, pooled over genes). Returns the familiar tidy
+  results schema plus three diagnostics (`r2`, `inclusion` with an
+  informative-dropout warning, `tau2`). In the paired benchmark it is the
+  best-calibrated method in the study, trading power for that calibration;
+  restrict `index`/`niche`/genes to a pre-specified hypothesis. Documented
+  in full, with equations, in the model vignette.
+
+## Changes
+
+* The vignette suite is trimmed to the three user-facing documents
+  (quickstart, model, calibration): the eight built vignettes totalled
+  10.85 MB of HTML, over Bioconductor's 10 MB tarball cap on their own. The
+  five validation studies and the benchmark tables they read moved to the
+  research repository and are published at
+  https://bhuvalab.github.io/spiDE-research/ -- pkgdown's "Statistical
+  validation" menu links there.
+* The shared palette's two-stage colour is now CVD-safe (`#C51B7D` with a
+  triangle marker as a secondary channel; the previous `#E7298A` was
+  indistinguishable from the intercept teal under deuteranopia).
+
 # spiDE 0.99.12
 
 ## New Features
