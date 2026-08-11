@@ -66,3 +66,18 @@ test_that(".limmaStage2 matches a weighted lm directionally and handles NA", {
   # moderation shares variance: nulls should not all be extreme
   expect_gt(median(st$p[-1]), 0.05)
 })
+
+test_that(".inclusionDiagnostics warns on condition-associated dropout", {
+  ncells <- data.frame(sample = paste0("s", 1:12), index = "A",
+                       n = c(rep(100, 6), rep(5, 6)))
+  s2p <- stats::setNames(paste0("s", 1:12), paste0("s", 1:12))
+  pgrp <- stats::setNames(factor(rep(c("R", "NR"), each = 6)), paste0("s", 1:12))
+  # all R included, all NR dropped -> maximally associated
+  expect_warning(
+    d <- spiDE:::.inclusionDiagnostics(ncells, s2p, pgrp, min.cells = 30),
+    "condition")
+  expect_true(all(c("index", "patient", "condition", "included") %in% names(d)))
+  # balanced inclusion -> silent
+  ncells$n <- rep(c(100, 5), 6)
+  expect_silent(spiDE:::.inclusionDiagnostics(ncells, s2p, pgrp, min.cells = 30))
+})

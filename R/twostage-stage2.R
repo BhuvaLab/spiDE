@@ -78,3 +78,27 @@
              p = fit$p.value[, cn],
              row.names = NULL, stringsAsFactors = FALSE)
 }
+
+#' Per-index patient inclusion table, with a condition-association warning
+#'
+#' min.cells dropout is informative when cell-type abundance correlates with
+#' condition; this makes it visible instead of silent.
+#' @noRd
+.inclusionDiagnostics <- function(ncells, sample2patient, pgrp, min.cells) {
+  ncells$patient <- unname(sample2patient[ncells$sample])
+  agg <- stats::aggregate(n ~ index + patient, ncells, max)
+  agg$included <- agg$n >= min.cells
+  agg$condition <- as.character(pgrp[agg$patient])
+  out <- agg[, c("index", "patient", "condition", "included")]
+  for (ix in unique(out$index)) {
+    d <- out[out$index == ix, ]
+    if (length(unique(d$condition)) < 2 || all(d$included) || !any(d$included)) next
+    p <- stats::fisher.test(table(d$condition, d$included))$p.value
+    if (p < 0.05) {
+      warning("min.cells dropout for index '", ix, "' is associated with ",
+              "the condition (Fisher p = ", signif(p, 2), "); the tested ",
+              "patient subset is condition-biased", call. = FALSE)
+    }
+  }
+  out
+}
