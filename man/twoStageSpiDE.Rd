@@ -36,7 +36,11 @@ constant within patient.}
 \item{sigma}{a numeric, the bandwidth (one value; slopes are per bandwidth).}
 
 \item{index, niche}{character vectors restricting index / niche cell types.
-\strong{Use them}: the full space is usually too large to detect anything.}
+\strong{Use them}: the full space is usually too large to detect anything.
+Stage-1 slopes are estimated \emph{jointly} across niche columns (see
+\code{stage1}), so restricting \code{niche} changes the estimated slope
+for every remaining niche, not merely which rows of the results table are
+reported.}
 
 \item{patient}{a character, the colData column identifying the patient a
 sample (core) belongs to. Defaults to \code{NULL}, in which case each
@@ -61,8 +65,9 @@ unstable slope.}
 response stage-1 slopes are estimated from.
 
 \strong{"spanorm"} linearises the one-step working response at a stored
-\code{\link[SpaNorm:SpaNorm]{SpaNorm::SpaNorm()}} fit (\code{metadata(spe)$SpaNorm}; see \code{stage1}
-errors if none is found) and, under \code{epsilon = "addback"}, adds the
+\code{\link[SpaNorm:SpaNorm]{SpaNorm::SpaNorm()}} fit, read from \code{metadata(spe)$SpaNorm} (a clear
+error names \code{SpaNorm::SpaNorm()} when none is found), and, under
+\code{epsilon = "addback"}, adds the
 fitted biology component back so that only the library-size/batch part of
 the fit is removed. This is the intended default: it reuses the
 normalisation the rest of the package already relies on and needs a
@@ -119,10 +124,16 @@ variation in the niche-expression relationship is real.
 On a patient-label permutation of a 55-patient CosMx cohort, where every
 triplet is null by construction, \code{\link[=fitSpiDE]{fitSpiDE()}} with \code{random = "intercept"}
 returned ~576 false calls per replicate (realized FDR 1.00 against a nominal
-0.05). This returned raw type-I 0.036 and zero false calls, ~100x faster.
+0.05). \strong{These next two numbers are historical}, measured on this
+function's predecessor (the nbresid/Welch two-stage estimator, since
+replaced by the SpaNorm-anchored joint estimator documented here), not on
+the current implementation; re-measurement on the current estimator is
+pending. That predecessor returned raw type-I 0.036 and zero false calls,
+~100x faster.
 
-\strong{It does not solve multiplicity.} On a spiked plasmode the true
-triplets were enriched 5x at \eqn{\alpha = 0.05} and 65x at
+\strong{It does not solve multiplicity.} Also measured on that same
+predecessor estimator, pending re-measurement here: on a spiked plasmode the
+true triplets were enriched 5x at \eqn{\alpha = 0.05} and 65x at
 \eqn{\alpha = 0.001}, yet nothing survived BH across a full-panel space of
 ~1.8 million triplets, and the hierarchical cascade did not help (combining a
 gene's ~137 mostly-null triplets dilutes a single true effect). Restrict

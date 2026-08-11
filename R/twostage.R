@@ -1,13 +1,16 @@
-# Two-stage estimation: per-patient niche slopes, then a patient-level contrast.
+# Two-stage estimation: per-core niche slopes, pooled by precision within each
+# patient, then a patient-level contrast via weighted moderated limma.
 #
 # WHY THIS IS NOT A `random` MODE
 # -------------------------------
 # `random = "none"/"intercept"/"slope"` all fit the SAME design matrix and differ
 # only in which columns are ridge-penalised. This is a different ESTIMATOR: the
-# niche slope is estimated within each patient and the condition contrast is then
-# taken over patients. None of `W`, `alpha`, `psi`, `penalty`, `tau2` or the
-# Satterthwaite df machinery applies, so slotting it under `random` would hand
-# every downstream consumer an object whose fields do not mean what they claim.
+# niche slope is estimated per core (sample), the per-core slopes are pooled by
+# inverse-variance precision within each patient, and the condition contrast is
+# then taken over the pooled patient slopes with limma. None of `W`, `alpha`,
+# `psi`, `penalty`, `tau2` or the Satterthwaite df machinery applies, so
+# slotting it under `random` would hand every downstream consumer an object
+# whose fields do not mean what they claim.
 #
 # WHAT IT FIXES
 # -------------
@@ -67,10 +70,16 @@
 #' On a patient-label permutation of a 55-patient CosMx cohort, where every
 #' triplet is null by construction, [fitSpiDE()] with \code{random = "intercept"}
 #' returned ~576 false calls per replicate (realized FDR 1.00 against a nominal
-#' 0.05). This returned raw type-I 0.036 and zero false calls, ~100x faster.
+#' 0.05). \strong{These next two numbers are historical}, measured on this
+#' function's predecessor (the nbresid/Welch two-stage estimator, since
+#' replaced by the SpaNorm-anchored joint estimator documented here), not on
+#' the current implementation; re-measurement on the current estimator is
+#' pending. That predecessor returned raw type-I 0.036 and zero false calls,
+#' ~100x faster.
 #'
-#' \strong{It does not solve multiplicity.} On a spiked plasmode the true
-#' triplets were enriched 5x at \eqn{\alpha = 0.05} and 65x at
+#' \strong{It does not solve multiplicity.} Also measured on that same
+#' predecessor estimator, pending re-measurement here: on a spiked plasmode the
+#' true triplets were enriched 5x at \eqn{\alpha = 0.05} and 65x at
 #' \eqn{\alpha = 0.001}, yet nothing survived BH across a full-panel space of
 #' ~1.8 million triplets, and the hierarchical cascade did not help (combining a
 #' gene's ~137 mostly-null triplets dilutes a single true effect). Restrict
@@ -84,6 +93,10 @@
 #' @param sigma a numeric, the bandwidth (one value; slopes are per bandwidth).
 #' @param index,niche character vectors restricting index / niche cell types.
 #'   \strong{Use them}: the full space is usually too large to detect anything.
+#'   Stage-1 slopes are estimated \emph{jointly} across niche columns (see
+#'   \code{stage1}), so restricting \code{niche} changes the estimated slope
+#'   for every remaining niche, not merely which rows of the results table are
+#'   reported.
 #' @param patient a character, the colData column identifying the patient a
 #'   sample (core) belongs to. Defaults to \code{NULL}, in which case each
 #'   sample is its own patient (no pooling). Multiple samples per patient are
@@ -102,8 +115,9 @@
 #'   response stage-1 slopes are estimated from.
 #'
 #'   \strong{"spanorm"} linearises the one-step working response at a stored
-#'   [SpaNorm::SpaNorm()] fit (\code{metadata(spe)$SpaNorm}; see \code{stage1}
-#'   errors if none is found) and, under \code{epsilon = "addback"}, adds the
+#'   [SpaNorm::SpaNorm()] fit, read from \code{metadata(spe)$SpaNorm} (a clear
+#'   error names \code{SpaNorm::SpaNorm()} when none is found), and, under
+#'   \code{epsilon = "addback"}, adds the
 #'   fitted biology component back so that only the library-size/batch part of
 #'   the fit is removed. This is the intended default: it reuses the
 #'   normalisation the rest of the package already relies on and needs a
@@ -164,7 +178,11 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
   checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
   checkCondition(spe, condition)
   checkNiche(spe, sigma, name = name)
+  checkCovariates(spe, patient.covariates)
   cd <- SummarizedExperiment::colData(spe)
+  if (!is.null(patient) && !patient %in% colnames(cd)) {
+    stop(sprintf("patient column '%s' not found in colData(spe)", patient))
+  }
   smp <- as.character(cd[[sample_id]])
   pat <- if (is.null(patient)) smp else as.character(cd[[patient]])
   ct <- as.character(cd[[cell_type]])
@@ -173,6 +191,22 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
   if (any(chk > 1)) {
     stop("condition '", condition, "' varies within patient; two-stage needs ",
          "a patient-level condition")
+  }
+  if (length(patient.covariates)) {
+    # A patient-level covariate that actually varies within patient would
+    # otherwise reach tapply(cd[[v]], pat, function(z) z[1]) below, which
+    # silently keeps only the first cell's value per patient -- an arbitrary,
+    # wrong covariate value rather than an error. Mirror the condition check
+    # above.
+    varies <- vapply(patient.covariates, function(v) {
+      n_lvl <- tapply(cd[[v]], pat, function(z) length(unique(z[!is.na(z)])))
+      any(n_lvl > 1)
+    }, logical(1))
+    if (any(varies)) {
+      stop("patient.covariate(s) varies within patient: ",
+           paste(patient.covariates[varies], collapse = ", "),
+           "; two-stage needs patient-level covariates")
+    }
   }
   s2p <- stats::setNames(vapply(unique(smp),
                                 function(s) pat[match(s, smp)], character(1)),
@@ -192,9 +226,16 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
   # Only "ols" needs a fully dense working response (E); "spanorm" and "nb"
   # densify per (sample, index) subset only, inside .stage1Epsilon()/fitNB().
   Y <- SummarizedExperiment::assay(spe, assay)
-  if (stage1 %in% c("spanorm", "nb") && !.looksLikeCounts(Y)) {
-    stop("stage1 = '", stage1, "' needs counts, but assay '", assay,
-         "' does not look like counts")
+  if (stage1 %in% c("spanorm", "nb")) {
+    if (!.looksLikeCounts(Y)) {
+      stop("stage1 = '", stage1, "' needs counts, but assay '", assay,
+           "' does not look like counts")
+    }
+    # .looksLikeCounts() only samples a compact block for speed and can miss
+    # a negative value elsewhere; checkCounts() scans the full matrix via a
+    # single Matrix-/DelayedArray-aware min() reduction (no densification --
+    # see the checkCounts() source) to catch it anywhere.
+    checkCounts(Y)
   }
   comp <- if (stage1 == "spanorm") .spanormComponents(spe) else NULL
   E <- NULL

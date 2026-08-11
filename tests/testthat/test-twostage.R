@@ -133,6 +133,23 @@ test_that("a sparse counts assay gives identical results to the dense one", {
   }
 })
 
+test_that("a negative counts value is rejected by the full-matrix check", {
+  # .looksLikeCounts() only samples a block for correctness-vs-speed reasons,
+  # so it can miss a negative value elsewhere; checkCounts() must still catch
+  # it on the counts paths ("spanorm"/"nb"). Mocking .looksLikeCounts to
+  # always say "yes, this looks like counts" isolates that guarantee from the
+  # sampling heuristic's own (unrelated) randomness.
+  spe <- toy_spanorm_spe(n_genes = 20)
+  Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
+  Y[1, 1] <- -5
+  SummarizedExperiment::assay(spe, "counts") <- Y
+  testthat::local_mocked_bindings(.looksLikeCounts = function(Y, n = 2000L) TRUE)
+  expect_error(
+    twoStageSpiDE(spe, condition = "condition", sigma = 30, min.cells = 10,
+                 verbose = FALSE),
+    "non-negative")
+})
+
 test_that("a patient with an NA covariate is dropped, not a crash", {
   # Before the fix, an NA in patient.covariates reached model.matrix(), which
   # silently drops that row; Xdes then had fewer rows than the (still
@@ -147,6 +164,36 @@ test_that("a patient with an NA covariate is dropped, not a crash", {
     "dropping 1 patient.*Age")
   expect_s4_class(r, "SpiDEResults")
   expect_true(is.data.frame(results(r)))
+})
+
+test_that("an unknown patient.covariates name errors clearly", {
+  spe <- toy_spanorm_spe(n_genes = 20)
+  expect_error(
+    twoStageSpiDE(spe, condition = "condition", sigma = 30, min.cells = 10,
+                 patient.covariates = "not_a_column", verbose = FALSE),
+    "not_a_column")
+})
+
+test_that("an unknown patient column errors clearly", {
+  spe <- toy_spanorm_spe(n_genes = 20)
+  expect_error(
+    twoStageSpiDE(spe, condition = "condition", sigma = 30, min.cells = 10,
+                 patient = "not_a_column", verbose = FALSE),
+    "not_a_column")
+})
+
+test_that("a cell-varying patient.covariates column is refused, not silently collapsed", {
+  # tapply(cd[[v]], pat, function(z) z[1]) would otherwise silently take the
+  # first cell's value per patient, producing a wrong (arbitrary) covariate
+  # value instead of erroring -- mirror the existing within-patient condition
+  # check.
+  spe <- toy_spanorm_spe(n_genes = 20)
+  set.seed(2)
+  spe$Age <- sample(c(30, 60), ncol(spe), replace = TRUE)  # varies per cell
+  expect_error(
+    twoStageSpiDE(spe, condition = "condition", sigma = 30, min.cells = 10,
+                 patient.covariates = "Age", verbose = FALSE),
+    "varies within patient")
 })
 
 test_that("too few patients per condition after an NA-covariate drop errors clearly", {
