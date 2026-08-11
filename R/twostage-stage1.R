@@ -112,3 +112,83 @@
   r2 <- 1 - colSums(res^2) / pmax(tss, 1e-12)
   stats::setNames(pmin(pmax(r2, 0), 1), colnames(X))
 }
+
+#' Per-(sample, index) joint niche slopes for every stage-1 path
+#'
+#' Replaces .patientSlopes(). All paths run the same joint fit and return a
+#' variance for every slope (stage 2 needs it): "spanorm" uses the one-step
+#' response/weights, "ols" uses log-CPM with unit weights, "nb" fits the
+#' per-subset NB GLM on [1, loglib, niches] and reads Fisher variances.
+#' @return list(beta, var, r2, ncells) -- see Interfaces in the plan.
+#' @noRd
+.sampleSlopes <- function(Y, E, comp, nm, ct, smp, idx_types, min.cells,
+                          stage1 = c("spanorm", "ols", "nb"),
+                          epsilon = c("addback", "residual"),
+                          winsor = 4, lambda.a = 0, maxit.psi = 2,
+                          backend = "cpu", verbose = FALSE) {
+  stage1 <- match.arg(stage1); epsilon <- match.arg(epsilon)
+  smps <- sort(unique(smp)); niches <- colnames(nm)
+  gn <- rownames(Y)
+  loglib <- log(pmax(colSums(Y), 1))
+  beta <- var <- stats::setNames(vector("list", length(idx_types)), idx_types)
+  r2 <- list(); ncl <- list()
+  for (ix in idx_types) {
+    A <- V <- array(NA_real_, c(nrow(Y), length(niches), length(smps)),
+                    dimnames = list(gn, niches, smps))
+    for (ss in smps) {
+      cells <- which(ct == ix & smp == ss)
+      ncl[[length(ncl) + 1L]] <- data.frame(sample = ss, index = ix,
+                                            n = length(cells))
+      if (length(cells) < min.cells) next
+      X <- sweep(nm[cells, , drop = FALSE], 2,
+                 colMeans(nm[cells, , drop = FALSE]))
+      if (stage1 == "spanorm") {
+        se <- .stage1Epsilon(Y, comp, cells, epsilon)
+        js <- .jointSlopes(se$eps, se$w, X)
+        Bbio <- comp$W[cells, comp$bio, drop = FALSE]
+        r2[[length(r2) + 1L]] <- data.frame(
+          sample = ss, index = ix, niche = niches,
+          r2 = as.numeric(.nicheBasisR2(X, Bbio)))
+      } else if (stage1 == "ols") {
+        Ec <- E[, cells, drop = FALSE]
+        js <- .jointSlopes(Ec, matrix(1, nrow(Ec), ncol(Ec)), X)
+      } else {                                        # "nb" reference path
+        keep <- apply(X, 2, function(x) stats::var(x) > 1e-10)
+        Wn <- cbind(`(Intercept)` = 1,
+                    loglib = loglib[cells] - mean(loglib[cells]),
+                    X[, keep, drop = FALSE])
+        if (qr(Wn)$rank < ncol(Wn)) next
+        f <- try(SpaNorm::fitNB(Y[, cells, drop = FALSE], Wn,
+                                lambda.a = lambda.a, winsor = winsor,
+                                maxit.psi = maxit.psi, backend = backend,
+                                verbose = FALSE), silent = TRUE)
+        if (inherits(f, "try-error")) next
+        mu <- SpaNorm::calculateMu(f$gmean, f$alpha, Wn)
+        js <- list(beta = matrix(NA_real_, nrow(Y), length(niches),
+                                 dimnames = list(gn, niches)),
+                   var = matrix(NA_real_, nrow(Y), length(niches),
+                                dimnames = list(gn, niches)))
+        wnb <- mu / (1 + f$psi * mu)
+        for (g in seq_len(nrow(Y))) {
+          info <- crossprod(Wn * wnb[g, ], Wn)
+          vc <- diag(SpaNorm::invert_mat(info))
+          js$beta[g, keep] <- f$alpha[g, -(1:2)]
+          js$var[g, keep] <- vc[-(1:2)]
+        }
+      }
+      A[, colnames(js$beta), ss] <- js$beta
+      V[, colnames(js$var), ss] <- js$var
+    }
+    beta[[ix]] <- A; var[[ix]] <- V
+    if (verbose) {
+      message(sprintf("  %-22s %d samples >= %d cells", ix,
+                      sum(apply(!is.na(A[1, , , drop = FALSE]), 3, any)),
+                      min.cells))
+    }
+  }
+  list(beta = beta, var = var,
+       r2 = if (length(r2)) do.call(rbind, r2) else
+         data.frame(sample = character(), index = character(),
+                    niche = character(), r2 = numeric()),
+       ncells = do.call(rbind, ncl))
+}

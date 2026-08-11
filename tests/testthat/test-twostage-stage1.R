@@ -75,3 +75,39 @@ test_that(".nicheBasisR2 is 1 in-span and ~0 orthogonal", {
   expect_equal(unname(r2["s"]), 1, tolerance = 1e-8)
   expect_equal(unname(r2["o"]), 0, tolerance = 1e-8)
 })
+
+test_that(".sampleSlopes returns aligned beta/var arrays for all paths", {
+  spe <- toy_spanorm_spe()
+  Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
+  nm <- as.matrix(SingleCellExperiment::reducedDim(spe, "Niche30"))
+  ct <- as.character(spe$cell_type); smp <- as.character(spe$sample_id)
+  comp <- spiDE:::.spanormComponents(spe)
+  s1 <- spiDE:::.sampleSlopes(Y, NULL, comp, nm, ct, smp,
+                              idx_types = c("A", "B"), min.cells = 10,
+                              stage1 = "spanorm", epsilon = "addback")
+  expect_named(s1$beta, c("A", "B"))
+  expect_identical(dim(s1$beta$A), dim(s1$var$A))
+  expect_identical(dimnames(s1$beta$A)[[2]], colnames(nm))
+  expect_true(all(s1$var$A >= 0, na.rm = TRUE))
+  expect_true(all(c("sample", "index", "niche", "r2") %in% names(s1$r2)))
+  # ols path: same shapes, no comp needed
+  lib <- colSums(Y)
+  E <- log1p(sweep(Y, 2, mean(lib) / pmax(lib, 1), "*"))
+  s2 <- spiDE:::.sampleSlopes(Y, E, NULL, nm, ct, smp,
+                              idx_types = "A", min.cells = 10,
+                              stage1 = "ols", epsilon = "addback")
+  expect_identical(dim(s2$beta$A), dim(s1$beta$A))
+})
+
+test_that("subsets below min.cells contribute NA, and are counted", {
+  spe <- toy_spanorm_spe()
+  Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
+  nm <- as.matrix(SingleCellExperiment::reducedDim(spe, "Niche30"))
+  ct <- as.character(spe$cell_type); smp <- as.character(spe$sample_id)
+  comp <- spiDE:::.spanormComponents(spe)
+  s <- spiDE:::.sampleSlopes(Y, NULL, comp, nm, ct, smp, idx_types = "A",
+                             min.cells = 10000L, stage1 = "spanorm",
+                             epsilon = "addback")
+  expect_true(all(is.na(s$beta$A)))
+  expect_true(all(s$ncells$n < 10000L))
+})
