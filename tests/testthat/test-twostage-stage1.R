@@ -76,6 +76,20 @@ test_that(".nicheBasisR2 is 1 in-span and ~0 orthogonal", {
   expect_equal(unname(r2["o"]), 0, tolerance = 1e-8)
 })
 
+test_that(".nicheBasisR2 returns NA, not ~1, for a degenerate/constant column", {
+  # A constant column has tss ~ 0; the old code floored tss at 1e-12 and
+  # reported r2 = 1 - 0/floor = 1 (a perfect-fit false positive). The slope
+  # fit (.jointSlopes()) already reports NA for such a column, so the R2
+  # diagnostic should agree instead of contradicting it.
+  set.seed(9)
+  n <- 120
+  B <- cbind(rnorm(n), rnorm(n))
+  const <- rep(5, n)
+  r2 <- spiDE:::.nicheBasisR2(cbind(s = 2 * B[, 1] - B[, 2] + 3, c = const), B)
+  expect_true(is.na(unname(r2["c"])))
+  expect_equal(unname(r2["s"]), 1, tolerance = 1e-8)   # unaffected columns unchanged
+})
+
 test_that(".sampleSlopes returns aligned beta/var arrays for all paths", {
   spe <- toy_spanorm_spe()
   Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
@@ -97,6 +111,25 @@ test_that(".sampleSlopes returns aligned beta/var arrays for all paths", {
                               idx_types = "A", min.cells = 10,
                               stage1 = "ols", epsilon = "addback")
   expect_identical(dim(s2$beta$A), dim(s1$beta$A))
+})
+
+test_that(".sampleSlopes excludes the index cell type's own niche column", {
+  # The one-stage GLM design drops symmetric self-interactions (an index cell
+  # type against its own niche density); stage 1 must do the same, or the
+  # joint fit estimates a coefficient that's untestable/uninterpretable by
+  # spec. The array keeps the full niches dimension for reporting -- the self
+  # column is NA, not dropped from dimnames.
+  spe <- toy_spanorm_spe()
+  Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
+  nm <- as.matrix(SingleCellExperiment::reducedDim(spe, "Niche30"))
+  ct <- as.character(spe$cell_type); smp <- as.character(spe$sample_id)
+  comp <- spiDE:::.spanormComponents(spe)
+  s <- spiDE:::.sampleSlopes(Y, NULL, comp, nm, ct, smp, idx_types = "A",
+                             min.cells = 10, stage1 = "spanorm",
+                             epsilon = "addback")
+  expect_identical(dimnames(s$beta$A)[[2]], colnames(nm))  # full niches dim
+  expect_true(all(is.na(s$beta$A["G1", "A", ])))
+  expect_true(any(is.finite(s$beta$A["G1", "B", ])))
 })
 
 test_that("subsets below min.cells contribute NA, and are counted", {

@@ -107,14 +107,21 @@
 #'
 #' Measures the attenuation the "residual" response would suffer and the
 #' smooth-trend overlap the "addback" response is exposed to. Reported per
-#' (sample, index) subset in the diagnostics.
+#' (sample, index) subset in the diagnostics. A constant/degenerate column
+#' (tss ~ 0) reports NA rather than flooring tss and reading off r2 ~ 1 --
+#' that floor previously manufactured a perfect-fit false positive for a
+#' column .jointSlopes() already drops as NA, so the two diagnostics
+#' contradicted each other.
 #' @noRd
 .nicheBasisR2 <- function(X, B) {
   f <- stats::lm.fit(cbind(1, B), X)
   res <- as.matrix(f$residuals)
   tss <- colSums(sweep(X, 2, colMeans(X))^2)
-  r2 <- 1 - colSums(res^2) / pmax(tss, 1e-12)
-  stats::setNames(pmin(pmax(r2, 0), 1), colnames(X))
+  degenerate <- tss < 1e-12
+  r2 <- rep(NA_real_, length(tss))
+  r2[!degenerate] <- pmin(pmax(
+    1 - colSums(res^2)[!degenerate] / tss[!degenerate], 0), 1)
+  stats::setNames(r2, colnames(X))
 }
 
 #' Per-(sample, index) joint niche slopes for every stage-1 path
@@ -137,8 +144,10 @@
   # for a sparse Matrix unless the Matrix package is attached (not just
   # loaded), and Matrix::colSums() also handles plain matrices and
   # DelayedArray correctly, so one call covers every Y this function accepts
-  # without densifying it.
-  loglib <- log(pmax(Matrix::colSums(Y), 1))
+  # without densifying it. Only the "nb" path needs it (a per-cell offset in
+  # its GLM design), so it's a full pass over Y that the other two paths
+  # would otherwise pay for and never use.
+  loglib <- if (stage1 == "nb") log(pmax(Matrix::colSums(Y), 1)) else NULL
   beta <- var <- stats::setNames(vector("list", length(idx_types)), idx_types)
   r2 <- list(); ncl <- list()
   for (ix in idx_types) {
@@ -151,12 +160,20 @@
       if (length(cells) < min.cells) next
       X <- sweep(nm[cells, , drop = FALSE], 2,
                  colMeans(nm[cells, , drop = FALSE]))
+      # Drop the index cell type's own niche column, as the one-stage GLM
+      # design drops symmetric self-interactions: A's local density of A is
+      # not a meaningful niche predictor for A cells. `A`/`V` above keep the
+      # full niches dimension for reporting -- the self column is simply
+      # never written, so it stays at its initial NA.
+      if (ix %in% colnames(X)) {
+        X <- X[, setdiff(colnames(X), ix), drop = FALSE]
+      }
       if (stage1 == "spanorm") {
         se <- .stage1Epsilon(Y, comp, cells, epsilon)
         js <- .jointSlopes(se$eps, se$w, X)
         Bbio <- comp$W[cells, comp$bio, drop = FALSE]
         r2[[length(r2) + 1L]] <- data.frame(
-          sample = ss, index = ix, niche = niches,
+          sample = ss, index = ix, niche = colnames(X),
           r2 = as.numeric(.nicheBasisR2(X, Bbio)))
       } else if (stage1 == "ols") {
         Ec <- E[, cells, drop = FALSE]
@@ -173,10 +190,10 @@
                                 verbose = FALSE), silent = TRUE)
         if (inherits(f, "try-error")) next
         mu <- SpaNorm::calculateMu(f$gmean, f$alpha, Wn)
-        js <- list(beta = matrix(NA_real_, nrow(Y), length(niches),
-                                 dimnames = list(gn, niches)),
-                   var = matrix(NA_real_, nrow(Y), length(niches),
-                                dimnames = list(gn, niches)))
+        js <- list(beta = matrix(NA_real_, nrow(Y), ncol(X),
+                                 dimnames = list(gn, colnames(X))),
+                   var = matrix(NA_real_, nrow(Y), ncol(X),
+                                dimnames = list(gn, colnames(X))))
         wnb <- mu / (1 + f$psi * mu)
         for (g in seq_len(nrow(Y))) {
           info <- crossprod(Wn * wnb[g, ], Wn)
