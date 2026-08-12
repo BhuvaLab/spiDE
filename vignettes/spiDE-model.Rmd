@@ -1131,13 +1131,19 @@ design.
     estimation per subset), so it suits small `index`/`niche` restrictions,
     not panel-wide runs.
 
-Which of the two fallbacks to prefer is an empirical question that depends on
-what they are fed. The completed benchmark measured `ols` on **raw counts**
-(see the *Two-stage estimation* benchmark report); interim results from the structured-simulator
-re-run, where both fallbacks analyse SpaNorm-*adjusted* expression, point the
-other way — `ols`'s null rate inflating with sample size while `nb` holds
-near nominal — so treat any `ols`-favourable reading as scoped to the
-raw-counts setting until that run completes and its table ships.
+Which of the two fallbacks to prefer depends on what they are fed, and the
+benchmark measured both settings (see the *Two-stage estimation* report). On
+the published simulator's raw counts `ols` reads well above `nb` — an
+artefact of that simulator, whose only spatially structured depth
+contribution is the planted effect itself, which `nb`'s per-subset
+library-size covariate partially absorbs. On SpaNorm-*adjusted*
+expression (the structured-simulator re-run, 40 replicates per point) the
+two split along calibration rather than power: `ols` is the higher-powered
+stage-1 but its null rate inflates with sample size, while `nb` holds near
+nominal with less raw power. Prefer `nb` when calibration is the priority
+and `ols` when sensitivity is — and note the default `"spanorm"` faces no
+such trade on the structured simulator: its raw power scales with sample
+size at a null rate near nominal.
 
 ## Between the stages: pooling cores into patients
 
@@ -1301,11 +1307,12 @@ at which a $p \approx 10^{-5}$ effect survives.
 Two measurement caveats, stated so they are not over-read: the widely-quoted
 real-cohort permutation numbers (zero false calls where the mixed GLM
 returned hundreds) were measured on this function's *predecessor* estimator
-and await re-measurement on the current one; and the benchmark's two-stage
-arm is `stage1 = "ols"` on raw counts, because the published simulator's
-i.i.d. library sizes make the default `"spanorm"` path unmeasurable there (a
-structured-library-size re-run is in progress — the benchmark report's
-Methods section has the full story).
+and await re-measurement on the current one; and the benchmark's main sweep
+grid is `stage1 = "ols"` on raw counts, because the published simulator's
+i.i.d. library sizes make the default `"spanorm"` path unmeasurable there.
+The structured-library-size re-run closed that gap for the samples sweep —
+the default arm's power scales with sample size as it should — and the
+benchmark report's *Stage-1 pipelines* section has the full story.
 
 ## Choosing between `fitSpiDE()` and `twoStageSpiDE()`
 

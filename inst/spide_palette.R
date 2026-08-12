@@ -50,6 +50,11 @@ spide_pal <- list(
   method_shape = c(fixed = 16, intercept = 16, slope = 16, twostage = 17),
   # within-gene p-value combiners (own figures only; no clash in context)
   combine = c(Brown = "#7570B3", Cauchy = "#D95F02"),
+  # model-design arms (own figures only). Another 2-level quantity reusing the
+  # Dark2 pair, like `condition`/`combine`: the shipped design takes the teal,
+  # the demoted niche-only arm the orange. The pair's CVD separation was
+  # validated with the method trio (worst deutan dE 11.6).
+  design = c("celltype-response" = "#1B9E77", "niche-only" = "#D95F02"),
   # one- vs two-sided input to a combiner. Brown keeps its `combine` colour;
   # the two Cauchy variants are split off it so the pair reads as one family.
   sided = c("Brown (1-sided)" = "#7570B3", "Cauchy (1-sided)" = "#D95F02",
