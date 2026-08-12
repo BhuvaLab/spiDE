@@ -267,7 +267,7 @@ niche design at all. `condition` is assigned per **patient**, so patients are th
 stage 1 estimates a niche slope per (sample, index cell type), stage 2 pools those slopes by
 precision within each patient and contrasts the pooled patient slopes. None of `W`, `alpha`, `psi`,
 `penalty`, `tau2` or the Satterthwaite df machinery applies, which is why it is not slotted under
-`random`. Design spec: `docs/superpowers/specs/2026-08-11-twostage-fixes-design.md`.
+`random`. Design spec: `design/specs/2026-08-11-twostage-fixes-design.md`.
 
 **Stage 1** (`.sampleSlopes()`) runs one *joint* weighted fit of the working response on **all** niche
 columns per (sample, index) subset — so restricting `niche` changes every remaining slope, not just
@@ -345,7 +345,7 @@ down. Before changing one, read the corresponding record:
   extra *rows*, not a parallel file that would carry a stale copy of the others.
 - `research/` — a git submodule (`BhuvaLab/spiDE-research`) holding the benchmark harness and the
   written-up negative results (e.g. `research/reports/between-sample-stratum.html`).
-- `docs/superpowers/specs/` — design specs and implementation plans for larger changes.
+- `design/specs/` — design specs and implementation plans for larger changes.
 
 ### Checkers
 

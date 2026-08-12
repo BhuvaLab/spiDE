@@ -21,3 +21,4 @@
 ^vignettes/figure$
 ^spiDE\.BiocCheck$
 ^spiDE_.*\.tar\.gz$
+^design$

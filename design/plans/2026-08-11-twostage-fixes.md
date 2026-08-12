@@ -176,7 +176,7 @@ Expected: FAIL — `'.spanormComponents' not found`
 # R/twostage-stage1.R
 # Stage-1 machinery for the two-stage estimator: SpaNorm fit extraction, the
 # one-step working response, the joint weighted slope fit, and the basis-R2
-# diagnostic. See docs/superpowers/specs/2026-08-11-twostage-fixes-design.md.
+# diagnostic. See design/specs/2026-08-11-twostage-fixes-design.md.
 
 #' Extract and validate the stored SpaNorm fit
 #'
