@@ -144,9 +144,10 @@
   # for a sparse Matrix unless the Matrix package is attached (not just
   # loaded), and Matrix::colSums() also handles plain matrices and
   # DelayedArray correctly, so one call covers every Y this function accepts
-  # without densifying it. Only the "nb" path needs it (a per-cell offset in
-  # its GLM design), so it's a full pass over Y that the other two paths
-  # would otherwise pay for and never use.
+  # without densifying it. Only the "nb" path needs it (a fitted covariate
+  # COLUMN of its GLM design below -- a free coefficient, not an offset), so
+  # it's a full pass over Y that the other two paths would otherwise pay for
+  # and never use.
   loglib <- if (stage1 == "nb") log(pmax(Matrix::colSums(Y), 1)) else NULL
   beta <- var <- stats::setNames(vector("list", length(idx_types)), idx_types)
   r2 <- list(); ncl <- list()

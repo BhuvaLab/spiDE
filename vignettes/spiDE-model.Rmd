@@ -1135,8 +1135,10 @@ Which of the two fallbacks to prefer depends on what they are fed, and the
 benchmark measured both settings (see the *Two-stage estimation* report). On
 the published simulator's raw counts `ols` reads well above `nb` — an
 artefact of that simulator, whose only spatially structured depth
-contribution is the planted effect itself, which `nb`'s per-subset
-library-size covariate partially absorbs. On SpaNorm-*adjusted*
+contribution is the planted effect itself: `nb` enters log library size as a
+*fitted covariate* (free coefficient) and so absorbs part of that effect,
+where `ols`'s log-CPM removes depth with a coefficient implicitly fixed at
+one. On SpaNorm-*adjusted*
 expression (the structured-simulator re-run, 40 replicates per point) the
 two split along calibration rather than power: `ols` is the higher-powered
 stage-1 but its null rate inflates with sample size, while `nb` holds near
