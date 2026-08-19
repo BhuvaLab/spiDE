@@ -130,14 +130,35 @@
                            W_full = NULL, penalty = NULL,
                            sel = NULL, df = NULL, w_rc = NULL) {
   combine <- match.arg(combine)
-  if (is.null(W_full)) {
-    # fixed-effects fit: covariance from the tested sub-design, normal reference
-    varcov <- SpaNorm::invert_mat(crossprod(Wsub * wt_g, Wsub))
-  } else {
-    # mixed-effects fit: full penalised information (X'WX + Lambda), then the
-    # fixed-effect (Response/ResponseNiche) block -> larger, between-sample SEs
-    info <- crossprod(W_full * wt_g, W_full) + diag(penalty)
-    varcov <- SpaNorm::invert_mat(info)[sel, sel, drop = FALSE]
+  # The information matrix is built from THIS gene's working weights, so it can
+  # be singular for one gene and fine for the next. Unguarded, that aborts the
+  # whole run: measured 2026-08-13, one gene of 13,348 (rcond 2.7e-20) killed an
+  # 80-minute fit, while the same design on a 200-gene subset completed. A
+  # singular gene must drop out (NA), not take the run with it.
+  varcov <- tryCatch({
+    if (is.null(W_full)) {
+      # fixed-effects fit: covariance from the tested sub-design, normal ref
+      SpaNorm::invert_mat(crossprod(Wsub * wt_g, Wsub))
+    } else {
+      # mixed-effects fit: full penalised information (X'WX + Lambda), then the
+      # fixed-effect (Response/ResponseNiche) block -> larger between-sample SEs
+      info <- crossprod(W_full * wt_g, W_full) + diag(penalty)
+      SpaNorm::invert_mat(info)[sel, sel, drop = FALSE]
+    }
+  }, error = function(e) NULL)
+  if (is.null(varcov)) {
+    # shape MUST match the normal return exactly (t_stat, se, p.pos, p.neg,
+    # se_pat), with p vectors named c("Gene", <index types>) as the live path
+    # builds them -- a mismatched NA branch would fail only when a singular
+    # gene appears, i.e. precisely when this guard is doing its job.
+    nm <- colnames(Wsub)
+    pnm <- c("Gene", uniq_index)
+    return(list(
+      t_stat = stats::setNames(rep(NA_real_, ncol(Wsub)), nm),
+      se = stats::setNames(rep(NA_real_, ncol(Wsub)), nm),
+      p.pos = stats::setNames(rep(NA_real_, length(pnm)), pnm),
+      p.neg = stats::setNames(rep(NA_real_, length(pnm)), pnm),
+      se_pat = NA_real_))
   }
   # NULL df -> normal reference (fixed fit); scalar/vector df -> t (mixed fit)
   ptail <- function(t, lower.tail) {
@@ -273,10 +294,18 @@
     # measurably faster, and identical by construction, which the
     # cov.batch-invariance test pins down.
     pen_mat <- if (is.null(penalty)) NULL else diag(penalty, nrow = ncol(Wgram))
+    # NA (not error) for a gene whose weighted Gram is singular -- see the note
+    # in .waldBrownGene(). NA propagates to se/t_stat and then to the p-values,
+    # and p.adjust() already ignores NA, so such a gene is simply not tested.
     for (g in seq_len(b)) {
       info <- crossprod(Wgram * wtb[g, ], Wgram)
       if (!is.null(pen_mat)) info <- info + pen_mat
-      vcg <- SpaNorm::invert_mat(info)
+      vcg <- tryCatch(SpaNorm::invert_mat(info), error = function(e) NULL)
+      if (is.null(vcg)) {
+        diagB[g, ] <- NA_real_
+        if (!is.null(w_rc)) quadB[g] <- NA_real_
+        next
+      }
       if (!is.null(W_full)) vcg <- vcg[sel, sel, drop = FALSE]
       diagB[g, ] <- diag(vcg)
       if (!is.null(w_rc)) quadB[g] <- as.numeric(crossprod(w_rc, vcg %*% w_rc))
@@ -285,7 +314,19 @@
     for (ii in .chunkGenes(b, cov.batch)) {
       info <- .gramBatch(Wgram, .rowsOf(wtb, ii), penalty_diag = penalty,
                          backend = backend)
-      vc <- SpaNorm::invert_mat_batched(info)
+      # Same singular-gene exposure as the direct path above, but batched: one
+      # bad gene fails the whole Cholesky for its sub-batch. A per-gene fallback
+      # here would have to reproduce the torch/base split of .gramBatch(), which
+      # cannot be exercised without a GPU, so this reports a diagnosis with the
+      # concrete lever instead of guessing at a recovery.
+      vc <- tryCatch(SpaNorm::invert_mat_batched(info), error = function(e)
+        stop("batched covariance inversion failed for a gene sub-batch: ",
+             conditionMessage(e), "\n  A singular per-gene information matrix ",
+             "is the usual cause (thin or collinear design: few cells relative ",
+             "to design columns).\n  Levers: lower `cov.batch` to isolate the ",
+             "offending genes, or set backend = 'cpu', which takes the ",
+             "per-gene path that drops singular genes as NA instead of failing.",
+             call. = FALSE))
       if (!is.null(W_full)) {
         vc <- .subsetBatch(vc, sel)
       }

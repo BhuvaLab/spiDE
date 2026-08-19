@@ -4,13 +4,22 @@
 
 #' Extract and validate the stored SpaNorm fit
 #'
-#' The fit supplies the biology/LS design split (`wtype`), the coefficients
-#' and the dispersion that stage 1 linearises around. Kept as small pieces --
-#' full genes x cells matrices are only materialised per (sample, index)
-#' subset by .stage1Epsilon().
+#' The fit supplies the technical (ls + batch) columns whose linear predictor
+#' becomes the stage-1 OFFSET, plus the biology split kept for the basis-R2
+#' diagnostic. Kept as small pieces -- full genes x cells matrices are only
+#' materialised per (sample, index) subset by .stage1Offset().
+#'
+#' Why an offset and not the old "addback" working response: SpaNorm models
+#' biology only to ANCHOR the normalisation -- without a biology term the LS
+#' spline would over-correct, because LS confounds biology. The fitted biology
+#' component is a very smooth catch-all, not successfully modelled biology,
+#' and must not be read back into a response. spiDE therefore models all
+#' biology from scratch and assumes ONLY that the LS (and within-sample batch,
+#' e.g. field-of-view) effects are appropriately modelled -- which is exactly
+#' what fixing their linear predictor at coefficient 1 expresses.
 #' @param spe a SpatialExperiment previously normalised with SpaNorm().
-#' @return list(alpha, gmean, psi, W, bio) with `bio` a logical over columns
-#'   of `W` marking the biology block.
+#' @return list(alpha, gmean, psi, W, bio, off) with `bio`/`off` logicals over
+#'   columns of `W` marking the biology block and the ls+batch (offset) block.
 #' @noRd
 .spanormComponents <- function(spe) {
   fit <- S4Vectors::metadata(spe)$SpaNorm
@@ -25,40 +34,28 @@
          "re-run SpaNorm::SpaNorm() on this object")
   }
   wt <- as.character(fit$wtype)
+  off <- wt %in% c("ls", "batch")
+  if (!any(off)) {
+    stop("the stored SpaNorm fit has no 'ls' or 'batch' columns to form the ",
+         "stage-1 offset from (wtype: ", paste(unique(wt), collapse = ", "),
+         ")")
+  }
   list(alpha = fit$alpha, gmean = fit$gmean, psi = fit$psi, W = fit$W,
-       bio = wt == "biology")
+       bio = wt == "biology", off = off)
 }
 
-#' One-step working response and weights for a cell subset
+#' The fixed technical offset for a cell subset
 #'
-#' Linearises log counts at the FULL fitted mean (the correct expansion
-#' point: handles zeros, no baseline leakage) and, under "addback", returns
-#' the biology component so that, net, only the LS (and batch) effect is
-#' removed. Materialises genes x subset matrices only.
-#' @param Y counts matrix (genes x all cells; dense, sparse, or DelayedArray
-#'   -- only the `cells` subset is ever densified).
-#' @param comp the .spanormComponents() list.
-#' @param cells integer/logical index of the subset's cells.
-#' @param epsilon "addback" (default; eta_bio + z) or "residual" (z).
-#' @return list(eps, w): the response and NB working weights, genes x cells.
+#' The linear predictor of the ls + batch columns only:
+#' O = gmean + alpha[, off] %*% t(W[cells, off]), genes x cells. Passed to
+#' SpaNorm::fitNB() as a fixed offset (coefficient 1 by construction), so it
+#' cannot absorb depth-correlated biology the way a fitted covariate can.
+#' gmean is included for scale; the stage-1 intercept absorbs any per-gene
+#' constant either way.
 #' @noRd
-.stage1Epsilon <- function(Y, comp, cells, epsilon = c("addback", "residual")) {
-  epsilon <- match.arg(epsilon)
-  Wc <- comp$W[cells, , drop = FALSE]
-  eta <- comp$gmean + tcrossprod(comp$alpha, Wc)
-  mu <- exp(eta)
-  # Densify only this (sample, index) subset -- Y itself may be sparse/
-  # DelayedArray (twoStageSpiDE() no longer densifies the whole matrix).
-  Yc <- as.matrix(Y[, cells, drop = FALSE])
-  z <- (Yc - mu) / mu
-  w <- mu / (1 + comp$psi * mu)
-  eps <- if (epsilon == "addback") {
-    comp$gmean + tcrossprod(comp$alpha[, comp$bio, drop = FALSE],
-                            Wc[, comp$bio, drop = FALSE]) + z
-  } else {
-    z
-  }
-  list(eps = eps, w = w)
+.stage1Offset <- function(comp, cells) {
+  Wc <- comp$W[cells, comp$off, drop = FALSE]
+  comp$gmean + tcrossprod(comp$alpha[, comp$off, drop = FALSE], Wc)
 }
 
 #' Joint WLS of the working response on all niche columns, per gene
@@ -124,6 +121,49 @@
   stats::setNames(r2, colnames(X))
 }
 
+#' Pooled per-sample dispersion for the spanorm stage-1 path
+#'
+#' One dispersion estimation per SAMPLE, shared by every (sample, index)
+#' subset fit, instead of one per subset. Profiled on the real cohort
+#' (1,280-cell subset, 800 genes): estimateDisp is ~half of each subset
+#' fitNB, so pooling cuts the dominant cost ~an order of magnitude in call
+#' count while estimating each psi from ALL the sample's cells rather than
+#' one type's 30-2,000.
+#'
+#' The pooling design carries CELL-TYPE MEANS (plus the ls/batch offset) but
+#' deliberately NOT the niche columns: unmodelled niche variation inflates
+#' psi slightly, which errs conservative -- the direction wanted while the
+#' offset arm measures anti-conservative. The design is nested in the subset
+#' fitting design, which is the condition a supplied psi needs (see
+#' SpaNorm::fitNB's psi docs).
+#' @return named list of per-gene psi vectors, keyed by sample.
+#' @noRd
+.pooledPsi <- function(Y, comp, ct, smp, winsor, lambda.a, maxit.psi,
+                       backend, verbose = FALSE) {
+  out <- list()
+  for (ss in sort(unique(smp))) {
+    cells <- which(smp == ss)
+    cts <- factor(ct[cells])
+    D <- if (nlevels(cts) > 1L) {
+      stats::model.matrix(~ 0 + cts)
+    } else {
+      matrix(1, length(cells), 1L, dimnames = list(NULL, "(Intercept)"))
+    }
+    O <- .stage1Offset(comp, cells)
+    f <- try(SpaNorm::fitNB(Y[, cells, drop = FALSE], D, offset = O,
+                            lambda.a = lambda.a, winsor = winsor,
+                            maxit.psi = maxit.psi, backend = backend,
+                            verbose = FALSE), silent = TRUE)
+    if (inherits(f, "try-error")) {
+      if (verbose) message("  pooled psi failed for ", ss,
+                           "; its subsets fall back to per-subset estimation")
+      next
+    }
+    out[[ss]] <- f$psi
+  }
+  out
+}
+
 #' Per-(sample, index) joint niche slopes for every stage-1 path
 #'
 #' Replaces .patientSlopes(). All paths run the same joint fit and return a
@@ -134,10 +174,20 @@
 #' @noRd
 .sampleSlopes <- function(Y, E, comp, nm, ct, smp, idx_types, min.cells,
                           stage1 = c("spanorm", "ols", "nb"),
-                          epsilon = c("addback", "residual"),
                           winsor = 4, lambda.a = 0, maxit.psi = 2,
-                          backend = "cpu", verbose = FALSE) {
-  stage1 <- match.arg(stage1); epsilon <- match.arg(epsilon)
+                          pool.psi = TRUE, backend = "cpu", verbose = FALSE) {
+  stage1 <- match.arg(stage1)
+  # pooled dispersion needs SpaNorm::fitNB(psi=); fall back silently on an
+  # older SpaNorm so the path stays runnable (per-subset estimation is the
+  # pre-pooling behaviour, not an error)
+  psi_pool <- NULL
+  if (stage1 == "spanorm" && isTRUE(pool.psi) &&
+      "psi" %in% names(formals(SpaNorm::fitNB))) {
+    psi_pool <- .pooledPsi(Y, comp, ct, smp, winsor, lambda.a, maxit.psi,
+                           backend, verbose)
+    if (verbose) message(sprintf("  pooled psi for %d of %d samples",
+                                 length(psi_pool), length(unique(smp))))
+  }
   smps <- sort(unique(smp)); niches <- colnames(nm)
   gn <- rownames(Y)
   # Matrix::colSums(), not the bare generic: base::colSums() has no method
@@ -170,12 +220,80 @@
         X <- X[, setdiff(colnames(X), ix), drop = FALSE]
       }
       if (stage1 == "spanorm") {
-        se <- .stage1Epsilon(Y, comp, cells, epsilon)
-        js <- .jointSlopes(se$eps, se$w, X)
+        # NB GLM on RAW counts with the SpaNorm ls+batch linear predictor as a
+        # FIXED offset: design [1, niches], log mu = a0 + X b + O. Structurally
+        # the "nb" path below, with the free loglib covariate replaced by the
+        # offset -- the free coefficient is exactly the leak being closed.
+        keep <- apply(X, 2, function(x) stats::var(x) > 1e-10)
+        Wn <- cbind(`(Intercept)` = 1, X[, keep, drop = FALSE])
+        if (qr(Wn)$rank < ncol(Wn)) next
+        O <- .stage1Offset(comp, cells)
+        # ONE fit per subset. A two-pass variant (refit at the returned psi)
+        # was built and REVERTED on measurement: 1.70x cost on the unpooled
+        # path (747s vs 439s on the toy) for no likelihood gain -- median
+        # -0.41 across 6 subsets, better in only 2 of 6.
+        #
+        # The estimating and supplied-psi paths DO disagree here (up to 64
+        # loglik across 6 toy subsets), but not because either fails to
+        # converge: scored at a COMMON psi the single-pass fit wins 4 of 6, so
+        # a refit does not recover anything. On these subsets the gap closes at
+        # winsor = Inf (median +0.04, all within 1.2), consistent with the two
+        # paths optimising different WINSORISED objectives -- `winsor` caps
+        # against the current fitted mu, which supplying psi changes. That is
+        # NOT the whole story though: on a well-conditioned synthetic design
+        # the gap survives winsor = Inf unchanged, so conditioning (these
+        # subsets are 12 niche columns over 23-40 cells) is likely also
+        # involved. See research/notes/fitnb-offset-psi-disagreement.R, which
+        # prints both regimes including the counter-example.
+        #
+        # PRACTICAL POINT: pool.psi is therefore an ESTIMATOR choice, not just
+        # a speedup -- validate it on type-I/power, never on likelihood.
+        args <- list(Y[, cells, drop = FALSE], Wn, offset = O,
+                     lambda.a = lambda.a, winsor = winsor,
+                     maxit.psi = maxit.psi, backend = backend,
+                     verbose = FALSE)
+        if (!is.null(psi_pool[[ss]])) args$psi <- psi_pool[[ss]]
+        f <- try(do.call(SpaNorm::fitNB, args), silent = TRUE)
+        if (inherits(f, "try-error")) next
+        mu <- SpaNorm::calculateMu(f$gmean, f$alpha, Wn, offset = O)
+        js <- list(beta = matrix(NA_real_, nrow(Y), ncol(X),
+                                 dimnames = list(gn, colnames(X))),
+                   var = matrix(NA_real_, nrow(Y), ncol(X),
+                                dimnames = list(gn, colnames(X))))
+        # Per-gene Fisher information. The weights wnb are the GENE's own, so
+        # a thin or collinear subset can make `info` singular for SOME genes
+        # and not others -- measured on the real cohort at sigma = 10, where
+        # the full 13,348-gene run died on rcond 2.7e-20 while a 200-gene
+        # subset of the SAME design completed. An unguarded inversion there
+        # kills an 80-minute run over one gene, so failures leave NA (stage 2
+        # already requires finite, positive variances and drops them).
+        wnb <- mu / (1 + f$psi * mu)
+        nsing <- 0L
+        for (g in seq_len(nrow(Y))) {
+          info <- crossprod(Wn * wnb[g, ], Wn)
+          vc <- tryCatch(diag(SpaNorm::invert_mat(info)),
+                         error = function(e) NULL)
+          if (is.null(vc)) { nsing <- nsing + 1L; next }
+          js$beta[g, keep] <- f$alpha[g, -1]
+          js$var[g, keep] <- vc[-1]
+        }
+        if (nsing > 0L && verbose)
+          message(sprintf("    %s/%s: %d of %d genes had a singular information matrix",
+                          ix, ss, nsing, nrow(Y)))
+        # Basis-R2 diagnostics for BOTH SpaNorm blocks. The biology overlap is
+        # EXPECTED to be high (a real niche effect is smooth spatial variation,
+        # so it lives partly in that basis) and is reported for context, not as
+        # a defect. The LS overlap is the one that matters under the offset
+        # construction: an over-flexible LS field could absorb the same spatial
+        # variation the niche covariate carries -- the LS-side analogue of the
+        # simulator finding that depth structure can swallow a planted effect.
         Bbio <- comp$W[cells, comp$bio, drop = FALSE]
-        r2[[length(r2) + 1L]] <- data.frame(
-          sample = ss, index = ix, niche = colnames(X),
-          r2 = as.numeric(.nicheBasisR2(X, Bbio)))
+        Bls <- comp$W[cells, comp$off, drop = FALSE]
+        r2[[length(r2) + 1L]] <- rbind(
+          data.frame(sample = ss, index = ix, niche = colnames(X),
+                     basis = "biology", r2 = as.numeric(.nicheBasisR2(X, Bbio))),
+          data.frame(sample = ss, index = ix, niche = colnames(X),
+                     basis = "ls", r2 = as.numeric(.nicheBasisR2(X, Bls))))
       } else if (stage1 == "ols") {
         Ec <- E[, cells, drop = FALSE]
         js <- .jointSlopes(Ec, matrix(1, nrow(Ec), ncol(Ec)), X)
@@ -195,13 +313,26 @@
                                  dimnames = list(gn, colnames(X))),
                    var = matrix(NA_real_, nrow(Y), ncol(X),
                                 dimnames = list(gn, colnames(X))))
+        # Per-gene Fisher information. The weights wnb are the GENE's own, so
+        # a thin or collinear subset can make `info` singular for SOME genes
+        # and not others -- measured on the real cohort at sigma = 10, where
+        # the full 13,348-gene run died on rcond 2.7e-20 while a 200-gene
+        # subset of the SAME design completed. An unguarded inversion there
+        # kills an 80-minute run over one gene, so failures leave NA (stage 2
+        # already requires finite, positive variances and drops them).
         wnb <- mu / (1 + f$psi * mu)
+        nsing <- 0L
         for (g in seq_len(nrow(Y))) {
           info <- crossprod(Wn * wnb[g, ], Wn)
-          vc <- diag(SpaNorm::invert_mat(info))
+          vc <- tryCatch(diag(SpaNorm::invert_mat(info)),
+                         error = function(e) NULL)
+          if (is.null(vc)) { nsing <- nsing + 1L; next }
           js$beta[g, keep] <- f$alpha[g, -(1:2)]
           js$var[g, keep] <- vc[-(1:2)]
         }
+        if (nsing > 0L && verbose)
+          message(sprintf("    %s/%s: %d of %d genes had a singular information matrix",
+                          ix, ss, nsing, nrow(Y)))
       }
       A[, colnames(js$beta), ss] <- js$beta
       V[, colnames(js$var), ss] <- js$var
@@ -216,6 +347,6 @@
   list(beta = beta, var = var,
        r2 = if (length(r2)) do.call(rbind, r2) else
          data.frame(sample = character(), index = character(),
-                    niche = character(), r2 = numeric()),
+                    niche = character(), basis = character(), r2 = numeric()),
        ncells = do.call(rbind, ncl))
 }

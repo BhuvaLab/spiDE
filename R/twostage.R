@@ -143,36 +143,49 @@
 #'   reported in \code{diagnostics$inclusion}, rather than contributing an
 #'   unstable slope.
 #' @param fdr the target false discovery rate for the reported table.
-#' @param stage1 one of "spanorm" (the default), "ols" or "nb", the working
-#'   response stage-1 slopes are estimated from.
+#' @param stage1 one of "spanorm" (the default), "ols" or "nb", the model
+#'   stage-1 slopes are estimated from.
 #'
-#'   \strong{"spanorm"} linearises the one-step working response at a stored
-#'   [SpaNorm::SpaNorm()] fit, read from \code{metadata(spe)$SpaNorm} (a clear
-#'   error names \code{SpaNorm::SpaNorm()} when none is found), and, under
-#'   \code{epsilon = "addback"}, adds the
-#'   fitted biology component back so that only the library-size/batch part of
-#'   the fit is removed. This is the intended default: it reuses the
-#'   normalisation the rest of the package already relies on and needs a
-#'   single joint per-(sample, index) weighted fit, not one \code{fitNB} call
-#'   per subset.
+#'   \strong{"spanorm"} fits an NB GLM on the raw counts per (sample, index)
+#'   subset, with design \code{[1, niche columns]} and the stored
+#'   [SpaNorm::SpaNorm()] fit's library-size and batch linear predictor as a
+#'   \emph{fixed offset} (read from \code{metadata(spe)$SpaNorm}; a clear
+#'   error names \code{SpaNorm::SpaNorm()} when none is found). The rationale:
+#'   SpaNorm models biology only to \emph{anchor} its normalisation -- the
+#'   fitted biology term is a smooth catch-all, not modelled biology -- so
+#'   spiDE models all biology from scratch and assumes only that the
+#'   library-size (and within-sample batch, e.g. field-of-view) effects are
+#'   right. Fixing their predictor at coefficient 1 is that assumption made
+#'   literal: unlike a fitted library-size covariate, an offset cannot absorb
+#'   depth-correlated biology. (Before spiDE 0.99.16 this option instead used
+#'   a one-step "addback" working response linearised at the fitted mean;
+#'   results from that construction are not comparable and should be
+#'   re-computed.)
 #'
 #'   \strong{"ols"} regresses log-CPM directly on the niche columns with unit
 #'   weights. It needs no stored SpaNorm fit and no dispersion estimate, so it
 #'   is the fallback when one is not available (e.g. \code{data(toySpiDE)}).
 #'
-#'   \strong{"nb" remains the most expensive path.} It fits a fresh
-#'   \code{SpaNorm::fitNB} per (sample, index) subset carrying
-#'   \code{[1, log-library-size, niche columns]}; at panel scale (thousands of
-#'   genes) this cost is per-GENE (dispersion estimation and IRLS setup), not
-#'   per cell, so it is offered for small index/niche restrictions where the
-#'   subset count is low rather than as a default.
-#' @param epsilon one of "addback" (the default) or "residual", only used by
-#'   \code{stage1 = "spanorm"}. "addback" linearises at the fitted mean and
-#'   adds the biology (non-library/batch) component back to the working
-#'   response, removing only the library-size/batch effect; "residual" leaves
-#'   the bare working residual, which under-states the niche slope when a
-#'   niche column overlaps the biology basis (see
-#'   \code{diagnostics$r2}).
+#'   \strong{"nb"} fits a fresh \code{SpaNorm::fitNB} per (sample, index)
+#'   subset carrying \code{[1, log-library-size, niche columns]}. Note the
+#'   library-size term is a \emph{fitted covariate} here, so it can absorb a
+#'   depth-correlated effect; prefer "spanorm" when a SpaNorm fit is
+#'   available. Both NB paths price per-GENE (dispersion estimation and IRLS
+#'   setup), not per cell.
+#' @param epsilon \strong{Deprecated and ignored.} The former
+#'   "addback"/"residual" choice applied to the pre-0.99.16 working-response
+#'   construction, which no longer exists; supplying the argument raises a
+#'   warning.
+#' @param pool.psi logical (default TRUE): for \code{stage1 = "spanorm"},
+#'   estimate one per-gene dispersion per SAMPLE (design: cell-type means plus
+#'   the ls/batch offset) and supply it to every (sample, index) subset fit,
+#'   instead of re-estimating per subset. Cuts the dominant stage-1 cost
+#'   (dispersion estimation, measured at ~half of each subset fit on the real
+#'   cohort) and estimates psi from all of a sample's cells rather than one
+#'   type's few. The pooling design omits the niche columns, which errs
+#'   slightly conservative. Requires SpaNorm with \code{fitNB(psi=)}; on an
+#'   older SpaNorm the option is silently inert and per-subset estimation is
+#'   used.
 #' @param winsor,lambda.a,maxit.psi,backend forwarded to
 #'   \code{\link[SpaNorm]{fitNB}} by the "nb" path.
 #' @param verbose a logical.
@@ -182,8 +195,10 @@
 #'   \code{DirectionNiche}, \code{bandwidth.max}). \code{@fits} is empty (no
 #'   per-bandwidth GLM fit exists for this estimator). Diagnostics are
 #'   attached at \code{r@diagnostics}, a list of three tables: \code{r2} (the
-#'   niche columns' R2 against the SpaNorm biology basis, per sample x index,
-#'   "spanorm" stage1 only), \code{inclusion} (the per-index patient inclusion
+#'   niche columns' R2 against the SpaNorm biology AND ls bases -- a `basis`
+#'   column distinguishes them -- per sample x index, "spanorm" stage1 only;
+#'   high biology overlap is expected, high LS overlap warns that the LS field
+#'   may absorb the niche signal), \code{inclusion} (the per-index patient inclusion
 #'   table, with a warning when \code{min.cells} dropout is associated with
 #'   \code{condition}), and \code{tau2} (the DerSimonian-Laird between-patient
 #'   variance per index x niche used to weight the stage-2 contrast).
@@ -203,10 +218,16 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
                           sample_id = "sample_id", name = "Niche",
                           min.cells = 30L, fdr = 0.05,
                           stage1 = c("spanorm", "ols", "nb"),
-                          epsilon = c("addback", "residual"),
+                          epsilon = NULL,
                           winsor = 4, lambda.a = 0, maxit.psi = 2,
+                          pool.psi = TRUE,
                           backend = "cpu", verbose = TRUE) {
-  stage1 <- match.arg(stage1); epsilon <- match.arg(epsilon)
+  stage1 <- match.arg(stage1)
+  if (!is.null(epsilon)) {
+    warning("'epsilon' is deprecated and ignored: stage1 = \"spanorm\" now ",
+            "fits an NB GLM with the SpaNorm ls+batch predictor as a fixed ",
+            "offset, so there is no working response to add back to")
+  }
   if (length(sigma) != 1L || !is.finite(sigma)) {
     stop("twoStageSpiDE() takes a single bandwidth (stage-1 slopes are per ",
          "bandwidth); got sigma of length ", length(sigma),
@@ -291,7 +312,7 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
   # Y is left as assay() returns it (dense, sparse, or DelayedArray) -- at
   # panel scale a full as.matrix() here costs ~8 GB (13k genes x 77k cells).
   # Only "ols" needs a fully dense working response (E); "spanorm" and "nb"
-  # densify per (sample, index) subset only, inside .stage1Epsilon()/fitNB().
+  # densify per (sample, index) subset only, inside fitNB().
   Y <- SummarizedExperiment::assay(spe, assay)
   if (stage1 %in% c("spanorm", "nb")) {
     if (!.looksLikeCounts(Y)) {
@@ -317,9 +338,10 @@ twoStageSpiDE <- function(spe, condition, sigma, index = NULL, niche = NULL,
                     length(unique(smp))))
   }
   sl <- .sampleSlopes(Y, E, comp, nm, ct, smp, idx_types, min.cells,
-                      stage1 = stage1, epsilon = epsilon, winsor = winsor,
+                      stage1 = stage1, winsor = winsor,
                       lambda.a = lambda.a, maxit.psi = maxit.psi,
-                      backend = backend, verbose = verbose)
+                      pool.psi = pool.psi, backend = backend,
+                      verbose = verbose)
 
   pats <- unique(unname(s2p))
   # condition per patient, first non-missing cell. checkCondition() allows NA

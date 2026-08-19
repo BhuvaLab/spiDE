@@ -8,6 +8,11 @@ docs
 .claude/skills/*
 !.claude/skills/deploy-bioc
 !.claude/skills/hpc-job-sizing
+!.claude/skills/run-benchmark-arm
+!.claude/skills/calibration-check
+!.claude/agents
+!.claude/hooks
+!.claude/settings.json
 .DS_Store
 specs/
 /doc/

@@ -40,10 +40,14 @@ test_that("index and niche restriction shrinks the hypothesis space", {
   # Restriction is not cosmetic here: the full space buries the signal under
   # multiplicity, so the arguments must actually take effect.
   spe <- toy_spanorm_spe(n_genes = 20)
+  # stage1 = "ols": the property under test (index/niche restriction) is
+  # estimator-independent, and the spanorm path needs SpaNorm::fitNB(offset=),
+  # which the installed SpaNorm may not have yet
   full <- twoStageSpiDE(spe, condition = "condition", sigma = 30, min.cells = 10,
-                        fdr = 1, verbose = FALSE)
+                        fdr = 1, stage1 = "ols", verbose = FALSE)
   restr <- twoStageSpiDE(spe, condition = "condition", sigma = 30, min.cells = 10,
-                         index = "A", niche = "B", fdr = 1, verbose = FALSE)
+                         index = "A", niche = "B", fdr = 1, stage1 = "ols",
+                         verbose = FALSE)
   expect_lt(nrow(results(restr)), nrow(results(full)))
   expect_identical(unique(results(restr)$ct_index), "A")
   expect_identical(unique(results(restr)$ct_niche), "B")

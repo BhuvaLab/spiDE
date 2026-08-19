@@ -138,7 +138,21 @@
     mu <- SpaNorm::calculateMu(rep(0, nrow(alpha)), alpha, Wi)
     wbar <- colMeans(mu / (1 + fit$psi * mu))
     info <- crossprod(Wi * sqrt(wbar))
-    minv <- SpaNorm::invert_mat(info + diag(pen))
+    # SHARED across genes (wbar is a column mean) and ridge-penalised, so this
+    # is far better conditioned than the per-gene inversions in inference.R and
+    # a per-gene skip is meaningless here -- there is no one gene to drop. If it
+    # does fail, stop with a diagnosis: silently continuing on a bad variance
+    # component would corrupt EVERY gene's inference, which is worse than
+    # failing the run.
+    minv <- tryCatch(SpaNorm::invert_mat(info + diag(pen)),
+                     error = function(e) NULL)
+    if (is.null(minv))
+      stop("the penalised information matrix is singular while updating tau2 ",
+           "(random = '", if (is.null(re_group)) "?" else "intercept/slope",
+           "'). The random-effect columns are identified only by the penalty, ",
+           "so this usually means a sample or cell-type block is empty or ",
+           "perfectly collinear with the fixed effects. Check checkSample() ",
+           "output and per-(sample, cell type) cell counts.", call. = FALSE)
 
     tau2_new <- tau2
     ng <- nrow(alpha)
@@ -201,7 +215,17 @@
   if (df.method == "satterthwaite" && !is.null(cols_tested)) {
     wbar <- .repWeights(Y, fit$alpha, W, fit$psi)
     A <- crossprod(W * sqrt(wbar))
-    minv <- SpaNorm::invert_mat(A + diag(pen))
+    # Also shared and penalised. Here a failure HAS a principled fallback: the
+    # "between" df is the documented, more conservative alternative (scalar
+    # S - 2), so degrade to it with a warning rather than stopping. That trades
+    # power for validity, which is the right direction to fail in.
+    minv <- tryCatch(SpaNorm::invert_mat(A + diag(pen)), error = function(e) NULL)
+    if (is.null(minv)) {
+      warning("Satterthwaite df unavailable (singular penalised information); ",
+              "falling back to the conservative between-sample df. Inference ",
+              "will be valid but lower-powered.", call. = FALSE)
+      return(max(n_samples - 2, 1))
+    }
     tested <- which(cols_tested)
     df <- .satterthwaiteDF(A, minv, pen, re_group, tau2, tested, ncol(Y),
                           colnames(W)[tested])
