@@ -1,4 +1,4 @@
-url: https://bhuvad.github.io/spiDE
+url: https://bhuvalab.github.io/spiDE
 
 template:
   bootstrap: 5
@@ -19,32 +19,34 @@ navbar:
     validation:
       text: Statistical validation
       menu:
-      - text: All reports (index)
-        href: https://bhuvalab.github.io/spiDE-research/
-      - text: -------
       - text: Simulation study — calibration, power, FDR
-        href: https://bhuvalab.github.io/spiDE-research/spiDE-simulation.html
+        href: articles/spiDE-simulation.html
       - text: Two-stage estimation — benchmark
-        href: https://bhuvalab.github.io/spiDE-research/spiDE-twostage-benchmark.html
+        href: articles/spiDE-twostage-benchmark.html
       - text: The niche-shuffle null (real cohort)
-        href: https://bhuvalab.github.io/spiDE-research/spiDE-shuffle-null.html
+        href: articles/spiDE-shuffle-null.html
       - text: Mixed-fit speedups (re.prop)
-        href: https://bhuvalab.github.io/spiDE-research/spiDE-mixed-benchmark.html
+        href: articles/spiDE-mixed-benchmark.html
       - text: Combining niche p-values — Brown vs Cauchy
-        href: https://bhuvalab.github.io/spiDE-research/spiDE-cauchy-vs-brown.html
+        href: articles/spiDE-cauchy-vs-brown.html
       - text: Gene-set inference — spiGSEA calibration
-        href: https://bhuvalab.github.io/spiDE-research/spiDE-gsea-benchmark.html
+        href: articles/spiDE-gsea-benchmark.html
+      - text: -------
+      - text: Standalone mirror (research site)
+        href: https://bhuvalab.github.io/spiDE-research/
 
 # The validation reports live in the research repo (submodule `research/`) and
 # are published by reports/benchmarks/build_site.R to the research repo's
 # GitHub Pages. pkgdown navbar entries take absolute external URLs, so each
-# report is deep-linked here directly -- the files themselves are hosted on
-# the research site, never copied into this repo (the eight built vignettes
-# alone once exceeded Bioconductor's 10 MB tarball cap). The research site
-# renders with the same Bootstrap-5 look and a REPLICA of this navbar
-# (research: reports/benchmarks/site/navbar.html), so the two sites read as
-# one. When a report is added or renamed, or this navbar changes, update
-# build_site.R's `reports` list, that navbar replica, and this menu.
+# The validation reports are pkgdown ARTICLES rendered from symlinks in
+# vignettes/articles/ into the research submodule (sources and canonical
+# tables stay versioned there; ^vignettes/articles$ is .Rbuildignore'd so the
+# tarball is untouched). CI reads the private submodule with a deploy key
+# (secret RESEARCH_DEPLOY_KEY; see pkgdown.yaml). The research repo's own
+# Pages site remains as a standalone mirror, restyled to match this site
+# (research: reports/benchmarks/site/navbar.html replicates this navbar).
+# Adding or renaming a report touches: the symlink, this menu, the articles
+# index below, the research build_site.R list, and the navbar replica.
 articles:
 - title: Articles
   navbar: ~
@@ -52,3 +54,14 @@ articles:
   - spiDE
   - spiDE-model
   - spiDE-calibration
+- title: Statistical validation
+  desc: >
+    The measurement record behind the package defaults. Sources and canonical
+    tables live in the research submodule; these pages are rendered from them.
+  contents:
+  - articles/spiDE-simulation
+  - articles/spiDE-twostage-benchmark
+  - articles/spiDE-shuffle-null
+  - articles/spiDE-mixed-benchmark
+  - articles/spiDE-cauchy-vs-brown
+  - articles/spiDE-gsea-benchmark

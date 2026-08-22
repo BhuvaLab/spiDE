@@ -34,6 +34,25 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # The validation reports are pkgdown articles symlinked into the PRIVATE
+      # research submodule, so it must be checked out before the site builds.
+      # A deploy key authorises ONLY spiDE-research, which is why the main
+      # checkout above keeps the default token and the key is used just here
+      # (a deploy key cannot also fetch this repo). The submodule URL is
+      # already SSH (git@github.com:...), so no URL rewriting is needed.
+      - name: Check out the private research submodule
+        env:
+          SSH_KEY: ${{ secrets.RESEARCH_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/research_key
+          chmod 600 ~/.ssh/research_key
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/research_key -o IdentitiesOnly=yes" \
+            git submodule update --init research
+          test -f research/reports/benchmarks/tables/shuffle_null.rds \
+            || { echo "submodule checkout incomplete"; exit 1; }
+
       - uses: r-lib/actions/setup-pandoc@v2
 
       - uses: r-lib/actions/setup-r@v2
@@ -44,6 +63,9 @@ jobs:
         with:
           extra-packages: any::pkgdown, local::.
           needs: website
+
+      - name: Sync validation-report articles from the submodule
+        run: Rscript vignettes/articles/pkgdown-sync-articles.R
 
       - name: Build site
         run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)

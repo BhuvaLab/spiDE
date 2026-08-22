@@ -72,3 +72,4 @@ BugReports: https://github.com/BhuvaLab/spiDE/issues
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 LazyData: false
+Config/Needs/website: ggplot2, patchwork, bslib
