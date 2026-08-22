@@ -40,8 +40,11 @@ navbar:
 # GitHub Pages. pkgdown navbar entries take absolute external URLs, so each
 # report is deep-linked here directly -- the files themselves are hosted on
 # the research site, never copied into this repo (the eight built vignettes
-# alone once exceeded Bioconductor's 10 MB tarball cap). When a report is
-# added or renamed, update BOTH build_site.R's `reports` list and this menu.
+# alone once exceeded Bioconductor's 10 MB tarball cap). The research site
+# renders with the same Bootstrap-5 look and a REPLICA of this navbar
+# (research: reports/benchmarks/site/navbar.html), so the two sites read as
+# one. When a report is added or renamed, or this navbar changes, update
+# build_site.R's `reports` list, that navbar replica, and this menu.
 articles:
 - title: Articles
   navbar: ~
