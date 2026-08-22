@@ -18,11 +18,30 @@ navbar:
         href: articles/spiDE-model.html
     validation:
       text: Statistical validation
-      href: https://bhuvalab.github.io/spiDE-research/
+      menu:
+      - text: All reports (index)
+        href: https://bhuvalab.github.io/spiDE-research/
+      - text: -------
+      - text: Simulation study — calibration, power, FDR
+        href: https://bhuvalab.github.io/spiDE-research/spiDE-simulation.html
+      - text: Two-stage estimation — benchmark
+        href: https://bhuvalab.github.io/spiDE-research/spiDE-twostage-benchmark.html
+      - text: The niche-shuffle null (real cohort)
+        href: https://bhuvalab.github.io/spiDE-research/spiDE-shuffle-null.html
+      - text: Mixed-fit speedups (re.prop)
+        href: https://bhuvalab.github.io/spiDE-research/spiDE-mixed-benchmark.html
+      - text: Combining niche p-values — Brown vs Cauchy
+        href: https://bhuvalab.github.io/spiDE-research/spiDE-cauchy-vs-brown.html
+      - text: Gene-set inference — spiGSEA calibration
+        href: https://bhuvalab.github.io/spiDE-research/spiDE-gsea-benchmark.html
 
-# The validation reports (simulation study, combiner, PQL, two-stage, GSEA)
-# live in the research repo and are published at https://bhuvalab.github.io/spiDE-research/
-# -- the navbar's "Statistical validation" entry links there.
+# The validation reports live in the research repo (submodule `research/`) and
+# are published by reports/benchmarks/build_site.R to the research repo's
+# GitHub Pages. pkgdown navbar entries take absolute external URLs, so each
+# report is deep-linked here directly -- the files themselves are hosted on
+# the research site, never copied into this repo (the eight built vignettes
+# alone once exceeded Bioconductor's 10 MB tarball cap). When a report is
+# added or renamed, update BOTH build_site.R's `reports` list and this menu.
 articles:
 - title: Articles
   navbar: ~

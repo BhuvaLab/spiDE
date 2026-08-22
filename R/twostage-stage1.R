@@ -102,9 +102,12 @@
 
 #' R2 of each niche column on the biology basis, within a subset
 #'
-#' Measures the attenuation the "residual" response would suffer and the
-#' smooth-trend overlap the "addback" response is exposed to. Reported per
-#' (sample, index) subset in the diagnostics. A constant/degenerate column
+#' Reported per (sample, index) subset and per basis in the diagnostics:
+#' overlap with the "ls" basis warns that the fixed technical offset could be
+#' removing niche-correlated variation; overlap with the (unused) "biology"
+#' basis is expected for a real niche effect and is context, not a warning.
+#' (The wording predating the offset construction -- addback/residual
+#' attenuation -- described the deprecated epsilon responses.) A constant/degenerate column
 #' (tss ~ 0) reports NA rather than flooring tss and reading off r2 ~ 1 --
 #' that floor previously manufactured a perfect-fit false positive for a
 #' column .jointSlopes() already drops as NA, so the two diagnostics

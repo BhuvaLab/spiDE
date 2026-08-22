@@ -35,6 +35,13 @@ Regenerate the shipped example dataset (`data/toySpiDE.rda`) with `source("data-
 niche-only calibration). `devtools::test()` does **not** run them and neither does CI — run one
 explicitly, e.g. `testthat::test_file("longtests/testthat/test-mixed-numerics.R")`.
 
+Project automations live in `.claude/` (allowlisted in `.gitignore`, so they are shared):
+two hooks (`r-parse-check.sh` parses every edited `.R` file; `protect-canonical-tables.sh` blocks
+direct writes to `research/reports/benchmarks/tables/*.rds`), two agents
+(`numerical-robustness-reviewer`, `evidence-auditor`) and two skills (`run-benchmark-arm`,
+`calibration-check`). `.mcp.json` adds a GitHub server that reads `${GITHUB_PAT}` from the
+environment — no token is committed.
+
 CI is `.github/workflows/check-bioc.yml` (R CMD check + `BiocCheck::BiocCheck()` across four
 R/Bioconductor configurations on push/PR to `main`) plus `pkgdown.yaml`. There is still no lint
 config (`.lintr`) — lintr diagnostics surfaced by the editor reflect default rules, not a
@@ -273,13 +280,14 @@ precision within each patient and contrasts the pooled patient slopes. None of `
 columns per (sample, index) subset — so restricting `niche` changes every remaining slope, not just
 which rows are reported — and drops the index type's own niche column, matching the GLM design's
 symmetric self-interaction rule. `stage1` selects the working response:
-- `"spanorm"` (default) linearises the one-step response at the stored `SpaNorm::SpaNorm()` fit read
-  from `metadata(spe)$SpaNorm` (`.spanormComponents()` errors clearly when absent), and under
-  `epsilon = "addback"` (the default) adds the fitted biology component back so only the
-  library-size/batch part is removed; `epsilon = "residual"` leaves the bare working residual, which
-  under-states the slope when a niche column overlaps the biology basis.
+- `"spanorm"` (the default, but **not the best** — see "Which method to use") reads the stored
+  `SpaNorm::SpaNorm()` fit from `metadata(spe)$SpaNorm` (`.spanormComponents()` errors clearly when
+  absent) and passes its **library-size/batch** components to `fitNB()` as a fixed **offset**
+  (`.stage1Offset()`), so spiDE re-models all biology itself and assumes only that the LS effects are
+  right. The former `epsilon` argument (`"addback"`/`"residual"`) is **deprecated and ignored**; it
+  warns if supplied. Any numbers quoted from an `epsilon`-era run are superseded.
 - `"ols"` regresses log-CPM with unit weights — no stored fit and no dispersion needed, so it is the
-  path the toy examples/tests use.
+  path the toy examples/tests use, **and it is the best-performing stage-1 path on measurement**.
 - `"nb"` fits a fresh `fitNB` per (sample, index) subset; cost is per-*gene*, so it is a
   small-restriction reference path, not a default.
 
@@ -297,17 +305,139 @@ as tested. Diagnostics land in the new `@diagnostics` slot: `r2` (niche columns 
 biology basis, `"spanorm"` only), `inclusion` (per-index patient inclusion under `min.cells`, which
 *warns* when dropout is associated with `condition`), and `tau2`.
 
-**Two caveats, both load-bearing.** (1) The often-quoted permutation numbers (raw type-I 0.036, zero
-false calls where `fitSpiDE(random = "intercept")` returned ~576) were measured on this function's
-**predecessor** (the nbresid/Welch estimator, since replaced by the SpaNorm-anchored joint one);
-re-measurement on the current implementation is pending — don't quote them as current. (2) It does
-**not** solve multiplicity: a full-panel space of ~1.8M triplets buries real signal, and ACAT over a
-gene's ~137 mostly-null triplets is no better than Bonferroni. Restrict `index`, `niche` and the gene
-set to a pre-specified hypothesis (~4,000 tests is the order at which a `p ≈ 1e-5` effect survives).
+**Three caveats, all load-bearing.** (1) **The old permutation numbers are withdrawn.** The
+often-quoted pair (two-stage raw type-I 0.036 with zero false calls, against ~576 for
+`fitSpiDE(random = "intercept")`) was measured on this function's *predecessor* and has now been
+superseded by a direct measurement that points the **other way** — see "What the niche-shuffle null
+showed" below. Do not cite them. (2) **`stage1 = "spanorm"` is the weakest of the three stage-1
+paths**, and it is the default only for historical reasons; `"ols"` beats it on calibration, power
+and cost (see below). (3) It does **not** solve multiplicity: a full-panel space of ~1.8M triplets
+buries real signal, and ACAT over a gene's ~137 mostly-null triplets is no better than Bonferroni.
+Restrict `index`, `niche` and the gene set to a pre-specified hypothesis (~4,000 tests is the order
+at which a `p ≈ 1e-5` effect survives).
 Benchmarked against the published simulation study in
 `research/reports/benchmarks/spiDE-twostage-benchmark.Rmd`; its arm lives as extra **rows**
 (`method`/`df.method == "twostage"`, labelled by `stage1` and `ls.model`) in the one canonical table
 per scenario under `research/reports/benchmarks/tables/`, never a parallel file.
+
+### What the niche-shuffle null showed (2026-08-21, real YTMA cohort)
+
+The sharpest calibration test run on this project so far, and the one that should be repeated before
+any future claim of niche-dependent DE. **Permuting the patient label — the older null — cannot
+detect a spurious slope**, because it leaves every patient's real niche slopes intact and randomises
+only who is a Responder; it tests stage 2 only. The niche shuffle destroys the niche↔expression
+association itself, so the true slope is **zero by construction** and every call is a false positive.
+
+Implementation (`research/plasmode/niche_shuffle.R`, `niche_shuffle_glm.R`): permute the **rows of
+the niche matrix within (cell type × sample)**. Do *not* shuffle expression across cells — that
+breaks each cell's pairing with its SpaNorm offset, whose LS component is position-dependent, and so
+tests the offset construction at the same time. Two modes: `free` (random rows) and `block` (toroidal
+shift, which preserves local spatial smoothness so architecture/FOV confounding survives). Both were
+run; they agree, which rules out unmodelled spatial structure as the driver.
+
+| run (bw 30, valid = Tumor+Fibroblast) | all sd(t) | all frac \|t\|>1.96 | valid sd(t) |
+|---|---|---|---|
+| REAL two-stage | 1.36 | 0.145 | 1.08 |
+| two-stage shuffles (n = 6) | 1.35–1.38 | 0.141–0.149 | 1.06–1.08 |
+| REAL intercept GLM | 1.05 | 0.062 | 1.10 |
+| intercept GLM shuffles (n = 4) | 0.93–1.04 | 0.036–0.059 | 1.01–1.10 |
+
+Two conclusions, both important:
+
+1. **Neither estimator's real data is distinguishable from its own shuffled null.** Two-stage: 912
+   discoveries on real against a null range of 595–986 (package `fdr.niche`); sd(t) 1.36 vs
+   1.35–1.38. Intercept: sd(t) 1.100 real against a shuffle maximum of 1.101. On this cohort at this
+   resolution there is **no detectable niche-dependent differential expression** for either method.
+   A better estimator buys a better-calibrated null, not a finding.
+2. **The intercept GLM is far better calibrated than the two-stage estimator across all index
+   types** (sd(t) 1.04 vs 1.36; 5.9% vs 14.5% exceeding \|t\|>1.96). It fits all cells jointly, so
+   thin cell types borrow strength, where two-stage fits each (patient, index) subset independently.
+   In the *valid* subset the two are equally mildly liberal (~1.06–1.10), so the GLM's advantage is
+   entirely in the thin index types.
+
+### Which method to use
+
+Measured, not assumed. Simulation numbers are from the structured-LS sweep at 85 of 99 parts
+(`research/plasmode/summary/twostage_*.csv`), so they may still move slightly.
+
+**Default to `fitSpiDE(random = "intercept")` when samples are plentiful (S ≥ 16).** Raw power 0.660
+at S = 30 against 0.451 (`ols`), 0.293 (`nb`), 0.274 (`spanorm`); FDP 0.041 at a nominal 0.05 by
+S = 16; and the best real-data shuffle calibration above.
+
+**It fails badly at small S**: FDP **0.35** against a nominal 0.05 at S = 4 (0.33 against a nominal
+0.01), recovering to 0.04 by S = 16. Note this does *not* show up in null type-I (0.049 at S = 4,
+respectable) — the two measure different things, and reading only the null table would have declared
+it fine. Any sub-analysis that thins the patient count re-enters this regime.
+
+**If using `twoStageSpiDE()`, prefer `stage1 = "ols"` over the `"spanorm"` default**: better
+calibrated (0.043–0.054 vs 0.058–0.071), **1.6× the raw power** (0.451 vs 0.274 at S = 30), much
+better precision (FDP 0.032 vs 0.173 at S = 16), and it needs no stored SpaNorm fit so it is the
+cheapest. `"nb"` is the most conservative and the least powerful of the three.
+
+**Keep `pool.psi = TRUE`.** A paired ablation on identical datasets
+(`research/plasmode/poolpsi_ablation.R`, 30 pairs) gives type-I 0.0673 pooled vs 0.0729 unpooled,
+consistently lower at every S, paired p < 0.0001. Small but unambiguous.
+
+### Two-stage calibration is governed by cells per subset
+
+Measured on the real cohort at bw 30: `sd(t)` per index type tracks **median cells per (patient,
+index) subset** at r = **−0.838**, against r = −0.659 for patient count. Tumor (388 cells/subset)
+is calibrated at sd(t) 1.05; Mast (38 cells) is inflated at 1.65. Ruled out as drivers: **bandwidth**
+(sd(t) 1.363 at σ = 30 vs 1.364 at σ = 70 — essentially identical) and **patient count** (restricting
+to ≥ 30 patients moved 1.363 only to 1.277). The mechanism is ~12 niche columns fit to as few as
+30–40 cells: a near-singular design whose Fisher variances understate uncertainty. The lever is
+therefore `min.cells` or niche resolution (p/n), not σ.
+
+A flat `min.cells` that reaches calibration is expensive on this cohort: 30 → 11 index types, 75 → 7,
+100 → 5, 150 → 4, 200 → 3. Reaching 100 deletes the entire T cell / DC / Monocyte / Mast compartment.
+
+**Separately, dropout can be confounded with condition.** `@diagnostics$inclusion` warns on this and
+it fires here: B cell (Fisher p = 0.027), DC (0.006), Monocyte (0.016) — which patients contribute
+depends on their outcome. No threshold or variance correction fixes informative missingness. Only
+Tumor and Fibroblast have complete inclusion (55/55) **and** calibrated variance.
+
+### Supplying `psi` changes the objective (winsorisation), it does not just save time
+
+`fitNB()`'s `winsor` caps counts against the **current fitted mu**, so supplying `psi` changes the
+IRLS weights, hence mu, hence *which cells are capped* — the estimating and supplied-psi paths
+maximise **different** objectives. On spiDE's near-singular stage-1 subsets the gap reaches 64
+log-likelihood units at `winsor = 4` and closes to a coin flip at `winsor = Inf` (median +0.04). On a
+well-conditioned synthetic design it does **not** close, so conditioning is also involved and the
+mechanism is not fully characterised. `research/notes/fitnb-offset-psi-disagreement.R` prints both
+regimes including its own counter-example.
+
+Consequences: (a) neither path "under-converges" — a two-pass refit was built and **reverted** on
+measurement (1.70× cost, median −0.41 loglik, better in only 2 of 6 subsets); (b) validate any
+shared-dispersion speedup on **type-I/power**, never on likelihood, which cannot rank two different
+objectives.
+
+Related: `fitNB()` subsamples cells for dispersion above a size threshold and sets **no seed
+internally**. At 60 cells repeated fits agree exactly; at 600 cells two identical calls differ by
+max|d psi| = 0.245. Any script whose numbers will be cited must `set.seed()` and record it.
+
+### Every per-gene matrix inversion is guarded
+
+A singular per-gene information matrix once aborted an 80-minute real-cohort run: the matrix is built
+from each gene's own weights, so it is singular for one gene of 13,348 (rcond 2.7e-20) and fine for
+the rest — the same design on a 200-gene subset completed. Six sites were unguarded, including the
+default Cauchy path in `.blockedInference()` that every `fitSpiDE()` call reaches. Treatment is
+matched to the site, not uniform:
+
+- per-gene sites (`R/inference.R`) → the gene drops out as `NA`; `p.adjust()` already ignores `NA`.
+- batched site (`invert_mat_batched`, which a grep for `invert_mat(` **misses**) → diagnostic error
+  naming `cov.batch`/`backend` as the levers.
+- shared sites (`R/mixed.R`, weights averaged across genes) → `tau2` stops with a diagnosis, since a
+  bad variance component would corrupt every gene's inference; the Satterthwaite df degrades to the
+  conservative `between` df with a warning, failing toward validity.
+
+### GPU: usable for the fit, broken for the inference
+
+On this cluster's torch build, `fitSpiDE(backend = "gpu")` completes and is ~4× faster than CPU
+(16.3 min vs 69–100 min on the real cohort), but `testSpiDE()` then dies in a torch CUDA kernel JIT
+(nvrtc), consistent with the known nvrtc-builtins soname gap. `research/plasmode/gpu_smoke.R` passes
+because it exercises specific fp64 kernels, not the blocked-inference path — so **the gate passing
+does not imply inference will run**. h100 only regardless: a100 fails fp64 `digamma` *inside* NB
+dispersion, and l40s runs fp64 at ~1:64.
 
 ### Gene-set inference (`spiGSEA()`)
 
@@ -346,6 +476,23 @@ down. Before changing one, read the corresponding record:
 - `research/` — a git submodule (`BhuvaLab/spiDE-research`) holding the benchmark harness and the
   written-up negative results (e.g. `research/reports/between-sample-stratum.html`).
 - `design/specs/` — design specs and implementation plans for larger changes.
+- `research/notes/fitnb-offset-psi-disagreement.R` — runnable, self-contained; prints both regimes
+  of the winsorisation/psi finding *including its own counter-example*.
+- `research/plasmode/niche_shuffle.R` + `niche_shuffle_glm.R` — the shuffle null for both estimators
+  (`SPIDE_SHUF` = `free` | `block` | `none`, the last being the real-data comparator).
+- `research/plasmode/poolpsi_ablation.R` — the paired `pool.psi` ablation.
+- `.claude/skills/calibration-check/` — scores any results table for calibration, per-index
+  breakdown, dropout-vs-condition confounding, and re-FDRs the valid subset. **Run it before quoting
+  any discovery count.**
+- `.claude/agents/` — `numerical-robustness-reviewer` (unguarded inversions, p/n conditioning,
+  unseeded stochastic paths) and `evidence-auditor` (numeric claims vs the canonical tables).
+
+**A warning about the benchmark harness.** A sweep whose tasks load `SPIDE_HOME` from the **live
+working tree** is not one experiment: tasks start at different times, so edits mid-run give different
+tasks different code. A previously reported result ("two-stage null inflation grows with S, 0.078 →
+0.127") came from such a run and **did not survive re-measurement on a frozen snapshot** — the paired
+ablation shows no trend with S in either configuration (p = 0.82 / 0.62). Always pin `SPIDE_PKG` to a
+snapshot (`.claude/skills/run-benchmark-arm/scripts/freeze_snapshot.sh`).
 
 ### Checkers
 

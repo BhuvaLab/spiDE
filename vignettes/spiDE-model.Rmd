@@ -1005,17 +1005,17 @@ bandwidth $\sigma$.
 Stage 1 asks, within one sample $s$ and one index cell type $t$ at a time:
 *across the cells of this type in this core, how does this gene's expression
 co-vary with the local density of each surrounding cell type?* The answer is
-a vector of slopes with variances, obtained by weighted least squares of a
-**working response** $\varepsilon$ on the niche columns. The three `stage1`
-options differ only in what $\varepsilon$ (and its weights) are; the fit
-itself is shared.
+a vector of slopes with variances, obtained by a **joint regression on the
+niche columns**. The three `stage1` options share the design (below) and
+differ in the model fitted on it: a negative-binomial GLM with a fixed
+technical offset (`"spanorm"`), ordinary least squares on log-CPM (`"ols"`),
+or a negative-binomial GLM with a fitted depth covariate (`"nb"`).
 
-### The working response (`stage1 = "spanorm"`, the default)
+### The technical offset (`stage1 = "spanorm"`, the default)
 
-The default response is a one-step linearisation anchored on a stored
-[SpaNorm::SpaNorm()] fit — the same normalisation model the rest of the
-package relies on — read from `metadata(spe)$SpaNorm`. That fit provides,
-for every gene $g$ and cell $c$:
+The default path is anchored on a stored [SpaNorm::SpaNorm()] fit — the same
+normalisation model the rest of the package relies on — read from
+`metadata(spe)$SpaNorm`. That fit provides, for every gene $g$ and cell $c$:
 
 $$
 \hat\eta_{c,g}
@@ -1025,65 +1025,60 @@ $$
 $$
 
 where $W$ is the SpaNorm design matrix, $\hat a_{g,k}$ its fitted per-gene
-coefficients, $\hat g_g$ the per-gene baseline, and the split into
-$\hat\eta^{\text{bio}}$ and $\hat\eta^{\text{LS}}$ follows SpaNorm's own
-labelling of its columns (`wtype`) into a smooth *biology* block and a
-*library-size/batch* block. From the full fitted mean
-$\hat\mu_{c,g} = \exp(\hat\eta_{c,g})$ and the stored NB dispersion
-$\hat\psi_g$, stage 1 forms:
+coefficients, $\hat g_g$ the per-gene baseline, and the split follows
+SpaNorm's own labelling of its columns (`wtype`) into a smooth *biology*
+block and a *library-size / within-sample batch* block (field-of-view
+effects, when present, sit in the latter). Stage 1 uses **only the technical
+block**, and uses it as a fixed **offset**:
 
 $$
-z_{c,g} = \frac{Y_{c,g} - \hat\mu_{c,g}}{\hat\mu_{c,g}},
+O_{c,g} \;=\; \hat g_g + \hat\eta^{\text{LS}}_{c,g},
 \qquad
-w_{c,g} = \frac{\hat\mu_{c,g}}{1 + \hat\psi_g\,\hat\mu_{c,g}},
-\qquad
-\varepsilon_{c,g} \;=\; \hat\eta^{\text{bio}}_{c,g} + z_{c,g},
+\log \mu_{c,g} \;=\; a_{0,g} + \tilde N_c\,\beta_g + O_{c,g},
 $$
 
-| symbol | meaning |
-|---|-----------------------------------------------|
-| $Y_{c,g}$ | the raw count of gene $g$ in cell $c$ |
-| $z_{c,g}$ | the GLM **working residual** — the first-order (log-link) expansion of $\log Y$ around the fitted mean, which is finite even at $Y = 0$ (where $z = -1$), so no pseudocount is needed |
-| $w_{c,g}$ | the NB **working weight** — precisely the IRLS weight of Part 1, down-weighting cells where the linearisation is least reliable (low counts) |
-| $\varepsilon_{c,g}$ | the stage-1 response: approximately $\log Y_{c,g} - \hat\eta^{\text{LS}}_{c,g}$, i.e. log expression with **only the library-size/batch effect removed** |
+a fresh negative-binomial GLM on the **raw counts** of each (sample, index)
+subset, with the dispersion taken from a per-sample pooled fit
+(`pool.psi = TRUE`: one dispersion estimation per sample on a cell-type-means
+design, shared by that sample's subsets — measurably better calibrated than
+per-subset estimation, and cheaper).
 
-Three deliberate choices are folded into those three lines:
+Two deliberate choices are folded into that construction:
 
--   **Linearise at the *full* fitted mean.** The residual and the weights use
-    $\hat\mu$ with the depth effect *included*. Expanding around a
-    biology-only or depth-only mean re-introduces exactly the confounding
-    the estimator must avoid: a depth-free expansion point leaves the
-    depth–density correlation inside a core unadjusted, and a biology-free
-    one leaks the baseline into the slope.
--   **Add the biology component back** (`epsilon = "addback"`, the default).
-    The bare working residual $z$ has the *entire* SpaNorm fit removed —
-    including the smooth biology surface, which can absorb part of a genuine
-    niche signal (the niche columns are themselves smooth functions of
-    space). Adding $\hat\eta^{\text{bio}}$ back means that, net, only the
-    library-size/batch part is subtracted, undoing that attenuation.
-    `epsilon = "residual"` keeps the bare residual for sensitivity analysis;
-    it under-states the slope by a factor of about $1 - R^2$ whenever a niche
-    column overlaps the biology basis, which is why that $R^2$ is reported
-    per subset in the diagnostics (below).
--   **Slopes live on the log-mean scale.** Because $\varepsilon$ is a
-    linearised *log* expression, a flat condition fold-change moves a gene's
-    intercept, not its niche slope — so condition main effects do not leak
-    into the slope contrast at any expression level. (An identity-scale
-    response fails exactly this test: a $2\times$ baseline shift times a
-    niche-correlated baseline *looks* like a slope. The `ctresp` and
-    `maineffect` scenarios in the benchmark vignette measure this leak
-    directly.)
+-   **The technical effect enters as an offset, not a covariate.** Its
+    coefficient is fixed at one by construction, so it *cannot* absorb
+    depth-correlated biology. The `"nb"` path below enters log library size
+    as a *fitted* covariate, and its free coefficient is exactly the leak
+    the offset closes (the benchmark's `depth` scenario measures it).
+-   **The biology component is not used.** SpaNorm models biology only to
+    *anchor* the normalisation — library size confounds biology, so without
+    a biology term the LS spline would over-correct. The fitted biology
+    surface is therefore a very smooth catch-all, not successfully modelled
+    biology, and it must not be read back into a response. An earlier
+    construction that did exactly that (the `epsilon = "addback"` working
+    response) is **deprecated and ignored**; stage 1 now re-models all
+    biology from scratch and assumes *only* that the technical effects are
+    right. Slopes still live on the log-mean scale, so a flat condition
+    fold-change moves a gene's intercept, not its niche slope — condition
+    main effects do not leak into the slope contrast at any expression level
+    (the `ctresp` and `maineffect` scenarios measure this leak directly).
 
-### The joint weighted fit
+### The joint fit
 
 Within the subset of cells of index type $t$ in sample $s$ (kept only if it
 has at least `min.cells` cells), let $\tilde N$ be the niche columns
 **centred within the subset** and with the index type's own column removed —
 the same symmetric self-interaction rule the Part 1 design applies ($A$'s
-local density of $A$ is not a meaningful niche predictor for $A$ cells). With
-design $D = [\,\mathbf 1 \mid \tilde N\,]$ (the intercept absorbs each gene's
-level) and $\Omega_g = \mathrm{diag}(w_{c,g})$, each gene's slopes and their
-variances are the standard weighted-least-squares quantities:
+local density of $A$ is not a meaningful niche predictor for $A$ cells). All
+three paths share the design $D = [\,\mathbf 1 \mid \tilde N\,]$ (the
+intercept absorbs each gene's level). For `"spanorm"` and `"nb"` the slopes
+are the NB maximum-likelihood estimates and their variances come from the
+per-gene Fisher information,
+$v^{(s,t)}_{g,t'} = \big[(D^\top W_g D)^{-1}\big]_{t't'}$ with
+$W_g = \mathrm{diag}\!\big(\hat\mu_{c,g}/(1+\hat\psi_g\hat\mu_{c,g})\big)$;
+a gene whose information matrix is singular in a thin subset drops out as
+`NA` rather than failing the run. For `"ols"`, with unit weights
+$\Omega_g = I$, they are the standard least-squares quantities:
 
 $$
 \hat\beta^{(s,t)}_{g}
@@ -1105,11 +1100,10 @@ per-gene working dispersion within the subset. Degenerate niche columns
 and therefore correlated with each other. A *marginal* slope per niche lets
 one true association bleed into every correlated niche column — triplet
 attribution becomes unreliable. Estimated jointly, correlated columns must
-*compete* for the same variation, so a smooth trend (including the biology
-surface the add-back re-admits) loads onto the column that genuinely carries
-it. The add-back and the joint fit ship together for this reason, and the
-`attribution` scenario in the benchmark vignette (a decoy cell type whose
-density correlates with the true niche's) measures the result. A practical
+*compete* for the same variation, so a smooth trend loads onto the column
+that genuinely carries it. The `attribution` scenario in the benchmark
+report (a decoy cell type whose density correlates with the true niche's)
+measures the result. A practical
 consequence worth knowing: restricting `niche =` changes the *fit*, not just
 the report — every remaining slope is re-estimated in the smaller joint
 design.
@@ -1124,28 +1118,29 @@ design.
     per-cell scaling cannot absorb *spatially structured* depth, a
     vulnerability the benchmark's `depth` scenario quantifies.
 -   **`"nb"`** fits a fresh negative binomial GLM per subset with design
-    $[\,\mathbf 1,\ \log L_c - \overline{\log L},\ \tilde N\,]$ and reads the
-    slopes and variances from the GLM coefficients and the inverse Fisher
-    information. It is the slow reference implementation the one-step
-    response is validated against: its cost is per-*gene* (dispersion
-    estimation per subset), so it suits small `index`/`niche` restrictions,
-    not panel-wide runs.
+    $[\,\mathbf 1,\ \log L_c - \overline{\log L},\ \tilde N\,]$ —
+    structurally the `"spanorm"` fit with the fixed technical offset replaced
+    by a *fitted* log-library covariate, which is exactly the depth leak the
+    offset closes. Its cost is per-*gene* (dispersion estimation per subset),
+    so it suits small `index`/`niche` restrictions, not panel-wide runs.
 
-Which of the two fallbacks to prefer depends on what they are fed, and the
-benchmark measured both settings (see the *Two-stage estimation* report). On
-the published simulator's raw counts `ols` reads well above `nb` — an
-artefact of that simulator, whose only spatially structured depth
-contribution is the planted effect itself: `nb` enters log library size as a
-*fitted covariate* (free coefficient) and so absorbs part of that effect,
-where `ols`'s log-CPM removes depth with a coefficient implicitly fixed at
-one. On SpaNorm-*adjusted*
-expression (the structured-simulator re-run, 40 replicates per point) the
-two split along calibration rather than power: `ols` is the higher-powered
-stage-1 but its null rate inflates with sample size, while `nb` holds near
-nominal with less raw power. Prefer `nb` when calibration is the priority
-and `ols` when sensitivity is — and note the default `"spanorm"` faces no
-such trade on the structured simulator: its raw power scales with sample
-size at a null rate near nominal.
+Which path to prefer is a measured question, and the answer changed when the
+measurement improved. On the final structured-LS sweep — run on a frozen
+package snapshot after an earlier sweep was found to have loaded a live,
+changing working tree mid-run — **`"ols"` is the strongest stage-1 arm**:
+null type-I 0.043–0.054 and *flat* in sample size, raw power 0.451 at
+$S = 30$ against 0.293 (`"nb"`) and 0.274 (`"spanorm"`). The default
+`"spanorm"` is the *most liberal* of the three (null 0.055–0.071) with the
+least raw power; `"nb"` is near-nominal (0.043–0.047) and the most
+conservative. Two earlier claims from the superseded sweep — that `ols`'s
+null rate inflates with sample size, and that `"spanorm"` scales its power
+at a nominal null — did not survive re-measurement and are withdrawn. One
+caveat survives from the published (i.i.d.-depth) simulator: on raw counts
+`nb`'s fitted depth covariate absorbs part of a planted effect that is the
+only structured depth contribution there, so its i.i.d.-simulator power
+understates it. The *Two-stage estimation* report carries the full tables,
+and the niche-shuffle null on the real cohort (see the same report) bounds
+what any stage-1 choice can deliver there.
 
 ## Between the stages: pooling cores into patients
 
@@ -1259,7 +1254,7 @@ The returned `SpiDEResults` carries three diagnostic tables in
 
 | table | what it reports | the failure mode it makes visible |
 |---|---------------------------|---------------------------|
-| `r2` | per (sample, index) subset: the $R^2$ of each niche column on the SpaNorm biology basis (`stage1 = "spanorm"` only) | how much smooth-trend overlap the add-back is exposed to — and how much attenuation `epsilon = "residual"` would have suffered |
+| `r2` | per (sample, index) subset and per basis (`basis` = `"ls"` / `"biology"`): the $R^2$ of each niche column on that block of the SpaNorm design (`stage1 = "spanorm"` only) | overlap with the **ls** basis warns that the fixed technical offset could remove niche-correlated variation; overlap with the unused **biology** basis is *expected* to be high for a real niche effect (both are smooth in space) and is reported for context, not as a warning |
 | `inclusion` | per index type: which patients passed `min.cells`, with their condition | **informative dropout** — cell-type abundance can correlate with condition, silently biasing the tested patient subset; a Fisher test warns at $p < 0.05$ |
 | `tau2` | the pooled $\hat\tau^2$ per (index, niche) | a large value flags triplets where patient heterogeneity, not stage-1 noise, limits power |
 
@@ -1284,15 +1279,19 @@ The results table keeps the familiar schema — `gene`, `ct_index`,
 
 ## What it fixes, what it does not, and how it measured
 
-**Fixed: the error structure.** In the paired benchmark against the
-published simulation study (the *Two-stage estimation* report on the
-spiDE-research benchmark site, https://bhuvalab.github.io/spiDE-research/),
-the two-stage arm is the best-calibrated
-method at every null design point — essentially nominal at $S = 4$ and
-drifting mildly conservative as patients accrue, where the mixed GLM arms
-drift anti-conservative and `fixed` is drastically conservative. On the
-spatially random negative control it makes essentially no false calls where
-the GLM arms accumulate them.
+**Fixed: the error structure — in simulation.** In the paired benchmark
+against the published simulation study (the *Two-stage estimation* report on
+the spiDE-research benchmark site, https://bhuvalab.github.io/spiDE-research/),
+the `ols` and `nb` stage-1 arms are the best-calibrated methods at every
+null design point — where the mixed GLM arms drift mildly anti-conservative
+and `fixed` is drastically conservative — and on the spatially random
+negative control the estimator makes essentially no false calls where the
+GLM arms accumulate them. On the **real cohort** that ordering reverses:
+under the niche-shuffle null (the same site's *niche-shuffle null* report)
+the mixed GLM is the better-calibrated estimator across all index types,
+because the two-stage fit's thin (patient, index) subsets — a dozen niche
+columns on a few dozen cells — inflate its statistics whether or not any
+real niche association is present.
 
 **The price: power.** On the same simulator it is uniformly less powerful
 than the mixed GLM arms at delivered FDR, and it is **cells-hungry**: each
@@ -1306,15 +1305,18 @@ it — BH needs the best p-value below $0.05/m$. Restrict `index`, `niche` and
 the gene set to a pre-specified hypothesis; roughly 4,000 tests is the order
 at which a $p \approx 10^{-5}$ effect survives.
 
-Two measurement caveats, stated so they are not over-read: the widely-quoted
-real-cohort permutation numbers (zero false calls where the mixed GLM
-returned hundreds) were measured on this function's *predecessor* estimator
-and await re-measurement on the current one; and the benchmark's main sweep
-grid is `stage1 = "ols"` on raw counts, because the published simulator's
-i.i.d. library sizes make the default `"spanorm"` path unmeasurable there.
-The structured-library-size re-run closed that gap for the samples sweep —
-the default arm's power scales with sample size as it should — and the
-benchmark report's *Stage-1 pipelines* section has the full story.
+Two measurement notes, stated so they are not over-read. First, the
+widely-quoted real-cohort permutation pair (two-stage: zero false calls;
+mixed GLM: hundreds) was measured on this function's *predecessor* and is
+**withdrawn** — the re-measurement with the sharper niche-shuffle null
+points the other way (see above). Second, the benchmark's main sweep grid
+is `stage1 = "ols"` on raw counts, because the published simulator's i.i.d.
+library sizes make the default `"spanorm"` path unmeasurable there; the
+structured-library-size re-run measured all three arms on a frozen snapshot,
+and `"spanorm"`'s power does scale with sample size there — but it remains
+the weakest and most liberal of the three, which is why `"ols"` is the
+recommended stage-1 (the benchmark report's *Stage-1 pipelines* section has
+the full story).
 
 ## Choosing between `fitSpiDE()` and `twoStageSpiDE()`
 
