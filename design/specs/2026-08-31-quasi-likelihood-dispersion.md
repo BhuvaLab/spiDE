@@ -1,8 +1,14 @@
 # Quasi-likelihood dispersion (edgeR v4 style) — design
 
 - **Date:** 2026-08-31
-- **Status:** draft for review; **gated** — nothing is built until Gate 0 below
-  returns, because Gate 0 can rule this approach out.
+- **Status:** **Gate 0 passed 2026-09-01 — build Stage A.** H1 (the winsorisation
+  clamp) and H3 (the sandwich) are refuted; the inflation sits on the
+  dispersion/abundance axis. Two results tighten the design: the v4 adjusted
+  deviance and effective df are **hard requirements**, because the raw deviance
+  against `n - p` has median 0.267 against Pearson's 0.837 and would inflate `t`
+  by 1.94x instead of the current 1.09x; and `zeroish` is 0 for every gene, so
+  the df adjustment cannot come from edgeR's legacy zero-count rule. Full result
+  in `research/fdr-ordering/FINDINGS.md`.
 - **Branch strategy:** `quasi-likelihood-dispersion`, created from `main`. It
   also carries two independent correctness fixes (`.isSelfNiche`, the one-sided
   ACAT input) that are unrelated to QL and can be reviewed separately.
