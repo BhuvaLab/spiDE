@@ -33,7 +33,11 @@
   } else {
     stats::setNames(lapply(group_map, .sanitise), .sanitise(names(group_map)))
   }
-  members <- function(nch) if (!is.null(san_map[[nch]])) san_map[[nch]] else nch
+  # The group's own NAME is one of its members: mergeNiches() maps a merged
+  # column to its FINE sub-labels, but colData$cell_type may already carry the
+  # MERGED labels, in which case the index label IS the group name and would
+  # otherwise never match its own members.
+  members <- function(nch) unique(c(nch, san_map[[nch]]))
 
   ok <- !is.na(index) & !is.na(niche)
   res <- logical(length(index))

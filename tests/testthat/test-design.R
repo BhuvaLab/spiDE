@@ -92,3 +92,16 @@ test_that("nicheDesign errors on a non-two-level condition", {
   spe$bad <- rep(c("x", "y", "z"), length.out = ncol(spe))
   expect_error(nicheDesign(spe, condition = "bad", sigma = 20), "two levels")
 })
+
+test_that(".isSelfNiche drops an index tested against its own merged niche group", {
+  # mergeNiches() stores group -> fine members. When colData$cell_type already
+  # carries the MERGED labels, the index label IS the group name, which is not
+  # among its own members -- so the self-interaction survived the drop.
+  gm <- list(DC = c("cDC1", "cDC2"), Tumor = "Tumor")
+  expect_true(spiDE:::.isSelfNiche("DC", "DC", group_map = gm))
+  expect_true(spiDE:::.isSelfNiche("cDC1", "DC", group_map = gm))
+  expect_false(spiDE:::.isSelfNiche("Tumor", "DC", group_map = gm))
+  # unchanged without a group map
+  expect_true(spiDE:::.isSelfNiche("DC", "DC", group_map = NULL))
+  expect_false(spiDE:::.isSelfNiche("Tumor", "DC", group_map = NULL))
+})

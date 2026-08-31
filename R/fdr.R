@@ -6,6 +6,16 @@
 # fdr/2 and merged (a gene/pair significant in both directions is "Both").
 # Reproduces the sig_niche cascade in YTMA_nicheDE_v9.md, in base R.
 
+#' Clamp p-values away from 0 and 1
+#'
+#' \code{tan((0.5 - p) * pi)} diverges at both ends, so every ACAT input in
+#' this file passes through here first.
+#'
+#' @param x a numeric vector or matrix of p-values.
+#' @return \code{x} clamped to \code{[eps, 1 - eps]}.
+#' @noRd
+.clampP <- function(x, eps = 1e-15) pmin(pmax(x, eps), 1 - eps)
+
 #' Gene- and index-level FDR gating, with direction merging
 #'
 #' @param p.pos,p.neg genes x (1 + n_index) Cauchy-combined p-value matrices.
@@ -90,8 +100,12 @@
     # per-column df aligned to the ResponseNiche subset (rn) of the tested cols;
     # a scalar/NULL @df is used as-is (recycled / normal reference).
     dfn <- .dfFor(f, rn)
+    # TWO-sided: the cross-bandwidth combination in .nicheLevelFDR() is an ACAT,
+    # whose Cauchy null needs U(0, 1). One-sided p on (0, 0.5) makes
+    # tan((0.5 - p) * pi) strictly positive -- a half-Cauchy, whose mean of
+    # positive heavy-tailed terms is inflated.
     lower <- .ptByCol(tmat, dfn)
-    pmat <- pmin(lower, 1 - lower)
+    pmat <- 2 * pmin(lower, 1 - lower)
     do.call(rbind, lapply(seq_along(cols), function(j) {
       data.frame(
         gene = genes,
@@ -136,7 +150,8 @@
     sub <- recs[ix, , drop = FALSE]
     g <- sub$gene[1]
     w <- gene.w[g, match(sub$bandwidth, sigmas)]
-    pc <- .cauchyCombine(matrix(sub$p, nrow = 1), matrix(w, nrow = 1))
+    # tan() diverges at p = 0/1, so clamp as the gene/index levels do.
+    pc <- .cauchyCombine(matrix(.clampP(sub$p), nrow = 1), matrix(w, nrow = 1))
     best <- which.min(sub$p)
     data.frame(
       gene = g, ct_index = sub$ct_index[1], ct_niche = sub$ct_niche[1],
@@ -148,12 +163,15 @@
   })
   combined <- do.call(rbind, combined)
 
-  # BH per (gene, ct_index) across ct_niche, then gate
+  # BH per (gene, ct_index) across ct_niche, then gate. p.niche is two-sided,
+  # so no direction correction is applied here -- unlike the gene and index
+  # levels, this one does not split by direction at all (DirectionNiche is read
+  # off the sign of t afterwards). At a single bandwidth this is numerically
+  # identical to the former BH(one-sided) * 2, because BH is scale-linear.
   pair2 <- paste(combined$gene, combined$ct_index, sep = "\r")
   combined$fdr.niche <- NA_real_
   for (k in split(seq_len(nrow(combined)), pair2)) {
-    combined$fdr.niche[k] <-
-      pmin(stats::p.adjust(combined$p.niche[k], "BH") * 2, 1)
+    combined$fdr.niche[k] <- pmin(stats::p.adjust(combined$p.niche[k], "BH"), 1)
   }
   combined[combined$fdr.niche <= fdr, , drop = FALSE]
 }
@@ -256,8 +274,6 @@
   genes <- rownames(tmat)
   p_pos <- .ptByCol(tmat, dfv, lower.tail = FALSE)
   p_neg <- .ptByCol(tmat, dfv, lower.tail = TRUE)
-  eps <- 1e-15
-  clamp <- function(x) pmin(pmax(x, eps), 1 - eps)
 
   # step 1: gene level -- combine the k cell types within a gene, on TWO-SIDED
   # p-values (this is an ACAT combination; see .waldBrownGene for why one-sided
@@ -265,7 +281,7 @@
   # it is well defined per cell type.
   #
   p_two <- pmin(2 * pmin(p_pos, p_neg), 1)
-  g_two <- .cauchyCombine(clamp(p_two))
+  g_two <- .cauchyCombine(.clampP(p_two))
   q_gene <- stats::p.adjust(g_two, "BH")
   gene_gate <- list(q = q_gene, sig = q_gene < fdr)
   keep <- which(gene_gate$sig)
@@ -308,13 +324,11 @@
 #' @noRd
 .cellTypeFDRp <- function(p_two, cts, fdr) {
   genes <- rownames(p_two)
-  eps <- 1e-15
-  clamp <- function(x) pmin(pmax(x, eps), 1 - eps)
   empty <- data.frame(gene = character(0), ct_index = character(0),
                       p = numeric(0), fdr.gene = numeric(0),
                       fdr.celltype = numeric(0), stringsAsFactors = FALSE)
 
-  q_gene <- stats::p.adjust(.cauchyCombine(clamp(p_two)), "BH")
+  q_gene <- stats::p.adjust(.cauchyCombine(.clampP(p_two)), "BH")
   keep <- which(q_gene < fdr)
   if (!length(keep)) return(empty)
 

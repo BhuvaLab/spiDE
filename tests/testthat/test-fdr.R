@@ -49,3 +49,44 @@ test_that(".hierarchicalFDR returns the empty schema when nothing passes", {
   expect_equal(nrow(out), 0)
   expect_true(all(c("gene", "ct_index", "ct_niche", "fdr.niche") %in% names(out)))
 })
+
+test_that(".nicheRecords returns two-sided p-values", {
+  # ACAT needs U(0,1) input; one-sided p on (0, 0.5) makes tan((0.5-p)*pi)
+  # strictly positive, so the cross-bandwidth combination is a half-Cauchy.
+  spe <- buildNiches(.toySPE(), sigma = 20)
+  res <- testSpiDE(fitSpiDE(spe, condition = "condition", sigma = 20,
+                            random = "none", verbose = FALSE), spe = spe, verbose = FALSE)
+  fitl <- fits(res)
+  genes <- rownames(fitl[[1]]@alpha)[1:5]
+  recs <- spiDE:::.nicheRecords(fitl, genes)
+  expect_true(max(recs$p) > 0.5)
+  expect_equal(recs$p, 2 * pnorm(-abs(recs$t)), tolerance = 1e-10)
+})
+
+test_that(".nicheLevelFDR combines bandwidths on the two-sided scale", {
+  spe <- buildNiches(.toySPE(), sigma = c(20, 40))
+  res <- testSpiDE(fitSpiDE(spe, condition = "condition", sigma = c(20, 40),
+                            random = "none", verbose = FALSE), spe = spe, verbose = FALSE)
+  fitl <- fits(res)
+  gene.w <- spiDE:::.geneWeights(fitl)
+  genes <- rownames(fitl[[1]]@alpha)[1:5]
+  recs <- spiDE:::.nicheRecords(fitl, genes)
+  gi <- unique(recs[, c("gene", "ct_index")])
+
+  out <- spiDE:::.nicheLevelFDR(fitl, gi, gene.w, fdr = 1)
+
+  # BH at the largest rank of a group returns that group's largest p, so the
+  # largest fdr.niche IS the largest combined p -- an exact anchor.
+  sigmas <- vapply(fitl, function(f) f@sigma, numeric(1))
+  trip <- paste(recs$gene, recs$ct_index, recs$ct_niche, sep = "\r")
+  ref <- vapply(split(seq_len(nrow(recs)), trip), function(ix) {
+    s <- recs[ix, , drop = FALSE]
+    p2 <- 2 * pnorm(-abs(s$t))
+    w <- gene.w[s$gene[1], match(s$bandwidth, sigmas)]
+    spiDE:::.cauchyCombine(matrix(p2, nrow = 1), matrix(w, nrow = 1))
+  }, numeric(1))
+  key <- paste(out$gene, out$ct_index, sep = "\r")
+  got <- vapply(split(out$fdr.niche, key), max, numeric(1))
+  want <- vapply(split(ref, sub("\r[^\r]*$", "", names(ref))), max, numeric(1))
+  expect_equal(got[names(want)], want, tolerance = 1e-8)
+})
