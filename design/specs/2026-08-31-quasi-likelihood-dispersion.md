@@ -95,9 +95,21 @@ variance. Regress the per-gene `sd(t)` inflation on those.
 
 | outcome | reading | action |
 |---|---|---|
-| inflation tracks the Pearson-vs-deviance gap, or the `disp_df` over-count | a per-gene scalar estimated the wrong way | build the QL path below |
-| inflation tracks the per-patient residual-variance spread | within-gene heteroscedasticity | build the sandwich instead; QL will disappoint |
-| inflation tracks the winsorised fraction | the fit's objective, not the variance | neither; revisit `winsor` |
+| inflation tracks `clamp_frac` / `clamp_shrink` / `lmu_range` | **H1**: `calculateMu()`'s per-gene clamp of fitted log-means at `rowMedian + 4*rowMad` biases the working weights, and is invisible to the Pearson dispersion because that statistic uses the same clamped mu | neither QL nor sandwich — it is plumbing; see the `winsor` note below |
+| inflation tracks the Pearson-vs-deviance gap, or the `disp_df` over-count | **H2**: a per-gene scalar estimated the wrong way | build the QL path below |
+| inflation tracks the per-patient residual-variance spread | **H3**: within-gene heteroscedasticity | build the sandwich instead; QL will disappoint |
+| inflation tracks `psi` at fixed abundance | **H4**: dispersion moderation is wrong at the top of the expression range | fix the dispersion, not the test |
+
+**A `winsor` finding that reshaped this gate.** `winsor` does **not** cap counts
+(CLAUDE.md says it does; that is wrong and is corrected separately). It clamps
+(a) each coefficient column across genes to `median +/- k*MAD`
+(`winsoriseCols()`), and (b) each **gene's** fitted log-mean at
+`rowMedian(lmu) + k*rowMad(lmu)`, one-sided, inside `calculateMu()`. None of
+spiDE's nine `calculateMu()` call sites passes `winsor`, so all of them use the
+default 4 regardless of what the user gave `fitSpiDE()`, and `SpiDEFit` does not
+store it — so `fitSpiDE(winsor = Inf)` fits unwinsorised and is then tested
+against mu clamped at 4 MADs. That is a defect in its own right, and H1 is the
+hypothesis that it is also the cause.
 
 **Nothing below is built until Gate 0 returns.** Cost of getting this wrong is
 roughly a GPU-day of revalidation per configuration.
@@ -269,9 +281,12 @@ under `research/reports/benchmarks/tables/`, never a parallel file.
 - Changing the FDR cascade, its ordering, or its alpha-spending. Those are
   separate findings in `research/fdr-ordering/FINDINGS.md` and are independent
   of the variance estimator.
-- The gene filter (dropping genes with shuffle `sd(t) > 1.3`), which is measured
-  to cut null false calls 6x at alpha .05 and is a far cheaper intervention. It
-  should be evaluated on its own, and it may make QL unnecessary.
+- The gene filter (dropping genes with shuffle `sd(t) > 1.3`). **Evaluated
+  2026-09-01 and it does not make QL unnecessary**: defined honestly on
+  independent grids it is a **1.5x** reduction in null false calls, not the 6x
+  first reported (that figure was circular and is withdrawn). It is worth
+  applying — it costs no power, worst measured TPR loss 0.011 — but
+  `P(>=1 false call)` stays 1 with it on.
 - `twoStageSpiDE()`, which shares none of this machinery.
 
 ## Files touched (Stage A)

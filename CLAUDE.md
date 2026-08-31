@@ -377,15 +377,23 @@ Two levers were measured on the complete null (flat BH, false calls at alpha .05
 |---|---|---|---|
 | all 12 index x 13,348 genes | 1,815,328 | 116.5 | 223.5 |
 | **Tumor + Fibroblast only** | 293,656 | 127.5 | **294.0** |
-| **drop the 122 genes with sd(t) > 1.3** | 1,798,736 | **6.5** | **36.0** |
 | random 500-gene panel, all index | 68,000 | 1.5 | **2.5** |
 
-**Dropping 0.9% of genes cuts false calls 6x at alpha .05 and 18x at .01** — the cheapest
-intervention measured. **Restricting index cell types makes the null worse**, because BH's
-`alpha*R/m` threshold rises as `m` falls while the pathological genes stay: the Tumor+Fibroblast
-restriction is a *calibration-of-the-estimator* argument, not a multiplicity one. Per-gene
-calibration alone is necessary but **not sufficient** (23% fewer false calls, 8–18 recall points
-lost, `P(>=1)` still 1) because within-gene correlation remains.
+**Restricting index cell types makes the null worse**, because BH's `alpha*R/m` threshold rises as
+`m` falls while the pathological genes stay: the Tumor+Fibroblast restriction is a
+*calibration-of-the-estimator* argument, not a multiplicity one. Per-gene calibration alone is
+necessary but **not sufficient** (23% fewer false calls, 8–18 recall points lost, `P(>=1)` still 1)
+because within-gene correlation remains.
+
+**The gene filter is worth applying, but it is a 1.5x effect, not 6x.** Dropping the genes whose
+shuffle `sd(t)` exceeds 1.3 cuts complete-null false calls **1.5x at alpha .05 and 1.7x at .01**
+when the hot-gene list is built from shuffle grids *other* than the one scored. An earlier 6x/18x
+figure was **circular** — the filter was defined on the grid it was scored on — and is withdrawn;
+it reproduces exactly (6.7x) when the circularity is reinstated. Two corollaries: about two thirds
+of any single grid's hot list is that grid's own noise (126 genes on their own grid vs 38 on a
+five-grid average), so most of the extreme tail is **not** a stable gene property; and the filter
+costs **no power** (FDP falls 0.05–0.07, TPR moves in the third decimal, worst loss 0.011). At 1.5x
+it does not remove the need to fix the variance estimator.
 
 ### Which method to use
 
