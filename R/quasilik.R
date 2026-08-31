@@ -1,5 +1,14 @@
 # Quasi-likelihood dispersion, edgeR v4 style.
 #
+# NOT WIRED INTO INFERENCE, DELIBERATELY. It was built to be, and then measured
+# first: on the real cohort it centres the scale but STEEPENS the expression
+# gradient it was meant to remove (1.179 -> 1.263), because the ratio it applies
+# over the Pearson dispersion falls from 1.178 at the lowest abundance decile to
+# 1.049 at the highest. See research/fdr-ordering/FINDINGS.md, "The QL dispersion
+# does not fix it", and the spec's REFUTED status. This file is kept because it
+# is correct, oracle-tested against edgeR, and is the instrument that result was
+# measured with -- not because it is on a path to being used.
+#
 # WHY THIS EXISTS AT ALL. spiDE scales each gene's Wald covariance by that
 # gene's working Pearson dispersion (R/inference.R). Gate 0
 # (research/fdr-ordering/FINDINGS.md) measured what that leaves behind: the

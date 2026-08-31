@@ -1,14 +1,18 @@
 # Quasi-likelihood dispersion (edgeR v4 style) — design
 
 - **Date:** 2026-08-31
-- **Status:** **Gate 0 passed 2026-09-01 — build Stage A.** H1 (the winsorisation
-  clamp) and H3 (the sandwich) are refuted; the inflation sits on the
-  dispersion/abundance axis. Two results tighten the design: the v4 adjusted
-  deviance and effective df are **hard requirements**, because the raw deviance
-  against `n - p` has median 0.267 against Pearson's 0.837 and would inflate `t`
-  by 1.94x instead of the current 1.09x; and `zeroish` is 0 for every gene, so
-  the df adjustment cannot come from edgeR's legacy zero-count rule. Full result
-  in `research/fdr-ordering/FINDINGS.md`.
+- **Status:** **REFUTED BY MEASUREMENT 2026-09-01 — do not wire Stage A in.**
+  The QL dispersion was built (`spiDE:::.qlDispersion`, oracle-tested against
+  `edgeR::glmQLFit` to 3e-3) and measured on the real cohort before wiring. It
+  centres the scale (median dispersion 0.837 -> 0.954, median `sd(null t)`
+  1.030 -> 0.967) but **steepens the expression gradient it was meant to remove**,
+  1.179 -> 1.263, because the ratio it applies falls from 1.178 at the lowest
+  abundance decile to 1.049 at the highest. The extreme tail worsens
+  (`frac(sd(t) > 1.3)` 0.0091 -> 0.0164) and `squeezeVar` is a no-op at this
+  scale (`df.prior = 4688`). Pearson and QL are both per-gene scalars over the
+  same residuals under the same mean-variance model; if the misspecification
+  varies with `mu` *within* a gene, neither can work. Full result in
+  `research/fdr-ordering/FINDINGS.md`. The next measurement is stated there.
 - **Branch strategy:** `quasi-likelihood-dispersion`, created from `main`. It
   also carries two independent correctness fixes (`.isSelfNiche`, the one-sided
   ACAT input) that are unrelated to QL and can be reviewed separately.

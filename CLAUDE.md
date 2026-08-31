@@ -367,9 +367,15 @@ and **90.8% of `|t| > 4.89` exceedances come from the top 5% of genes**.
 The affected genes are the **highest-expressed** ones (`cor(sd(t), log median SE) = -0.60`; worst are
 HLA-DPA1 2.29, CDV3, AEBP1, CST3, LAPTM5). This survives `free` shuffles, so it is not spurious
 spatial regression, and it survives the per-gene **Pearson working dispersion already applied** at
-`R/inference.R:539` — so "add a per-gene dispersion" is not by itself the fix. Whether the cure is an
-edgeR-v4-style QL dispersion or a cluster-robust sandwich is **undecided**, and
-`design/specs/2026-08-31-quasi-likelihood-dispersion.md` gates that choice on one measurement.
+`R/inference.R:539` — so "add a per-gene dispersion" is not by itself the fix. Three candidate cures
+have now been measured and **all three are refuted**: the `calculateMu()` winsorisation clamp (the
+over-dispersed genes are clamped an order of magnitude *less* than the rest), a cluster-robust
+sandwich (per-patient residual-variance spread is a third-order predictor), and an edgeR-v4 QL
+dispersion (built and oracle-tested; it *steepens* the expression gradient 1.179 → 1.263). Pearson
+and QL are both per-gene scalars over the same residuals under the same mean–variance model, so the
+remaining explanation is that the misspecification varies with `mu` **within** a gene — the one axis
+not yet tested. See `research/fdr-ordering/FINDINGS.md` and
+`design/specs/2026-08-31-quasi-likelihood-dispersion.md` (status: refuted, do not build).
 
 Two levers were measured on the complete null (flat BH, false calls at alpha .05):
 
