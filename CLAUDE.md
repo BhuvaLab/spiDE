@@ -314,7 +314,8 @@ paths**, and it is the default only for historical reasons; `"ols"` beats it on 
 and cost (see below). (3) It does **not** solve multiplicity: a full-panel space of ~1.8M triplets
 buries real signal, and ACAT over a gene's ~137 mostly-null triplets is no better than Bonferroni.
 Restrict `index`, `niche` and the gene set to a pre-specified hypothesis (~4,000 tests is the order
-at which a `p ≈ 1e-5` effect survives).
+at which a `p ≈ 1e-5` effect survives) — but restrict **genes**, not index types; see the next
+section for why restricting index types makes the null *worse*.
 Benchmarked against the published simulation study in
 `research/reports/benchmarks/spiDE-twostage-benchmark.Rmd`; its arm lives as extra **rows**
 (`method`/`df.method == "twostage"`, labelled by `stage1` and `ls.model`) in the one canonical table
@@ -355,10 +356,43 @@ Two conclusions, both important:
    In the *valid* subset the two are equally mildly liberal (~1.06–1.10), so the GLM's advantage is
    entirely in the thin index types.
 
+### The null tail is per-gene, and the lever is a gene filter
+
+`research/fdr-ordering/FINDINGS.md` (addendum, 2026-08-31) localises the FDR failure. The heavy null
+p-value tail that breaks BH is **per-gene scale heterogeneity**, not per-column: standardising each
+gene's `t` by its own null sd takes the `p < 1e-6` excess from **59.9x to 2.6x**, where a per-column
+rescale reaches only 37.3x. Per-gene `sd(null t)` spans 0.837–2.292 against 0.908–1.245 per column,
+and **90.8% of `|t| > 4.89` exceedances come from the top 5% of genes**.
+
+The affected genes are the **highest-expressed** ones (`cor(sd(t), log median SE) = -0.60`; worst are
+HLA-DPA1 2.29, CDV3, AEBP1, CST3, LAPTM5). This survives `free` shuffles, so it is not spurious
+spatial regression, and it survives the per-gene **Pearson working dispersion already applied** at
+`R/inference.R:539` — so "add a per-gene dispersion" is not by itself the fix. Whether the cure is an
+edgeR-v4-style QL dispersion or a cluster-robust sandwich is **undecided**, and
+`design/specs/2026-08-31-quasi-likelihood-dispersion.md` gates that choice on one measurement.
+
+Two levers were measured on the complete null (flat BH, false calls at alpha .05):
+
+| restriction | tests | BH .01 | BH .05 |
+|---|---|---|---|
+| all 12 index x 13,348 genes | 1,815,328 | 116.5 | 223.5 |
+| **Tumor + Fibroblast only** | 293,656 | 127.5 | **294.0** |
+| **drop the 122 genes with sd(t) > 1.3** | 1,798,736 | **6.5** | **36.0** |
+| random 500-gene panel, all index | 68,000 | 1.5 | **2.5** |
+
+**Dropping 0.9% of genes cuts false calls 6x at alpha .05 and 18x at .01** — the cheapest
+intervention measured. **Restricting index cell types makes the null worse**, because BH's
+`alpha*R/m` threshold rises as `m` falls while the pathological genes stay: the Tumor+Fibroblast
+restriction is a *calibration-of-the-estimator* argument, not a multiplicity one. Per-gene
+calibration alone is necessary but **not sufficient** (23% fewer false calls, 8–18 recall points
+lost, `P(>=1)` still 1) because within-gene correlation remains.
+
 ### Which method to use
 
-Measured, not assumed. Simulation numbers are from the structured-LS sweep at 85 of 99 parts
-(`research/plasmode/summary/twostage_*.csv`), so they may still move slightly.
+Measured, not assumed. Simulation numbers are from the structured-LS sweep
+(`research/plasmode/summary/twostage_*.csv`), re-aggregated 2026-08-31 with the arms relabelled
+`twostage/{nb,ols,spanorm}[lsstruct]`. The null table is now complete; some power tables still carry
+NA cells, so those numbers may still move slightly.
 
 **Default to `fitSpiDE(random = "intercept")` when samples are plentiful (S ≥ 16).** Raw power 0.660
 at S = 30 against 0.451 (`ols`), 0.293 (`nb`), 0.274 (`spanorm`); FDP 0.041 at a nominal 0.05 by
@@ -475,6 +509,12 @@ down. Before changing one, read the corresponding record:
   extra *rows*, not a parallel file that would carry a stale copy of the others.
 - `research/` — a git submodule (`BhuvaLab/spiDE-research`) holding the benchmark harness and the
   written-up negative results (e.g. `research/reports/between-sample-stratum.html`).
+- `research/fdr-ordering/` — all eight FDR procedures scored on the real-cohort shuffle null, on
+  injected signal and end-to-end; the per-gene tail addendum above. `R/recover.R` recovers exact
+  p-values from any stored `fdr = 1` table, so orderings are comparable without refitting.
+- `research/fdr-triplet/` — the earlier study: coefficient-level p-values are conservative, the
+  cascade is clean on exact uniforms, and control is nevertheless lost in the combination between
+  them. Its five refuted hypotheses are listed so they are not re-run.
 - `design/specs/` — design specs and implementation plans for larger changes.
 - `research/notes/fitnb-offset-psi-disagreement.R` — runnable, self-contained; prints both regimes
   of the winsorisation/psi finding *including its own counter-example*.
