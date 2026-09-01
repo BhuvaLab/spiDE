@@ -410,13 +410,20 @@ patient, and a per-patient random intercept absorbs between-patient variation"),
 patient-level covariates and **wrong for library size**: `nCount_RNA` is per *cell*, median 1732,
 IQR 1108–2698, max 27,553.
 
-Measured on the shuffle null (2026-09-01, `research/fdr-ordering/`): adding a library-size covariate
-removes about a seventh of the abundance gradient in `sd(null t)` (1.247 → 1.212) and halves the
-extreme tail, so it is worth having — but it is **not** the cause of the miscalibration. The slope
-the data want is **0.679**, not the 1.0 an offset would impose, because the modelled values are
-already SpaNorm-adjusted. **Cell-type-specific size factors are real but useless for calibration**:
-per-type medians run 0.458 (Tumor) to 0.718 (B cell), 1.38x the within-type IQR, yet the gradient
-moves 1.212 → 1.211.
+Measured on the shuffle null (2026-09-01, `research/fdr-ordering/`), on **raw counts** (see below):
+`base` 1.207 → `+library size` **1.149**, and median `sd(null t)` 1.055 → **1.008**. That is the
+**best-calibrated configuration measured anywhere in this investigation** — every other arm is off
+in one direction (adjusted counts run 0.89–0.92, conservative; raw without a depth term 1.055,
+liberal). The gradient is not eliminated, so depth is a major contributor and not the only one.
+
+The slope the data want on raw counts is **0.979** (IQR 0.941–1.021, positive for all 13,348 genes),
+i.e. a **conventional offset**, now empirically justified. On the SpaNorm-adjusted assay it is 0.679
+— attenuated, because that adjustment has already absorbed part of the depth effect.
+
+**Cell-type-specific size factors are NOT appropriate.** On raw counts every cell type lands at
+0.939–0.983 (spread 0.044) and modelling them separately moves the gradient 1.149 → 1.144. The
+0.458–0.718 spread seen on adjusted counts, which looked biologically ordered, is an artefact of how
+SpaNorm's adjustment interacts with cell type: the two orderings correlate at Spearman **0.100**.
 
 Pass it through `covariates` for now: a numeric `colData` column gives one global slope, and
 `loglib * 1[celltype == k]` passed as k columns *is* the `CellType:loglib` interaction under
@@ -425,8 +432,11 @@ cell-means coding.
 **The counts assay is not raw counts.** `batch_nichede_v10.R:224` sets
 `counts(spe) <- 2^logcounts(spe) - 1`, a back-transform of SpaNorm's logPAC, and it produces
 infeasible values — adjusted totals reach 287,929 against a true maximum library size of 27,553,
-with 460 cells (0.59%) exceeding their own library size by more than 2x. Anything that depends on
-the counts being counts (the NB variance function included) inherits that.
+with 460 cells (0.59%) exceeding their own library size by more than 2x. It also destroys sparsity:
+7 GB dense against 362 MB sparse for the same matrix. **The raw counts are not lost** —
+`ytma_4_nichede.rds` still carries them and line 224 overwrites them;
+`research/fdr-ordering/R/make_raw_spe.R` rebuilds a raw twin in 3.5 minutes. On raw counts **no**
+cell exceeds its own library size. Prefer the raw object for any new fit.
 
 ### Which method to use
 
