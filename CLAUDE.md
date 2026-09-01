@@ -401,6 +401,33 @@ five-grid average), so most of the extreme tail is **not** a stable gene propert
 costs **no power** (FDP falls 0.05–0.07, TPR moves in the third decimal, worst loss 0.011). At 1.5x
 it does not remove the need to fix the variance estimator.
 
+### There is no library-size term, and that is a real gap
+
+`fitSpiDE()` has **no offset argument** and `R/design.R` has **no size-factor handling** — per-cell
+sequencing depth is modelled only through the `CellType` cell-means intercepts, which are constant
+within a cell type. The YTMA v10 write-up gives the reason ("library size is constant within a
+patient, and a per-patient random intercept absorbs between-patient variation"), which is right for
+patient-level covariates and **wrong for library size**: `nCount_RNA` is per *cell*, median 1732,
+IQR 1108–2698, max 27,553.
+
+Measured on the shuffle null (2026-09-01, `research/fdr-ordering/`): adding a library-size covariate
+removes about a seventh of the abundance gradient in `sd(null t)` (1.247 → 1.212) and halves the
+extreme tail, so it is worth having — but it is **not** the cause of the miscalibration. The slope
+the data want is **0.679**, not the 1.0 an offset would impose, because the modelled values are
+already SpaNorm-adjusted. **Cell-type-specific size factors are real but useless for calibration**:
+per-type medians run 0.458 (Tumor) to 0.718 (B cell), 1.38x the within-type IQR, yet the gradient
+moves 1.212 → 1.211.
+
+Pass it through `covariates` for now: a numeric `colData` column gives one global slope, and
+`loglib * 1[celltype == k]` passed as k columns *is* the `CellType:loglib` interaction under
+cell-means coding.
+
+**The counts assay is not raw counts.** `batch_nichede_v10.R:224` sets
+`counts(spe) <- 2^logcounts(spe) - 1`, a back-transform of SpaNorm's logPAC, and it produces
+infeasible values — adjusted totals reach 287,929 against a true maximum library size of 27,553,
+with 460 cells (0.59%) exceeding their own library size by more than 2x. Anything that depends on
+the counts being counts (the NB variance function included) inherits that.
+
 ### Which method to use
 
 Measured, not assumed. Simulation numbers are from the structured-LS sweep
