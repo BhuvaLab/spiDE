@@ -236,10 +236,25 @@ noise, and the polish converges in a median of 10 Newton iterations per gene.
 The existing suite's runtime is dominated by `fitNB` itself and by the SpaNorm
 fits in the two-stage helpers, neither of which this change touches.
 
-That says nothing about the real cohort, where the design is 345 (or ~1,005)
-columns over 77,454 cells and the polish was measured at ~3 s per gene, i.e.
-~11 CPU-hours for the transcriptome, embarrassingly parallel over genes. The
-`pkgfixed` array measures it.
+Measured on the real cohort (job 27965091: 769 genes, 77,454 cells, 1,005
+design columns with the nested block, 8 threads, single gene block because the
+frozen snapshot predates the per-worker split):
+
+| grid | wall time |
+|---|---|
+| `free` shuffle | 80.4 min |
+| real data (`none`) | 112.7 min |
+
+That is the whole pipeline -- `fitNB` with two Schall iterations, the per-gene
+polish, and inference -- not the polish alone; the run predates the progress
+logging that would decompose it. Scaled naively to 13,348 genes it is ~23 h in
+one block, so budget **8-12 h on four workers** for a transcriptome, with the
+polish now splitting one block per worker. Decomposing the stages is the first
+thing the next run should do.
+
+The polish itself is well behaved at cohort scale: 2-4 genes of 769 restarted
+from the sane start, none hit the iteration cap, and the median gene took 9-11
+Newton iterations.
 
 ## A checked non-issue: the dispersion degrees of freedom
 
