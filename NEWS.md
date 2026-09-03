@@ -39,6 +39,20 @@
 * `.toySPE()` gains `composition`, which plants a between-sample composition
   confound with zero within-sample niche slope.
 
+## Bug Fixes
+
+* `updateObject()` could not repair an object serialised before a slot whose
+  prototype is `NULL` was added (`polish`, and latently `re_group`, `tau2`,
+  `penalty`, `df`). `.fillSlots()` used `attr(object, s) <- value`, and
+  `attr(x, "s") <- NULL` *removes* an attribute rather than setting it, so the
+  slot stayed absent: the object remained invalid, `show()` errored, and
+  `updateObject()` -- the documented repair path -- failed on exactly the
+  objects it exists to repair. It now assigns through `methods::slot<-`.
+* The per-gene convergence stage ran as a single block regardless of
+  `BPPARAM`, so a caller requesting several workers got no parallelism. Absent
+  an explicit `block.size` it now splits one block per worker; blocking is
+  exact, so the result is unchanged.
+
 # spiDE 0.99.14
 
 ## New Features

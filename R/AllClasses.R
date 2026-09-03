@@ -389,7 +389,14 @@ setMethod("updateObject", "SpiDEResults", function(object, ..., verbose = FALSE)
 .fillSlots <- function(object, Class, verbose = FALSE) {
   proto <- methods::new(Class)
   missing <- setdiff(methods::slotNames(Class), names(attributes(object)))
-  for (s in missing) attr(object, s) <- methods::slot(proto, s)
+  # slot<-, NOT attr<-: `attr(x, "s") <- NULL` REMOVES the attribute rather
+  # than setting it, so a slot whose prototype is NULL (polish, re_group,
+  # tau2, penalty, df) could never be filled -- the object stayed invalid and
+  # updateObject() itself failed on it, which is the one thing it exists to
+  # prevent. check = FALSE because the object is mid-repair and not yet valid.
+  for (s in missing) {
+    methods::slot(object, s, check = FALSE) <- methods::slot(proto, s)
+  }
   if (verbose && length(missing)) {
     message("updateObject(", Class, "): filled ", paste(missing, collapse = ", "))
   }

@@ -246,3 +246,39 @@ test_that(".polishFit splits into one block per worker when block.size is NULL",
   expect_equal(par$alpha, ser$alpha)
   expect_equal(par$psi, ser$psi)
 })
+
+test_that("updateObject fills a NULL-prototype slot on an object serialised without it", {
+  # Regression: .fillSlots() used attr(object, s) <- value, and
+  # `attr(x, "s") <- NULL` REMOVES an attribute rather than setting it. So any
+  # slot whose prototype is NULL could never be filled: the object stayed
+  # invalid, show() errored, and updateObject() -- the documented repair path --
+  # failed on the very objects it exists to repair. Fits can be hours of
+  # cluster time, so this must keep working.
+  p <- system.file("extdata", "testfits", "fit_toyspe_none.rds", package = "spiDE")
+  skip_if(!nzchar(p), "fixture not installed")
+  old <- readRDS(p)
+  skip_if("polish" %in% names(attributes(old)),
+          "fixture was regenerated with the polish slot present")
+
+  u <- updateObject(old)
+  expect_true(validObject(u))
+  expect_null(u@polish)
+  expect_silent(capture.output(show(u)))
+  # every slot that WAS present is untouched
+  expect_identical(u@alpha, old@alpha)
+  expect_identical(u@psi, old@psi)
+  expect_identical(u@W, old@W)
+})
+
+test_that(".fillSlots can fill every NULL-prototype slot of a stripped object", {
+  proto <- methods::new("SpiDEFit")
+  nulls <- Filter(function(s) is.null(methods::slot(proto, s)),
+                  methods::slotNames("SpiDEFit"))
+  expect_true(length(nulls) > 0)
+  stripped <- proto
+  for (s in nulls) attributes(stripped)[[s]] <- NULL
+  filled <- spiDE:::.fillSlots(stripped, "SpiDEFit")
+  expect_true(all(nulls %in% names(attributes(filled))))
+  expect_true(all(vapply(nulls, function(s) is.null(methods::slot(filled, s)),
+                         logical(1))))
+})
