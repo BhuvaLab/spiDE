@@ -191,6 +191,13 @@
 #' @param n_per number of cells per sample.
 #' @param n_genes number of genes.
 #' @param field the side length of the (square) spatial field.
+#' @param composition size of a planted BETWEEN-sample composition confound on
+#'   G2 in index type A: each sample's B-cell prevalence is tied to its
+#'   condition, and G2's baseline in that sample's A cells shifts in proportion
+#'   to it, constant within (sample, A). The true within-sample niche slope is
+#'   zero, so a design without a nested (sample x cell type) intercept reports a
+#'   false A x B effect and one with it does not. \code{0} (the default) draws
+#'   no extra random numbers, leaving the fixture unchanged.
 #' @param beta effect size of the planted B-niche x Responder interaction on G1.
 #'   This is the MAXIMUM log-fold-change across the field, since the effect is
 #'   planted as \code{beta * (x / field)} -- so \code{beta = 2} is a 7-fold
@@ -207,7 +214,7 @@
 #' @noRd
 .toySPE <- function(n_samples = 6, n_per = 80, n_genes = 20, field = 500,
                     sd.lib.sample = 0.15, sd.lib.celltype = 0.35,
-                    beta = 2, seed = 1) {
+                    beta = 2, composition = 0, seed = 1) {
   .localSeed(seed)
   gene_names <- sprintf("G%d", seq_len(n_genes))
 
@@ -216,13 +223,25 @@
   cond_levels <- rep(c("Responder", "Non-responder"), length.out = n_samples)
   names(cond_levels) <- sample_ids
 
+  # Per-sample B-cell prevalence. At composition = 0 this is the historical
+  # constant 0.7 and draws no random numbers, so the default fixture -- and
+  # every test that depends on it -- is bit-identical.
+  p_B <- stats::setNames(rep(0.7, n_samples), sample_ids)
+  if (composition != 0) {
+    # tie prevalence to condition, so the between-sample composition effect
+    # lands on the three-way CellType:condition:niche term that spiDE tests
+    is_r <- cond_levels == "Responder"
+    p_B[is_r] <- runif(sum(is_r), 0.75, 0.95)
+    p_B[!is_r] <- runif(sum(!is_r), 0.35, 0.55)
+  }
+
   cells <- lapply(sample_ids, function(sid) {
     # coordinates on a micron-scale field so bandwidths of 10-70 are meaningful
     x <- runif(n_per, 0, field)
     y <- runif(n_per, 0, field)
     # B cells concentrated in the right 40% of the field; A and C elsewhere
     ct <- ifelse(
-      x > 0.6 * field & runif(n_per) < 0.7, "B",
+      x > 0.6 * field & runif(n_per) < p_B[[sid]], "B",
       sample(c("A", "C"), n_per, replace = TRUE)
     )
     data.frame(
@@ -251,6 +270,18 @@
   is_resp <- cd$condition == "Responder"
   log_effect <- matrix(0, n_genes, n, dimnames = list(gene_names, cd$cell_id))
   log_effect["G1", ] <- beta * is_A * is_resp * (cd$x / field)
+
+  # A planted CONFOUND, not a signal: G2's baseline in A cells shifts with the
+  # sample's B-cell prevalence and is CONSTANT within (sample, A), so the true
+  # within-sample niche slope is exactly zero. The old design (a per-sample
+  # intercept shared across cell types) has nothing to absorb it and reports it
+  # as a niche effect; a nested (sample x cell type) intercept absorbs it
+  # exactly. A shuffle that permutes within (sample, cell type) preserves it,
+  # which is why it cannot be detected by permutation alone.
+  if (composition != 0 && n_genes >= 2) {
+    log_effect["G2", ] <- composition * is_A *
+      (p_B[cd$sample_id] - mean(p_B))
+  }
 
   lib.size <- .simLibSize(cd$sample_id, cd$cell_type,
                           sd.sample = sd.lib.sample,

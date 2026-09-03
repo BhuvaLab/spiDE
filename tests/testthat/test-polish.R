@@ -139,3 +139,75 @@ test_that(".polishFit flags a degenerate gene and keeps finite values", {
   expect_true(all(is.finite(out$alpha)))
   expect_true(is.finite(out$psi))
 })
+
+test_that("converge populates @polish and raises the per-gene log-likelihood", {
+  spe <- buildNiches(spiDE:::.toySPE(n_genes = 10, n_per = 50), sigma = 30)
+  f0 <- fitSpiDE(spe, "condition", sigma = 30, random = "none",
+                 converge = FALSE, verbose = FALSE)
+  f1 <- fitSpiDE(spe, "condition", sigma = 30, random = "none",
+                 converge = TRUE, verbose = FALSE)
+  a0 <- fits(f0)[[1]]
+  a1 <- fits(f1)[[1]]
+
+  expect_null(a0@polish)
+  expect_s3_class(a1@polish, "data.frame")
+  expect_equal(nrow(a1@polish), a1@ngenes)
+  expect_true(all(a1@polish$iterations >= 1))
+  expect_true(all(is.finite(a1@psi)) && all(a1@psi > 0))
+
+  # every gene's own penalised log-likelihood is at least as high as fitNB's
+  Y <- SummarizedExperiment::assay(spe, "counts")
+  pen <- rep(0, ncol(a1@W))
+  ll <- function(fit, g) {
+    mu <- as.numeric(exp(fit@W %*% fit@alpha[g, ]))
+    spiDE:::.nbPenLoglik(Y[g, ], mu, fit@psi[g], fit@alpha[g, ], pen)
+  }
+  base <- vapply(seq_len(a1@ngenes), function(g) ll(a0, g), numeric(1))
+  gains <- vapply(seq_len(a1@ngenes), function(g) ll(a1, g), numeric(1)) - base
+  expect_true(all(gains > -1e-6 * abs(base)))
+  expect_gt(median(gains), 0)
+})
+
+test_that("converge = FALSE leaves the fit as fitNB returned it", {
+  spe <- buildNiches(spiDE:::.toySPE(n_genes = 10, n_per = 50), sigma = 30)
+  a <- fitSpiDE(spe, "condition", sigma = 30, random = "none",
+                converge = FALSE, verbose = FALSE)
+  b <- fitSpiDE(spe, "condition", sigma = 30, random = "none",
+                converge = FALSE, verbose = FALSE)
+  expect_identical(fits(a)[[1]]@alpha, fits(b)[[1]]@alpha)
+  expect_identical(fits(a)[[1]]@psi, fits(b)[[1]]@psi)
+})
+
+test_that("a polished fit still passes validity and testSpiDE runs on it", {
+  spe <- buildNiches(spiDE:::.toySPE(n_genes = 10, n_per = 50), sigma = 30)
+  f <- fitSpiDE(spe, "condition", sigma = 30, random = "none",
+                converge = TRUE, verbose = FALSE)
+  expect_true(validObject(fits(f)[[1]]))
+  r <- testSpiDE(f, spe = spe, fdr = 1)
+  expect_true(nrow(results(r)) > 0)
+  expect_true(all(is.finite(results(r)$t)))
+})
+
+test_that(".newtonSolver refuses a nested block that is not a partition", {
+  d <- toy_design()
+  # break the partition: give one cell membership of two groups
+  W <- d$W
+  W[1, which(d$nested)[2]] <- 1
+  expect_error(spiDE:::.newtonSolver(W, d$pen, d$nested),
+               "0/1 indicators partitioning")
+})
+
+test_that(".newtonSolver recovers group membership from a float-valued product", {
+  # the group index comes from a dot product; a product of 7 arriving as
+  # 6.9999999 must not be truncated to group 6
+  d <- toy_design(n_grp = 8)
+  W <- d$W
+  # perturb the indicators just inside the partition tolerance
+  W[, d$nested] <- W[, d$nested] * (1 - 1e-10)
+  w <- runif(nrow(W), 0.2, 3)
+  s <- rnorm(ncol(W))
+  info <- crossprod(W * sqrt(w))
+  diag(info) <- diag(info) + d$pen
+  expect_equal(as.numeric(spiDE:::.newtonSolver(W, d$pen, d$nested)$solve(w, s)),
+               as.numeric(solve(info, s)), tolerance = 1e-6)
+})

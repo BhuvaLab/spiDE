@@ -18,6 +18,13 @@
 #'   the inference stage (where the GPU backend batches the per-gene Wald
 #'   covariance and negative-binomial working weights across each gene-block
 #'   on the accelerator, forcing a serial \code{BPPARAM} in the process).
+#' @param re.celltype logical; add a nested (sample x cell type) random
+#'   intercept so the tested niche slopes are within-group. Default
+#'   \code{TRUE}. See [fitSpiDE()].
+#' @param converge logical; converge each gene to its own penalised NB optimum
+#'   after the shared fit. Default \code{TRUE}. See [fitSpiDE()].
+#' @param converge.maxit,converge.tol iteration cap and relative
+#'   log-likelihood tolerance for the per-gene convergence stage.
 #' @param fdr a numeric, the target false discovery rate.
 #' @param combine one of "cauchy" (default) or "brown", the within-gene combiner
 #'   for the correlated niche p-values (passed to [testSpiDE()]).
@@ -54,6 +61,8 @@ setMethod(
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         fdr = 0.05, combine = c("cauchy", "brown"),
                         df.method = c("satterthwaite", "between"),
+                        re.celltype = TRUE, converge = TRUE,
+                        converge.maxit = 50L, converge.tol = 1e-8,
                         block.size = NULL, gpu.mem.budget = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
@@ -75,6 +84,9 @@ setMethod(
                     cell_type = cell_type, sample_id = sample_id,
                     random = random, winsor = winsor, lambda.a = lambda.a,
                     backend = backend, name = name, df.method = df.method,
+                    re.celltype = re.celltype, converge = converge,
+                    converge.maxit = converge.maxit,
+                    converge.tol = converge.tol, block.size = block.size,
                     BPPARAM = BPPARAM, verbose = verbose, ...)
 
     testSpiDE(res, spe = spe, assay = assay, fdr = fdr, combine = combine,

@@ -25,9 +25,14 @@
                              verbose, sample_id = "sample_id", random = "none",
                              re.maxit = 2L, re.tol = 1e-3, tau2.init = 1,
                              re.prop = 1, re.maxit.psi = 1L,
-                             re.min.cells = 100L, df.method = "satterthwaite", ...) {
+                             re.min.cells = 100L, df.method = "satterthwaite",
+                             re.celltype = TRUE, converge = TRUE,
+                             converge.maxit = 50L, converge.tol = 1e-8,
+                             block.size = NULL,
+                             BPPARAM = BiocParallel::SerialParam(), ...) {
   des <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
-                           cell_type, name, sample_id, random)
+                           cell_type, name, sample_id, random,
+                           re.celltype = re.celltype && random != "none")
   W <- des$W
 
   # fit all genes at once (dispersion moderated across genes). With random
@@ -57,6 +62,25 @@
     tau2 <- fit$tau2
     df <- fit$df
   }
+  # Converge each gene to its own optimum. fitNB's shared-weight, aggregate
+  # criterion leaves bright genes short of stationarity (see R/polish.R); this
+  # stage is per-gene and therefore blockable, unlike the fit itself.
+  polish <- NULL
+  if (converge) {
+    pen_vec <- if (is.null(penalty)) {
+      if (length(lambda.a) == 1L) rep(lambda.a, ncol(W)) else lambda.a
+    } else {
+      penalty
+    }
+    pol <- .polishFit(Y, W, fit$alpha, fit$psi, pen_vec, des$re_group,
+                      maxit = converge.maxit, tol = converge.tol,
+                      block.size = block.size, BPPARAM = BPPARAM,
+                      verbose = verbose)
+    fit$alpha <- pol$alpha
+    fit$psi <- pol$psi
+    polish <- pol$polish
+  }
+
   alpha <- fit$alpha
   rownames(alpha) <- rownames(Y)
   colnames(alpha) <- colnames(W)
@@ -84,6 +108,7 @@
     tau2 = tau2,
     penalty = penalty,
     df = df,
+    polish = polish,
     t_stat = NULL,
     se = NULL,
     p.combined.pos = NULL,
@@ -238,6 +263,38 @@
 #'   name \code{"between"} is therefore a misnomer in the intercept case; it is
 #'   retained for back-compatibility. \code{"satterthwaite"} computes this
 #'   distinction from the fitted variance components and is preferred.
+#' @param re.celltype logical; when \code{random != "none"}, add a nested
+#'   (sample x cell type) random intercept alongside the per-sample one.
+#'   \strong{Default \code{TRUE}.} Without it the tested niche slopes are
+#'   estimated from the total covariance of niche density and expression within
+#'   an index cell type, so they also carry the between-sample composition
+#'   effect: samples whose index cells sit in denser niche surroundings also
+#'   differ in mean expression there. That is a patient-level association with
+#'   S units, not neighbourhood-dependent differential expression, and a shuffle
+#'   null that permutes within (sample, cell type) preserves it -- which is why
+#'   real data and such a null were indistinguishable on the YTMA cohort. With
+#'   the block present every niche slope is a within-group slope and the shuffle
+#'   null is calibrated in every expression band. Set \code{FALSE} to reproduce
+#'   pre-correction fits. Ignored when \code{random = "none"}.
+#' @param converge logical; after \code{fitNB} returns, converge each gene to
+#'   its own penalised negative-binomial optimum and re-estimate its dispersion
+#'   there. \strong{Default \code{TRUE}.} \code{fitNB} fits every gene in one
+#'   IRLS loop with a single gene-averaged cell weight vector and an aggregate
+#'   convergence criterion, which is what makes a whole-transcriptome fit
+#'   affordable; for bright, cell-type-restricted genes it stops 1-4 standard
+#'   errors short of that gene's own optimum, with a dispersion about 1.6 times
+#'   too large. The stage is per-gene, so it is blocked and parallelised over
+#'   \code{block.size} / \code{BPPARAM} exactly as inference is. Note that it
+#'   replaces edgeR's cross-gene moderated dispersion with a per-gene profile
+#'   maximum-likelihood dispersion at the converged mean: with many cells per
+#'   gene that is well determined, but it is a deliberate departure from
+#'   \code{fitNB}'s moderation. Set \code{FALSE} to reproduce pre-correction
+#'   fits.
+#' @param converge.maxit,converge.tol iteration cap and relative
+#'   log-likelihood tolerance for the per-gene convergence stage.
+#' @param block.size genes per block in the per-gene convergence stage (see
+#'   [testSpiDE()] for the same argument at inference time). NULL fits every
+#'   gene in one block.
 #' @param BPPARAM a BiocParallelParam (reserved for the inference stage).
 #' @param verbose a logical, whether to print fitting progress.
 #' @param ... further arguments forwarded to \code{\link[SpaNorm]{fitNB}}.
@@ -269,6 +326,9 @@ setMethod(
                         re.maxit = 2L, re.tol = 1e-3, tau2.init = 1,
                         re.prop = 1, re.maxit.psi = 1L, re.min.cells = 100L,
                         df.method = c("satterthwaite", "between"),
+                        re.celltype = TRUE, converge = TRUE,
+                        converge.maxit = 50L, converge.tol = 1e-8,
+                        block.size = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
     random <- match.arg(random)
@@ -301,7 +361,11 @@ setMethod(
                        re.maxit = re.maxit, re.tol = re.tol,
                        tau2.init = tau2.init, re.prop = re.prop,
                        re.maxit.psi = re.maxit.psi,
-                       re.min.cells = re.min.cells, df.method = df.method, ...)
+                       re.min.cells = re.min.cells, df.method = df.method,
+                       re.celltype = re.celltype, converge = converge,
+                       converge.maxit = converge.maxit,
+                       converge.tol = converge.tol, block.size = block.size,
+                       BPPARAM = BPPARAM, ...)
     })
     names(fits) <- paste0(name, sigma)
 

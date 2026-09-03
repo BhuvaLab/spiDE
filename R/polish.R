@@ -77,9 +77,19 @@
   X <- W[, xi, drop = FALSE]
   pen_x <- pen[xi]
   pen_z <- pen[zi]
-  # the indicator each cell belongs to (the columns partition the cells, so
-  # this recovers the group index exactly)
-  gidx <- as.integer(W[, zi, drop = FALSE] %*% seq_along(zi))
+  # The indicator each cell belongs to. The columns are 0/1 and partition the
+  # cells, so this dot product recovers the group index -- via round(), not
+  # as.integer(): a floating-point product of 7 can come back as 6.9999999,
+  # which as.integer() would truncate to the WRONG group, silently.
+  Zblk <- W[, zi, drop = FALSE]
+  # the absorption is exact only if C = Z' diag(w) Z is diagonal, i.e. only if
+  # every cell belongs to exactly one group. Check that before relying on it.
+  rs <- rowSums(Zblk)
+  if (anyNA(rs) || max(abs(rs - 1)) > 1e-8) {
+    stop("the nested random-effect columns are not 0/1 indicators partitioning ",
+         "the cells; .newtonSolver() cannot absorb them", call. = FALSE)
+  }
+  gidx <- round(as.numeric(Zblk %*% seq_along(zi)))
   gf <- factor(gidx, levels = seq_along(zi))
 
   parts <- function(w) {
@@ -277,8 +287,14 @@
                     length(blocks), if (length(blocks) == 1L) "" else "s"))
   }
   res <- BiocParallel::bplapply(blocks, function(gi) {
-    lapply(gi, function(g) {
-      .polishGene(as.numeric(Y[g, ]), W, alpha[g, ], psi[[g]], pen, solver,
+    # densify the whole block once: Y may be sparse or a DelayedArray, where a
+    # per-gene read costs a round trip each time (the invariant is that the
+    # WHOLE matrix is never densified, not that a block is never densified --
+    # .blockedInference() does exactly the same).
+    Yb <- as.matrix(Y[gi, , drop = FALSE])
+    lapply(seq_along(gi), function(i) {
+      g <- gi[[i]]
+      .polishGene(as.numeric(Yb[i, ]), W, alpha[g, ], psi[[g]], pen, solver,
                   maxit = maxit, tol = tol)
     })
   }, BPPARAM = BPPARAM)

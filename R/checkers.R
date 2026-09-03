@@ -62,6 +62,13 @@ checkCovariates <- function(spe, covariates) {
 # must be a patient-level variable (constant within each sample), otherwise the
 # per-sample random intercept is mis-specified, and there must be enough samples
 # for the between-sample variance components to be identifiable.
+#
+# A per-sample random intercept absorbs any covariate that is constant within a
+# sample, which is why those are rejected when random != "none". With
+# re.celltype = TRUE the nested (sample x cell type) intercepts additionally
+# absorb covariates constant within a (sample, cell type) group. Such a
+# covariate is NOT rejected -- adjusting for one is legitimate, and the penalty
+# shrinks it -- but it will not be identified.
 checkSample <- function(spe, condition = NULL, sample_id = "sample_id",
                         covariates = character()) {
   cd <- SummarizedExperiment::colData(spe)

@@ -25,6 +25,10 @@ spiDE(spe, condition = NULL, ...)
   fdr = 0.05,
   combine = c("cauchy", "brown"),
   df.method = c("satterthwaite", "between"),
+  re.celltype = TRUE,
+  converge = TRUE,
+  converge.maxit = 50L,
+  converge.tol = 1e-08,
   block.size = NULL,
   gpu.mem.budget = NULL,
   BPPARAM = BiocParallel::SerialParam(),
@@ -143,6 +147,16 @@ tested columns, moving the contrast into the between-sample stratum). The
 name \code{"between"} is therefore a misnomer in the intercept case; it is
 retained for back-compatibility. \code{"satterthwaite"} computes this
 distinction from the fitted variance components and is preferred.}
+
+\item{re.celltype}{logical; add a nested (sample x cell type) random
+intercept so the tested niche slopes are within-group. Default
+\code{TRUE}. See \code{\link[=fitSpiDE]{fitSpiDE()}}.}
+
+\item{converge}{logical; converge each gene to its own penalised NB optimum
+after the shared fit. Default \code{TRUE}. See \code{\link[=fitSpiDE]{fitSpiDE()}}.}
+
+\item{converge.maxit, converge.tol}{iteration cap and relative
+log-likelihood tolerance for the per-gene convergence stage.}
 
 \item{block.size}{a numeric, genes per inference block (NULL = a single
 block on the CPU backend, or a memory-bounded auto-selected size on the

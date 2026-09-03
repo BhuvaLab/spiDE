@@ -164,3 +164,38 @@ test_that("random='slope' also yields a finite per-column @df", {
   expect_length(fs@df, sum(grepl("Response", as.character(fs@covtype))))
   expect_true(all(is.finite(fs@df)) && all(fs@df >= 1))
 })
+
+test_that(".satterthwaiteDF matches lmerTest with a nested second grouping", {
+  skip_if_not_installed("lmerTest")
+  skip_if_not_installed("lme4")
+  set.seed(4)
+  S <- 12L; K <- 3L; n_per <- 20L
+  g <- rep(seq_len(S), each = K * n_per)
+  k <- rep(rep(seq_len(K), each = n_per), S)
+  gk <- paste(g, k, sep = ".")
+  x <- rnorm(length(g))                     # a within-group covariate
+  y <- 0.4 * x + rnorm(S, 0, 0.8)[g] + rnorm(S * K, 0, 0.5)[factor(gk)] +
+    rnorm(length(g), 0, 1)
+
+  m <- lmerTest::lmer(y ~ x + (1 | g) + (1 | gk), REML = TRUE)
+  df_lmer <- summary(m)$coefficients["x", "df"]
+  vc <- as.data.frame(lme4::VarCorr(m))
+  s2 <- vc$vcov[vc$grp == "Residual"]
+  tau2 <- list(SampleInt = vc$vcov[vc$grp == "g"] / s2,
+               SampleCellTypeInt = vc$vcov[vc$grp == "gk"] / s2)
+
+  W <- cbind(`(Intercept)` = 1, x = x,
+             stats::model.matrix(~ 0 + factor(g)),
+             stats::model.matrix(~ 0 + factor(gk)))
+  re_group <- c(NA, NA, rep("SampleInt", S), rep("SampleCellTypeInt", S * K))
+  pen <- rep(0, ncol(W))
+  pen[re_group == "SampleInt" & !is.na(re_group)] <- 1 / tau2$SampleInt
+  pen[re_group == "SampleCellTypeInt" & !is.na(re_group)] <-
+    1 / tau2$SampleCellTypeInt
+  A <- crossprod(W)
+  minv <- solve(A + diag(pen))
+  df_s <- spiDE:::.satterthwaiteDF(A, minv, pen, re_group, tau2,
+                                   tested = 2L, ncells = length(y),
+                                   tested_names = "x")
+  expect_equal(unname(df_s), unname(df_lmer), tolerance = 0.1)
+})

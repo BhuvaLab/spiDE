@@ -98,3 +98,28 @@ test_that("re.prop is validated", {
 # the whole check. They could not be precomputed: both assert what fitSpiDE()
 # COMPUTES, so freezing them would let a regression in the fitting code pass.
 # The Long Tests builder runs them weekly with a 6-hour budget.
+
+test_that("re.celltype yields its own variance component and keeps per-column df", {
+  spe <- buildNiches(.toySPE(n_genes = 8, n_per = 40), sigma = 30)
+  f <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+                re.maxit = 1L, converge = FALSE, verbose = FALSE)
+  fit <- fits(f)[[1]]
+  expect_setequal(names(fit@tau2), c("SampleInt", "SampleCellTypeInt"))
+  expect_true(all(is.finite(unlist(fit@tau2))))
+  expect_true(all(unlist(fit@tau2) > 0))
+  # the nested columns are penalised at 1/tau2 for their own group
+  nested <- which(fit@re_group == "SampleCellTypeInt")
+  expect_true(all(abs(fit@penalty[nested] -
+                        1 / fit@tau2[["SampleCellTypeInt"]]) < 1e-8))
+  # df is still one per tested column
+  expect_gt(length(fit@df), 1L)
+  expect_true(all(is.finite(fit@df)))
+})
+
+test_that("re.celltype = FALSE keeps the single variance component", {
+  spe <- buildNiches(.toySPE(n_genes = 8, n_per = 40), sigma = 30)
+  f <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+                re.celltype = FALSE, re.maxit = 1L, converge = FALSE,
+                verbose = FALSE)
+  expect_setequal(names(fits(f)[[1]]@tau2), "SampleInt")
+})

@@ -39,3 +39,23 @@ test_that("fitSpiDE errors when niches are missing", {
   spe <- .toySPE()
   expect_error(fitSpiDE(spe, condition = "condition"), "buildNiches|niche")
 })
+
+test_that(".toySPE(composition = 0) is unchanged and composition plants a between-sample effect", {
+  a <- spiDE:::.toySPE()
+  b <- spiDE:::.toySPE(composition = 0)
+  expect_identical(SummarizedExperiment::assay(a, "counts"),
+                   SummarizedExperiment::assay(b, "counts"))
+
+  cs <- spiDE:::.toySPE(composition = 2.5)
+  cd <- SummarizedExperiment::colData(cs)
+  y <- SummarizedExperiment::assay(cs, "counts")["G2", ]
+  isA <- cd$cell_type == "A"
+
+  # G2 in A cells differs BETWEEN samples ...
+  m <- tapply(y[isA], droplevels(factor(cd$sample_id[isA])), mean)
+  expect_gt(max(m) / min(m), 1.5)
+  # ... and B-cell prevalence differs between samples too, in the same order
+  pb <- tapply(cd$cell_type == "B", factor(cd$sample_id), mean)
+  expect_gt(abs(cor(as.numeric(m), as.numeric(pb[names(m)]),
+                    method = "spearman")), 0.6)
+})

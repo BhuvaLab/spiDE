@@ -50,6 +50,10 @@
 #'   (genes x (gene-level plus per-index-cell-type)). The within-gene combiner
 #'   is Brown's method or the Cauchy combination test (see \code{combine}).
 #' @slot p.combined.neg a matrix, combined p-values for down-regulation.
+#' @slot polish a data.frame or NULL; per-gene diagnostics of the convergence
+#'   stage (iterations, fitNB's psi, whether the gene restarted from a sane
+#'   start, whether it hit the iteration cap, whether its information matrix was
+#'   singular). NULL when \code{converge = FALSE}.
 #' @slot sampling a factor, cells used for GLM/dispersion estimation (from
 #'   [SpaNorm::fitNB()]).
 #'
@@ -86,7 +90,8 @@ setClass(
     p.combined.pos = "ANY",
     p.combined.neg = "ANY",
     rho = "numeric",
-    sampling = "ANY"
+    sampling = "ANY",
+    polish = "ANY"
   ),
   prototype = list(
     re_group = NULL, tau2 = NULL, penalty = NULL, df = NULL,
@@ -103,7 +108,9 @@ setClass(
     # TRUE when the within-gene combination used TWO-SIDED p-values
     # (Cauchy/ACAT). Brown's method keeps one-sided p-values, where the
     # -2log(p) transform is bounded at 0 and cannot cancel.
-    two.sided = FALSE
+    two.sided = FALSE,
+    # per-gene diagnostics of the convergence stage; NULL when converge = FALSE
+    polish = NULL
   )
 )
 
@@ -128,6 +135,14 @@ setMethod(
       sprintf("Covariates: %d (%s)", ncol(object@W), paste(sprintf("%s=%d", levels(object@covtype), table(object@covtype)), collapse = ", ")),
       sprintf("alpha: %s", utils::capture.output(utils::str(object@alpha))),
       sprintf("psi: %s", utils::capture.output(utils::str(object@psi))),
+      sprintf("Converged per gene: %s",
+              if (is.null(object@polish)) {
+                "no"
+              } else {
+                sprintf("yes (%d restarted, %d capped)",
+                        sum(object@polish$restarted),
+                        sum(object@polish$capped))
+              }),
       sprintf("Inference computed: %s", !is.null(object@t_stat)),
       sep = "\n"
     )
@@ -168,6 +183,9 @@ validSpiDEFit <- function(object) {
                     "Random")
   if (!all(levels(object@covtype) %in% valid_levels)) {
     stop(sprintf("'covtype' levels should be a subset of: %s", paste(valid_levels, collapse = ", ")))
+  }
+  if (!is.null(object@polish) && nrow(object@polish) != object@ngenes) {
+    stop("nrow of 'polish' does not match 'ngenes'")
   }
   .checkMode(object@mode)
   TRUE

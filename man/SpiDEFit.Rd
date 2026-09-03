@@ -91,6 +91,11 @@ is Brown's method or the Cauchy combination test (see \code{combine}).}
 
 \item{\code{p.combined.neg}}{a matrix, combined p-values for down-regulation.}
 
+\item{\code{polish}}{a data.frame or NULL; per-gene diagnostics of the convergence
+stage (iterations, fitNB's psi, whether the gene restarted from a sane
+start, whether it hit the iteration cap, whether its information matrix was
+singular). NULL when \code{converge = FALSE}.}
+
 \item{\code{sampling}}{a factor, cells used for GLM/dispersion estimation (from
 \code{\link[SpaNorm:fitNB]{SpaNorm::fitNB()}}).}
 }}
