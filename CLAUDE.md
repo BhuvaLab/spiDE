@@ -367,15 +367,31 @@ and **90.8% of `|t| > 4.89` exceedances come from the top 5% of genes**.
 The affected genes are the **highest-expressed** ones (`cor(sd(t), log median SE) = -0.60`; worst are
 HLA-DPA1 2.29, CDV3, AEBP1, CST3, LAPTM5). This survives `free` shuffles, so it is not spurious
 spatial regression, and it survives the per-gene **Pearson working dispersion already applied** at
-`R/inference.R:539` — so "add a per-gene dispersion" is not by itself the fix. Three candidate cures
-have now been measured and **all three are refuted**: the `calculateMu()` winsorisation clamp (the
-over-dispersed genes are clamped an order of magnitude *less* than the rest), a cluster-robust
-sandwich (per-patient residual-variance spread is a third-order predictor), and an edgeR-v4 QL
-dispersion (built and oracle-tested; it *steepens* the expression gradient 1.179 → 1.263). Pearson
-and QL are both per-gene scalars over the same residuals under the same mean–variance model, so the
-remaining explanation is that the misspecification varies with `mu` **within** a gene — the one axis
-not yet tested. See `research/fdr-ordering/FINDINGS.md` and
-`design/specs/2026-08-31-quasi-likelihood-dispersion.md` (status: refuted, do not build).
+`R/inference.R:539` — so "add a per-gene dispersion" is not by itself the fix. Twelve candidate
+cures have been measured and refuted (ledger in `research/fdr-ordering/REPORT.md` §4): the
+`calculateMu()` winsorisation clamp, a patient-clustered sandwich, an edgeR-v4 QL dispersion (built
+and oracle-tested; it *steepens* the gradient — `design/specs/2026-08-31-quasi-likelihood-dispersion.md`,
+status: refuted, do not build), cascade ordering, within-gene variance misspecification (it makes the
+coefficient *conservative*), spatial autocorrelation, shared-weight IRLS inefficiency, the extreme
+fits themselves, a cell-type-level dispersion and a cell-level HC0 sandwich at the converged fit.
+
+**The production fit is not at its optimum for bright genes (2026-09-03), and that is a separate,
+real defect.** `SpaNorm::fitNB` fits all genes with one gene-averaged cell-weight vector, an
+aggregate convergence criterion and a cross-gene coefficient clamp; for the top 5% of genes by
+expression the coefficients sit **1–4 production SEs** from the gene's own penalised-NB optimum
+(log-likelihood gaps of 10^4–10^6, minimum fitted `log mu` below −20 for the brightest 35), and the
+edgeR `psi` estimated at that point is **1.6× too large**. Polishing *from* the production point
+diverges; damped Newton from a sane start (cell-type log means, `loglib` slope 1) converges every
+gene in 5–29 iterations at ~3 s per gene (`research/fdr-ordering/R/converged_null.R`). **Converging
+the fit does not fix the null**: on the same shuffle grids it calibrates ordinary genes exactly
+(`sd(null t)` 1.002 vs 0.929) and *lifts* the brightest band from 0.22–0.88 to **1.25–1.42**, because
+the production fit's inflated Pearson `phi` had been hiding inflation behind deflation. The residual
+inflation is confined to bright genes, tracks the **number of cells in the index type** (Tumor 1.36,
+B cell 1.24, Fibroblast 1.15, every type under ~3,000 cells at 1.00–1.03), is present under `free`
+shuffles and larger under `block`, and is not any marginal-variance quantity: per-cell-type Pearson
+scale, μ-tercile Pearson ratio and the cell-level HC0 sandwich all predict 0.92–1.0. Any future
+per-gene inference should first converge the fit; the honest null variance of bright genes is then
+*higher*, not lower. See `research/fdr-ordering/FINDINGS.md` (2026-09-03 entry) and `REPORT.md` §5c.
 
 Two levers were measured on the complete null (flat BH, false calls at alpha .05):
 
