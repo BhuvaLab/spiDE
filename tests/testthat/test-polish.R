@@ -211,3 +211,38 @@ test_that(".newtonSolver recovers group membership from a float-valued product",
   expect_equal(as.numeric(spiDE:::.newtonSolver(W, d$pen, d$nested)$solve(w, s)),
                as.numeric(solve(info, s)), tolerance = 1e-6)
 })
+
+test_that(".polishFit splits into one block per worker when block.size is NULL", {
+  d <- toy_design()
+  ng <- 6
+  A0 <- matrix(0, ng, ncol(d$W), dimnames = list(paste0("G", seq_len(ng)),
+                                                 colnames(d$W)))
+  A0[, 1] <- 0.5
+  Y <- t(vapply(seq_len(ng), function(g) {
+    mu <- exp(d$W %*% c(1 + 0.2 * g, rep(0.15, 5), rnorm(8, 0, 0.2)))
+    rnbinom(nrow(d$W), mu = as.numeric(mu), size = 1 / 0.4)
+  }, numeric(nrow(d$W))))
+  dimnames(Y) <- list(rownames(A0), NULL)
+  re_group <- ifelse(d$nested, "SampleCellTypeInt", NA_character_)
+
+  # a multi-worker BPPARAM must not collapse to a single block. Fork-based
+  # parallelism, so the workers inherit the loaded namespace (a snow cluster
+  # cannot see package internals under devtools::load_all()).
+  skip_on_os("windows")
+  bp <- BiocParallel::MulticoreParam(3, progressbar = FALSE)
+  skip_if_not(BiocParallel::bpnworkers(bp) == 3)
+
+  msgs <- capture_messages(
+    par <- spiDE:::.polishFit(Y, d$W, A0, rep(0.4, ng), d$pen, re_group,
+                              BPPARAM = bp, verbose = TRUE))
+  expect_match(paste(msgs, collapse = " "), "3 blocks")
+
+  serial <- capture_messages(
+    ser <- spiDE:::.polishFit(Y, d$W, A0, rep(0.4, ng), d$pen, re_group,
+                              verbose = TRUE))
+  expect_match(paste(serial, collapse = " "), "1 block")
+
+  # blocking is exact, so the split must not change the answer
+  expect_equal(par$alpha, ser$alpha)
+  expect_equal(par$psi, ser$psi)
+})

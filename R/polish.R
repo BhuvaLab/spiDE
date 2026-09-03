@@ -266,7 +266,7 @@
 #' @param verbose logical.
 #' @return a list with \code{alpha}, \code{psi}, \code{loglik} and a per-gene
 #'   \code{polish} data.frame.
-#' @importFrom BiocParallel bplapply SerialParam
+#' @importFrom BiocParallel bplapply SerialParam bpnworkers
 #' @noRd
 .polishFit <- function(Y, W, alpha, psi, pen, re_group = NULL,
                        maxit = 50L, tol = 1e-8, block.size = NULL,
@@ -281,6 +281,15 @@
   }
   solver <- .newtonSolver(W, pen, nested)
 
+  # .chunkGenes(ng, NULL) is ONE block, which would hand every gene to a single
+  # worker however many BPPARAM has -- a silent loss of the parallelism the
+  # caller asked for. Absent an explicit block.size, split at least one block
+  # per worker (this stage is exact per gene, so blocking never changes the
+  # answer -- test-polish.R asserts that).
+  nw <- BiocParallel::bpnworkers(BPPARAM)
+  if (is.null(block.size) && nw > 1L) {
+    block.size <- max(1L, ceiling(ng / nw))
+  }
   blocks <- .chunkGenes(ng, block.size)
   if (verbose) {
     message(sprintf("  converging %d genes per gene (%d block%s)", ng,
