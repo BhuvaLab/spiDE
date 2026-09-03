@@ -218,6 +218,29 @@ existing `G1` within-sample effect is unchanged and must still be recovered.
 
 The pre-baked `data(toySpiDE)` is not changed.
 
+## Measured cost of the two new defaults
+
+On the toy fixture (20 genes, 480 cells, 6 samples x 3 cell types), timed
+end-to-end through `fitSpiDE()`:
+
+| configuration | columns | elapsed |
+|---|---|---|
+| `random = "none"`, `converge = FALSE` | 25 | 42.1 s |
+| `random = "none"`, `converge = TRUE` | 25 | 39.0 s |
+| `random = "intercept"`, `re.celltype = FALSE`, `converge = FALSE` | 25 | 73.0 s |
+| `random = "intercept"`, `re.celltype = TRUE`, `converge = FALSE` | 43 | 71.5 s |
+| `random = "intercept"`, `re.celltype = TRUE`, `converge = TRUE` | 43 | 72.0 s |
+
+Both defaults are **free at test scale** -- the differences are within run-to-run
+noise, and the polish converges in a median of 10 Newton iterations per gene.
+The existing suite's runtime is dominated by `fitNB` itself and by the SpaNorm
+fits in the two-stage helpers, neither of which this change touches.
+
+That says nothing about the real cohort, where the design is 345 (or ~1,005)
+columns over 77,454 cells and the polish was measured at ~3 s per gene, i.e.
+~11 CPU-hours for the transcriptome, embarrassingly parallel over genes. The
+`pkgfixed` array measures it.
+
 ## A checked non-issue: the dispersion degrees of freedom
 
 `.blockedInference()` computes the Pearson working dispersion with
