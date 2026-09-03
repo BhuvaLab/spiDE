@@ -218,6 +218,28 @@ existing `G1` within-sample effect is unchanged and must still be recovered.
 
 The pre-baked `data(toySpiDE)` is not changed.
 
+## A checked non-issue: the dispersion degrees of freedom
+
+`.blockedInference()` computes the Pearson working dispersion with
+`disp_df = ncells - #(non-Random columns)`, so the nested block -- tagged
+`Random` -- does not reduce it. That is deliberate (penalised columns
+contribute little effective df) but worth quantifying, since 660 extra columns
+is not obviously "little".
+
+Measured on the toy (240 cells, 43 columns, `random = "intercept"`,
+`re.celltype = TRUE`): the `SampleInt` block consumes 2.26 effective df of 6
+nominal (38%) and `SampleCellTypeInt` 5.74 of 18 (32%), against a `disp_df` of
+221. The honest residual df is therefore ~213, so the dispersion is ~3.7% too
+small and `t` ~1.8% too large -- on a fixture with 13 cells per nested group.
+Scaled to the real cohort (77,454 cells, 660 nested columns at ~32% effective),
+the gap is ~210 df against a `disp_df` of 77,164: **0.3%**.
+
+Two reasons not to "fix" it. The effect is third-order at real cohort sizes,
+and the validated configuration -- the centred converged null that measured
+`sd(null t)` at 0.96-0.99 -- used exactly this convention, so changing it would
+invalidate the number the fix is justified by. Revisit only if a future design
+puts a large penalised block on few cells.
+
 ## 4. Tests (written before the code)
 
 `tests/testthat/test-design.R`

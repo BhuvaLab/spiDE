@@ -1,3 +1,44 @@
+# spiDE 0.99.17
+
+## New Features
+
+* `re.celltype` (default `TRUE`) adds a nested (sample x cell type) random
+  intercept to the niche design alongside the per-sample one, so that every
+  tested niche slope is a within-(sample, cell type) slope. Without it the
+  slopes also carry the between-sample composition effect -- a patient-level
+  association between a cell type's mean niche density and its mean expression
+  in that type -- which a shuffle null that permutes within (sample, cell type)
+  preserves exactly. On the YTMA cohort that confound was the cause of the
+  triplet-level FDR failure: with the nested block the shuffle null is
+  calibrated in every expression band (`sd(null t)` 0.96-0.99, no expression
+  gradient, no `|t| > 4.89` exceedances against 95 before) where before it ran
+  to 1.42 for the brightest genes. `re.celltype = FALSE` reproduces
+  pre-correction fits. `random = "slope"` is not a substitute: per-sample
+  slopes on the `CellType:niche` bases leave the group means untouched.
+
+* `converge` (default `TRUE`) converges each gene to its own penalised
+  negative-binomial optimum after `SpaNorm::fitNB` returns, and re-estimates
+  its dispersion by profile maximum likelihood at the converged mean.
+  `fitNB`'s multi-gene IRLS shares one cell weight vector across genes and
+  stops on the aggregate log-likelihood, which leaves bright,
+  cell-type-restricted genes one to four standard errors short of their own
+  optimum with a dispersion about 1.6 times too large. The stage is per-gene,
+  so it is blocked and parallelised over `block.size` / `BPPARAM` as inference
+  is, with the nested indicator block absorbed by a Schur complement so the
+  per-iteration cost does not grow with the number of groups. New
+  `SpiDEFit@polish` records the per-gene diagnostics. Note this replaces
+  edgeR's cross-gene moderated dispersion with a per-gene one, and that it
+  *raises* the null variance of bright genes -- their previous standard errors
+  were inflated by a dispersion estimated off the optimum.
+
+## Changes
+
+* `nicheDesign()` gains `re.celltype`, defaulting to `FALSE` -- the same
+  deliberate asymmetry as `random`, since a design returned with
+  penalty-identified columns is rank-deficient.
+* `.toySPE()` gains `composition`, which plants a between-sample composition
+  confound with zero within-sample niche slope.
+
 # spiDE 0.99.14
 
 ## New Features

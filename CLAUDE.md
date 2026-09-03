@@ -407,10 +407,27 @@ the null `t` 1.83 → 0.99 = HC0, in every index type) and collapses CDV3's real
 0.82 RMS. **Validated on all twelve raw grids**: the centred, converged null is flat at 0.96–0.99 in every
 expression band under `free` shuffles (gradient 1.000, per-gene spread 0.92–1.05, zero `|t| > 4.89`
 exceedances against 95 for production); `block` shuffles keep 1.10–1.19 in the ~100 brightest genes,
-the spatially-smooth-covariate component, so calibrate against `block` on the fixed design. **The fix is in `R/design.R`**: a ridge-penalised (sample × cell type) intercept block next
-to the per-sample block in `.buildRandomEffects()` (spec:
-`design/specs/2026-09-03-sample-celltype-intercept.md`); `random = "slope"` does not do it. Two
-corollaries: the shuffle null is a complete null only for within-group slopes, so under the shipped
+the spatially-smooth-covariate component, so calibrate against `block` on the fixed design.
+
+**Fixed in 0.99.17.** `fitSpiDE(re.celltype = TRUE)` (the default) adds the ridge-penalised
+(sample × cell type) intercept block in `.buildRandomEffects()`, tagged `Random` with
+`re_group = "SampleCellTypeInt"` and carrying its own `tau2` (the Schall loop and
+`.satterthwaiteDF()` pick it up unchanged; the nested df is checked against `lmerTest` in
+`tests/testthat/test-satterthwaite.R`). `fitSpiDE(converge = TRUE)` (also the default) then
+converges each gene per `R/polish.R` — damped Newton on the gene's own penalised NB
+log-likelihood from a sane start, profile-ML `psi` at the converged mean — recording
+diagnostics in `SpiDEFit@polish`. `random = "slope"` does **not** substitute for the nested
+block. Specs: `design/specs/2026-09-03-sample-celltype-intercept.md` (the defect and its
+validation) and `design/specs/2026-09-04-nested-intercept-and-convergence-design.md` (the
+implementation), plan in `design/plans/`.
+
+Three things to know about the implementation. The polish stage replaces edgeR's cross-gene
+moderated dispersion with a per-gene profile-ML one, deliberately. The nested indicator block
+is absorbed by a Schur complement inside `.newtonSolver()`, so the per-gene Newton cost is one
+dense-column gram regardless of how many groups exist — but `.blockedInference()` still forms
+a **dense** per-gene gram over the full design, so with ~660 extra columns real-cohort
+inference is ~8× slower; absorbing it there is deferred to its own spec. And two corollaries
+of the finding itself: the shuffle null is a complete null only for within-group slopes, so under the shipped
 design it carried the same confound as the real data (why real and null were indistinguishable); and
 the between-sample association is real and should be tested at the patient level, not reported as
 niche-dependent DE. The two-stage estimator is within-sample by construction, which is why its Tumor

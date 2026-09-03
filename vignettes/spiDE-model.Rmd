@@ -939,6 +939,94 @@ res <- spiDE(spe, condition = "condition", sigma = c(10, 30, 50),
 -   **Correct, not merely "fixed with extras".** The mixed fit does more than add a between-patient variance component: it also replaces `random = "none"`'s NB dispersion scaling and sub-design covariance with the correct **working (quasi-NB) dispersion** and **full penalised covariance**. So even when $\tau^2 \to 0$ (no genuine clustering) the mixed fit does *not* reproduce the `"none"` fit — it gives the correctly-scaled, and hence more conservative, standard errors. This is deliberate: `"none"` is known to be anti-conservative, so its larger apparent "power" is partly spurious. It is for this reason that `"intercept"` is now the default.
 -   **Power needs samples and effect size.** Because the test is now honest, a real response-niche effect must be visible *between patients* to be declared. With few patients, or an effect seen in only a handful of responders, the between-patient df and the inflated SEs will (correctly) leave it non-significant. `df.method = "satterthwaite"` recovers legitimate power for niche coefficients that carry within-patient information — giving them their larger effective df instead of the flat $S-2$ — without touching the honest between-patient df of the main effect; larger sample sizes restore power further.
 
+## Why the niche slope must be a within-(sample, cell type) slope
+
+Under cell-means coding the tested `CellType:condition:niche` coefficient is
+estimated from the covariance of niche density and expression among the cells of
+one index type. That covariance has two parts. *Within* a sample, cells of the
+index type differ in how dense their surroundings are, and that is the effect
+spiDE exists to measure. *Between* samples, whole samples differ in how dense
+the surroundings of their index cells are on average, and they also differ in
+mean expression of the gene in that cell type. The second part is a
+patient-level association with $S$ units. It is not neighbourhood-dependent
+differential expression, and with a single random intercept per sample — shared
+across cell types — nothing in the design absorbs it.
+
+A permutation null does not detect it. Permuting niche rows within (sample, cell
+type) preserves every group's mean niche density, so it preserves the
+association exactly. Measured on the real YTMA cohort with a gene's converged
+fit held completely fixed, the permutation distribution of each tested $t$ had
+the expected spread (the HC0 value, 0.8–1.0) but a per-column **mean** running
+to $\pm 3$ that equalled the real-data $t$ column by column, $r = 0.61$ over
+eight genes and 132 columns. The null and the data were indistinguishable
+because both carried the same confound.
+
+`re.celltype = TRUE` (the default) adds a ridge-penalised intercept per
+non-empty (sample, cell type):
+
+$$
+\log \mu_{gi} \;=\; \dots \;+\; b_{s(i)} \;+\; c_{s(i),k(i)},
+\qquad
+b_s \sim N(0, \tau^2_{\text{sample}}), \quad
+c_{sk} \sim N(0, \tau^2_{\text{sample}\times\text{type}}).
+$$
+
+By Frisch–Waugh this makes every niche slope a within-group slope, and the
+between-sample part is absorbed into the new intercepts, where it belongs. The
+block carries its own variance component, so the Satterthwaite degrees of
+freedom account for it (checked against `lmerTest` on a nested Gaussian model).
+`random = "slope"` does *not* do this: per-sample slopes on the
+`CellType:niche` bases leave the group means untouched.
+
+On the twelve raw shuffle grids of the real cohort, adding the block takes the
+per-gene $\mathrm{sd}(\text{null } t)$ of the brightest genes from 1.42 to 0.96,
+removes the expression gradient entirely (1.000 against 1.198), and removes
+every $|t| > 4.89$ exceedance where the uncorrected design produced 95.
+
+If the between-sample association is itself of interest — "do patients whose
+tumour compartment is B-cell-rich express this gene differently *in* tumour
+cells?" — test it at the patient level, on $S$ units, with patient-level
+covariates. It is a different question, and a legitimate one.
+
+## Convergence of the per-gene fit
+
+`SpaNorm::fitNB` fits every gene in a single IRLS loop. To make a
+whole-transcriptome fit affordable it shares one gene-averaged cell weight
+vector across genes, decides step-halving and convergence on the *aggregate*
+log-likelihood, and clamps coefficient columns across genes. For most genes that
+is indistinguishable from the per-gene optimum. For a bright,
+cell-type-restricted gene, whose own working weights look nothing like the
+average, the aggregate criterion is met long before that gene's own score
+reaches zero: measured on the real cohort, every gene in the top 5% by
+expression sat one to four standard errors from its own optimum, with
+log-likelihood gaps of $10^4$–$10^6$, and the dispersion estimated at that point
+was about 1.6 times too large.
+
+`converge = TRUE` (the default) fixes this after the fact. For each gene it
+maximises that gene's own penalised negative-binomial log-likelihood
+
+$$
+\ell_g(\alpha) \;=\; \sum_i \log \mathrm{NB}\!\left(y_{gi};\, \mu_{gi} = e^{w_i'\alpha},\, \psi_g\right) \;-\; \tfrac{1}{2}\sum_j \lambda_j \alpha_j^2
+$$
+
+by damped Newton, then re-estimates $\psi_g$ by profile maximum likelihood at
+the converged mean, then re-polishes. A gene whose starting fit is degenerate —
+a fitted mean below $e^{-10}$ somewhere — restarts from the per-cell-type log
+means, because Newton *from* a degenerate point diverges (fitted log-means
+reaching $+57$ to $+358$ in the measurements). Because a polished gene depends
+only on its own counts, the stage is blocked over genes and parallelised
+(`block.size`, `BPPARAM`), exactly as inference is. The nested indicator block
+is absorbed by a Schur complement, so the per-iteration cost is one
+dense-column gram regardless of how many (sample, cell type) groups exist.
+
+Two things to know. This replaces edgeR's cross-gene moderated dispersion with a
+per-gene one; with tens of thousands of cells per gene that is well determined,
+but it is a deliberate departure from `fitNB`'s moderation. And converging the
+fit *raises* the null variance of bright genes rather than lowering it — their
+previous, unconverged standard errors were inflated by a dispersion estimated
+off the optimum, which was hiding the inflation behind deflation. The higher
+number is the honest one.
+
 # The two-stage estimator: patient-level inference by construction
 
 Everything above *corrects* a cell-level fit: the design still has one row per
