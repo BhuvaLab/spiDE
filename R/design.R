@@ -67,10 +67,16 @@
 #'   columns (the non-response bases of the ResponseNiche terms); the random
 #'   slopes are built from these when \code{random == "slope"}.
 #' @param random one of "intercept" or "slope".
+#' @param cell_type_vec \code{NULL}, or a factor/character of cell-type labels
+#'   (length = ncells). When supplied, a nested (sample x cell type) intercept
+#'   block is appended: one 0/1 indicator per non-empty combination, which makes
+#'   every tested niche slope a within-(sample, cell type) slope.
 #' @return a list with \code{Z} (the random-effect design block) and
-#'   \code{re_group} (a character label per column: "SampleInt" / "SampleSlope").
+#'   \code{re_group} (a character label per column: "SampleInt" /
+#'   "SampleSlope" / "SampleCellTypeInt").
 #' @noRd
-.buildRandomEffects <- function(sample_vec, slope_base, random) {
+.buildRandomEffects <- function(sample_vec, slope_base, random,
+                                cell_type_vec = NULL) {
   smp <- factor(sample_vec)
   Zint <- stats::model.matrix(~ 0 + smp)
   colnames(Zint) <- paste0("Sample", levels(smp))
@@ -85,6 +91,24 @@
     }))
     Z <- cbind(Zint, Zslope)
     re_group <- c(re_group, rep("SampleSlope", ncol(Zslope)))
+  }
+
+  # Nested (sample x cell type) intercepts. The tested niche slopes are
+  # estimated from the TOTAL covariance of niche density and expression among
+  # the cells of an index type -- within-sample and between-sample -- and the
+  # between-sample part is a composition effect (samples whose type-k cells sit
+  # in denser type-n surroundings also differ in mean expression in type k).
+  # That is a patient-level association, not neighbourhood-dependent DE, and a
+  # shuffle that permutes within (sample, cell type) preserves it exactly.
+  # These indicators absorb it, making every niche slope a within-group slope
+  # (Frisch-Waugh). Empty combinations are dropped, so the columns partition
+  # the cells exactly.
+  if (!is.null(cell_type_vec)) {
+    grp <- interaction(smp, factor(cell_type_vec), drop = TRUE, sep = ".")
+    Zct <- stats::model.matrix(~ 0 + grp)
+    colnames(Zct) <- paste0("SampleCellType", levels(grp))
+    Z <- cbind(Z, Zct)
+    re_group <- c(re_group, rep("SampleCellTypeInt", ncol(Zct)))
   }
   list(Z = Z, re_group = re_group)
 }
@@ -227,7 +251,8 @@
                               niche = NULL,
                               covariates = character(), cell_type = "cell_type",
                               name = "Niche", sample_id = "sample_id",
-                              random = c("none", "intercept", "slope")) {
+                              random = c("none", "intercept", "slope"),
+                              re.celltype = FALSE) {
   random <- match.arg(random)
   has_cond <- !is.null(condition)
   cd <- SummarizedExperiment::colData(spe)
@@ -337,7 +362,8 @@
       stop(sprintf("sample id column '%s' not found in colData(spe)", sample_id))
     }
     slope_base <- W[, coefmap$type == "Niche", drop = FALSE]
-    re <- .buildRandomEffects(cd[[sample_id]], slope_base, random)
+    re <- .buildRandomEffects(cd[[sample_id]], slope_base, random,
+                              cell_type_vec = if (re.celltype) cd[[cell_type]] else NULL)
     W <- cbind(W, re$Z)
     coefmap <- rbind(coefmap, data.frame(
       covariate = colnames(re$Z), type = "Random",
@@ -405,6 +431,16 @@
 #'   back a design matrix to inspect.
 #' @param ... ignored.
 #'
+#' @param re.celltype logical; add a nested (sample x cell type) random
+#'   intercept alongside the per-sample one, so that every tested niche slope is
+#'   a within-(sample, cell type) slope. Without it the slopes also carry the
+#'   between-sample composition effect (a patient-level association between a
+#'   cell type's mean niche density and its mean expression in that type), which
+#'   is not neighbourhood-dependent differential expression. Ignored when
+#'   \code{random = "none"}. Defaults to \code{FALSE} here and \code{TRUE} in
+#'   [fitSpiDE()], for the same reason \code{random} does: a design returned
+#'   with penalty-identified columns is rank-deficient, which is correct for
+#'   fitting and surprising from a constructor.
 #' @return a list with `W` (the design matrix), `covtype` (a factor of column
 #'   types), `coefmap` (a data.frame mapping columns to index/niche cells), and
 #'   `mode` ("condition" or "niche").
@@ -425,14 +461,16 @@ nicheDesign <- function(spe, condition = NULL, sigma, index = NULL,
                         niche = NULL,
                         covariates = character(), cell_type = "cell_type",
                         name = "Niche", sample_id = "sample_id",
-                        random = c("none", "intercept", "slope"), ...) {
+                        random = c("none", "intercept", "slope"),
+                        re.celltype = FALSE, ...) {
   random <- match.arg(random)
   checkSPE(spe, cell_type = cell_type)
   if (!is.null(condition)) checkCondition(spe, condition)
   checkCovariates(spe, covariates)
   checkNiche(spe, sigma, name = name)
   res <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
-                           cell_type, name, sample_id, random)
+                           cell_type, name, sample_id, random,
+                           re.celltype = re.celltype)
   keep <- c("W", "covtype", "coefmap", "mode",
             if (random != "none") "re_group")
   res[keep]

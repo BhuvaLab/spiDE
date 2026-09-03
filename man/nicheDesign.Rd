@@ -15,6 +15,7 @@ nicheDesign(
   name = "Niche",
   sample_id = "sample_id",
   random = c("none", "intercept", "slope"),
+  re.celltype = FALSE,
   ...
 )
 }
@@ -52,6 +53,17 @@ the cell-type block and are identified only by the penalty applied at fit
 time, so a design returned with them included is rank-deficient. That is
 correct for fitting and surprising for a constructor whose job is to hand
 back a design matrix to inspect.}
+
+\item{re.celltype}{logical; add a nested (sample x cell type) random
+intercept alongside the per-sample one, so that every tested niche slope is
+a within-(sample, cell type) slope. Without it the slopes also carry the
+between-sample composition effect (a patient-level association between a
+cell type's mean niche density and its mean expression in that type), which
+is not neighbourhood-dependent differential expression. Ignored when
+\code{random = "none"}. Defaults to \code{FALSE} here and \code{TRUE} in
+\code{\link[=fitSpiDE]{fitSpiDE()}}, for the same reason \code{random} does: a design returned
+with penalty-identified columns is rank-deficient, which is correct for
+fitting and surprising from a constructor.}
 
 \item{...}{ignored.}
 }

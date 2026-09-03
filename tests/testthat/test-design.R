@@ -105,3 +105,55 @@ test_that(".isSelfNiche drops an index tested against its own merged niche group
   expect_true(spiDE:::.isSelfNiche("DC", "DC", group_map = NULL))
   expect_false(spiDE:::.isSelfNiche("Tumor", "DC", group_map = NULL))
 })
+
+test_that("re.celltype adds one nested intercept per non-empty (sample, cell type)", {
+  spe <- buildNiches(.toySPE(), sigma = 20)
+  des <- spiDE:::.buildNicheDesign(spe, "condition", 20, random = "intercept",
+                                   re.celltype = TRUE)
+  cd <- SummarizedExperiment::colData(spe)
+  n_grp <- length(unique(paste(cd$sample_id, cd$cell_type)))
+
+  nested <- which(des$re_group == "SampleCellTypeInt")
+  expect_length(nested, n_grp)
+  expect_true(all(grepl("^SampleCellType", colnames(des$W)[nested])))
+  # tagged Random, so no tested-column logic can see them
+  expect_true(all(as.character(des$covtype)[nested] == "Random"))
+  expect_true(all(is.na(des$coefmap$index[nested])))
+  expect_true(all(is.na(des$coefmap$niche[nested])))
+  # 0/1 indicators partitioning the cells
+  expect_true(all(des$W[, nested] %in% c(0, 1)))
+  expect_true(all(rowSums(des$W[, nested, drop = FALSE]) == 1))
+  # the per-sample block is KEPT and comes first
+  expect_true(any(des$re_group == "SampleInt", na.rm = TRUE))
+  expect_lt(max(which(des$re_group == "SampleInt")), min(nested))
+})
+
+test_that("re.celltype = FALSE reproduces the design exactly", {
+  spe <- buildNiches(.toySPE(), sigma = 20)
+  a <- spiDE:::.buildNicheDesign(spe, "condition", 20, random = "intercept",
+                                 re.celltype = FALSE)
+  b <- spiDE:::.buildNicheDesign(spe, "condition", 20, random = "intercept")
+  expect_identical(a$W, b$W)
+  expect_identical(a$re_group, b$re_group)
+  expect_false(any(a$re_group == "SampleCellTypeInt", na.rm = TRUE))
+})
+
+test_that("the nested block follows the slope block under random = 'slope'", {
+  spe <- buildNiches(.toySPE(), sigma = 20)
+  des <- spiDE:::.buildNicheDesign(spe, "condition", 20, random = "slope",
+                                   re.celltype = TRUE)
+  expect_lt(max(which(des$re_group == "SampleSlope")),
+            min(which(des$re_group == "SampleCellTypeInt")))
+  expect_setequal(unique(des$re_group[!is.na(des$re_group)]),
+                  c("SampleInt", "SampleSlope", "SampleCellTypeInt"))
+})
+
+test_that("nicheDesign forwards re.celltype and defaults it off", {
+  spe <- buildNiches(.toySPE(), sigma = 20)
+  d0 <- nicheDesign(spe, condition = "condition", sigma = 20,
+                    random = "intercept")
+  d1 <- nicheDesign(spe, condition = "condition", sigma = 20,
+                    random = "intercept", re.celltype = TRUE)
+  expect_false(any(d0$re_group == "SampleCellTypeInt", na.rm = TRUE))
+  expect_true(any(d1$re_group == "SampleCellTypeInt", na.rm = TRUE))
+})
