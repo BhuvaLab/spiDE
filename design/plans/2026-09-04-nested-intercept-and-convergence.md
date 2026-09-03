@@ -1575,6 +1575,53 @@ Run the existing benchmark harness with the new defaults as an extra arm, follow
 
 ---
 
+## Execution record (2026-09-04)
+
+All tasks executed inline. Full suite: **0 failures, 0 warnings**, 7 skips
+(GPU, torch unavailable on this node, pre-existing).
+
+Six defects surfaced that the plan did not anticipate. Five were in the new
+code and one was latent in the package:
+
+1. `.newtonSolver()` recovered the nested group index with `as.integer()` on a
+   matrix product, which truncates a floating-point 6.9999999 to group 6 -- the
+   WRONG group, silently. Now rounds, and verifies the block really partitions
+   the cells before absorbing it.
+2. `.polishFit()` read one gene at a time from `Y`, costing a round trip per
+   gene on a sparse or DelayedArray backend. Now densifies a block at a time,
+   as `.blockedInference()` does.
+3. `.polishFit()` ran as a single block regardless of `BPPARAM`, so a caller
+   requesting workers got no parallelism. Caught by the real-cohort log
+   reporting "1 block" against four requested workers.
+4. The stage logged nothing for the ~80 minutes it ran on the cohort.
+5. `updateObject()` could not fill a slot whose prototype is `NULL`, because
+   `attr(x, "s") <- NULL` REMOVES an attribute rather than setting it. Every
+   fit serialised before the `polish` slot existed broke on `show()` and could
+   not be repaired by the documented repair path. Latent since `re_group`,
+   `tau2`, `penalty` and `df` were added; the new slot is the first one added
+   AFTER objects were serialised, so it surfaced now.
+6. Two unit tests had encoded artefacts of the unconverged fit -- see below.
+
+**The tests that failed did so because the new fit is BETTER.**
+`test-fitSpiDE` asserted `which.max` over a raw coefficient at the planted
+column, which a near-empty gene (mean count 0.26) wins on an estimate its own
+standard error swamps. `test-nicheOnly` required a SPURIOUS niche association
+to survive FDR, because under the unconverged fit it outranked the true one
+(|t| 7.82 against 5.63). Converging takes the planted effect from t = 1.68
+(FDR 0.09, not called) to **10.19** (FDR 2e-15) in condition mode, and removes
+the spurious competitor while taking the true signal to **14.27** in niche
+mode. Both tests now assert the statistic. Sharpening real signal was not a
+goal of this work.
+
+Task 8 (regenerate fixtures) was deliberately NOT done -- see its note above.
+
+Task 10 ran as jobs 27965091 (seed 1, three grids) and 27965201 (replication).
+The free null validates the fix exactly; the block null produced a
+**provisional** signal on real data that is recorded as provisional in
+`research/fdr-ordering/FINDINGS.md` and must not be quoted until the
+replication is scored with `R/score_pkgfixed.R`, which refuses a verdict on
+fewer than three block grids.
+
 ## Self-Review
 
 **Spec coverage.** §1 nested intercept → Tasks 1, 2. §1 API and `checkSample` doc → Tasks 2, 9. §2 convergence stage, Schur absorption, ψ, dispatch → Tasks 3, 4. §2 `SpiDEFit` slot → Task 4. §3 toy fixture → Task 5. §4 tests: design → Task 1; τ² names → Task 2; polish → Tasks 3, 4; e2e composition → Tasks 5, 6; Satterthwaite → Task 7; fixtures → Task 8. §5 documentation → Task 9. §6 order of work → Tasks 1-9 in order, with the research runs as Task 10.
