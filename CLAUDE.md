@@ -410,11 +410,20 @@ exceedances against 95 for production); `block` shuffles keep 1.10–1.19 in the
 the spatially-smooth-covariate component, so calibrate against `block` on the fixed design.
 **Confirmed on the packaged fix** (job 27965091, 0.99.17): `free` is flat at 0.96-0.98 in every band
 with 0 exceedances of 101,508, `block` keeps 0.988 -> 1.206 with 10, so the nested intercept does not
-remove the spatial component. **PROVISIONAL and not yet a finding**: on that run the real data
-exceeds its `block` null in every band (97 exceedances, B cell 1.416 vs 1.095, Tumor 1.244 vs 1.169),
-which would reverse the "no detectable niche-dependent DE" conclusion — but it rests on ONE block
-grid against known block-to-block scatter, on a panel enriched for the pathological tail. Replication
-is job 27965201 (block seeds 2-6, free 2-3). Do not quote a discovery count until it lands.
+remove the spatial component. **REPLICATED (5 block grids, jobs 27965091/27965201): the real cohort
+now exceeds its null, reversing the "no detectable niche-dependent DE" conclusion.** Real gives 97
+exceedances of `|t| > 4.89` against a null range of 5-11; the 100 random control genes sit INSIDE the
+null range while every expressed band sits outside it, so it is not a residual scale artefact.
+Per-**gene** calibrated (the granularity this investigation established — per-index pools over genes
+and under-calibrates the bright ones), **84 calls at empirical FDP <= 0.05**, concentrated in B cell
+(112 of 146 at FDP 0.10) and Tumor. The fix is *why*: the old confound was present in the real data
+and in every shuffle, so both inflated equally and matched; removing it from both leaves a
+difference. Segmentation spillover — confounded with the niche covariate BY CONSTRUCTION, since both
+scale with neighbour density — was tested and is not supported (called-UP genes are *depleted* in the
+neighbouring type, median log2 −0.84, where spillover predicts enrichment). Before any publication:
+rerun on the full transcriptome (this panel is enriched for the pathological tail), validate the
+biology independently, and check imaging artefacts beyond simple spillover. Scripts:
+`research/fdr-ordering/R/score_pkgfixed.R`, `R/score_real_calibrated.R`.
 
 **Fixed in 0.99.17.** `fitSpiDE(re.celltype = TRUE)` (the default) adds the ridge-penalised
 (sample × cell type) intercept block in `.buildRandomEffects()`, tagged `Random` with
