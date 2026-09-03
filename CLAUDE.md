@@ -408,6 +408,13 @@ the null `t` 1.83 → 0.99 = HC0, in every index type) and collapses CDV3's real
 expression band under `free` shuffles (gradient 1.000, per-gene spread 0.92–1.05, zero `|t| > 4.89`
 exceedances against 95 for production); `block` shuffles keep 1.10–1.19 in the ~100 brightest genes,
 the spatially-smooth-covariate component, so calibrate against `block` on the fixed design.
+**Confirmed on the packaged fix** (job 27965091, 0.99.17): `free` is flat at 0.96-0.98 in every band
+with 0 exceedances of 101,508, `block` keeps 0.988 -> 1.206 with 10, so the nested intercept does not
+remove the spatial component. **PROVISIONAL and not yet a finding**: on that run the real data
+exceeds its `block` null in every band (97 exceedances, B cell 1.416 vs 1.095, Tumor 1.244 vs 1.169),
+which would reverse the "no detectable niche-dependent DE" conclusion — but it rests on ONE block
+grid against known block-to-block scatter, on a panel enriched for the pathological tail. Replication
+is job 27965201 (block seeds 2-6, free 2-3). Do not quote a discovery count until it lands.
 
 **Fixed in 0.99.17.** `fitSpiDE(re.celltype = TRUE)` (the default) adds the ridge-penalised
 (sample × cell type) intercept block in `.buildRandomEffects()`, tagged `Random` with
