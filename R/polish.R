@@ -295,17 +295,30 @@
     message(sprintf("  converging %d genes per gene (%d block%s)", ng,
                     length(blocks), if (length(blocks) == 1L) "" else "s"))
   }
-  res <- BiocParallel::bplapply(blocks, function(gi) {
+  # A whole-transcriptome polish is hours of work, so report progress rather
+  # than going silent after the opening message. Blocks are timed as they
+  # finish; under a parallel BPPARAM they complete out of order, so the count
+  # is of blocks retired, not a position in the gene list.
+  t0 <- Sys.time()
+  nb <- length(blocks)
+  step <- max(1L, nb %/% 20L)
+  res <- BiocParallel::bplapply(seq_along(blocks), function(b) {
+    gi <- blocks[[b]]
     # densify the whole block once: Y may be sparse or a DelayedArray, where a
     # per-gene read costs a round trip each time (the invariant is that the
     # WHOLE matrix is never densified, not that a block is never densified --
     # .blockedInference() does exactly the same).
     Yb <- as.matrix(Y[gi, , drop = FALSE])
-    lapply(seq_along(gi), function(i) {
+    out <- lapply(seq_along(gi), function(i) {
       g <- gi[[i]]
       .polishGene(as.numeric(Yb[i, ]), W, alpha[g, ], psi[[g]], pen, solver,
                   maxit = maxit, tol = tol)
     })
+    if (verbose && (b %% step == 0L || b == nb)) {
+      message(sprintf("    block %d/%d (%.1f min elapsed)", b, nb,
+                      as.numeric(difftime(Sys.time(), t0, units = "mins"))))
+    }
+    out
   }, BPPARAM = BPPARAM)
   res <- unlist(res, recursive = FALSE)
 
