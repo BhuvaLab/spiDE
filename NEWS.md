@@ -31,6 +31,15 @@
   *raises* the null variance of bright genes -- their previous standard errors
   were inflated by a dispersion estimated off the optimum.
 
+  It also **sharpens real signal substantially**, which was not the reason for
+  building it. On the toy fixture's planted niche effect the test statistic
+  goes from 1.68 (FDR 0.09, not called) to 10.19 (FDR 2e-15) in condition mode,
+  because the unconverged fit put the planted gene's dispersion at 3.09 where
+  its own optimum is 0.28 and the inflated standard error buried the effect. In
+  niche mode a SPURIOUS competing association that outranked the true one
+  (|t| 7.82 against 5.63) disappears, and the true one goes to 14.27. Two unit
+  tests had encoded those artefacts and were updated.
+
 ## Changes
 
 * `nicheDesign()` gains `re.celltype`, defaulting to `FALSE` -- the same

@@ -421,6 +421,14 @@ block. Specs: `design/specs/2026-09-03-sample-celltype-intercept.md` (the defect
 validation) and `design/specs/2026-09-04-nested-intercept-and-convergence-design.md` (the
 implementation), plan in `design/plans/`.
 
+Converging also **sharpens real signal**, which was not why it was built: on the toy fixture the
+planted effect's `t` goes 1.68 -> 10.19 in condition mode (the unconverged fit put G1's `psi` at 3.09
+against its own optimum of 0.28, and the inflated SE buried it), and in niche mode a spurious
+competing niche that *outranked* the true one (|t| 7.82 vs 5.63) disappears while the true one
+reaches 14.27. Two unit tests had encoded those artefacts -- one asserting the argmax of a raw
+coefficient, which a near-empty gene can win, the other asserting that the spurious call survives
+FDR -- and now assert the statistic instead.
+
 Three things to know about the implementation. The polish stage replaces edgeR's cross-gene
 moderated dispersion with a per-gene profile-ML one, deliberately. The nested indicator block
 is absorbed by a Schur complement inside `.newtonSolver()`, so the per-gene Newton cost is one

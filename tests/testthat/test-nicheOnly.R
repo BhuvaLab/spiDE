@@ -144,16 +144,16 @@ test_that("the planted condition-free niche effect is recovered and specific", {
   expect_equal(ab$DirectionNiche, "Up")
   expect_gt(abs(ab$t), 5)
 
-  # Specificity is NOT asserted by argmax here. Index A has exactly two
-  # competing niches (B and C), so "B is strongest" reduces to |t_B| > |t_C|,
-  # which is close to a coin flip at this effect size: measured over 10 seeds,
-  # B wins 7/10 with median |t| 6.85 against C's 4.96. The signal is real but
-  # the argmax is not a reliable single-seed test, and whether it passes
-  # depends on which realisation the shipped fixture happens to be. The
-  # direction and magnitude assertions above test recovery directly and do not
-  # have that failure mode.
+  # Specificity IS asserted by argmax now, and it is no longer a coin flip.
+  # This used to require that BOTH B and C appear for G1 in A -- i.e. that the
+  # SPURIOUS C association survives FDR -- because with the unconverged fit C
+  # actually outranked the true niche (|t| 7.82 against B's 5.63), so the
+  # argmax was unreliable. Converging each gene removes C from the table
+  # entirely and takes B from 5.63 to 14.27. The stronger statement is now the
+  # true one: B is the only niche called for G1 in A, and it is the strongest.
   g1a <- tab_niche[tab_niche$gene == "G1" & tab_niche$ct_index == "A", ]
-  expect_true(all(c("B", "C") %in% g1a$ct_niche))
+  expect_true("B" %in% g1a$ct_niche)
+  expect_equal(g1a$ct_niche[which.max(abs(g1a$t))], "B")
 })
 
 test_that("condition-free results carry no celltype or patient layer", {
