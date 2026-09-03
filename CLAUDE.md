@@ -393,6 +393,26 @@ scale, μ-tercile Pearson ratio and the cell-level HC0 sandwich all predict 0.92
 per-gene inference should first converge the fit; the honest null variance of bright genes is then
 *higher*, not lower. See `research/fdr-ordering/FINDINGS.md` (2026-09-03 entry) and `REPORT.md` §5c.
 
+**The cause (2026-09-03, `REPORT.md` §5d): the design has no (sample × cell type) intercept.**
+Holding a gene's converged fit fixed and permuting the niche rows within (sample, cell type) gives a
+`t` whose spread is the HC0 prediction but whose per-column **mean** runs to ±3 and equals the
+real-data `t` column by column (r = 0.66). The free shuffle preserves each group's mean niche density,
+and with only a shared per-sample intercept a between-sample association between a cell type's mean
+niche density and its mean expression in that type loads onto the `CellType:niche` and
+`CellType:condition:niche` slopes — a patient-level composition effect (S = 55) reported with a
+cell-level SE. The excess is a *bias of the estimand*, not a variance, which is why every
+variance-side candidate failed; it scales with cells per index type and is confined to bright genes.
+Centring the niche-dependent columns within (sample, cell type) removes it (bias 1.5 → 0.09, RMS of
+the null `t` 1.83 → 0.99 = HC0, in every index type) and collapses CDV3's real Tumor `t` from 1.69 to
+0.82 RMS. **The fix is in `R/design.R`**: a ridge-penalised (sample × cell type) intercept block next
+to the per-sample block in `.buildRandomEffects()` (spec:
+`design/specs/2026-09-03-sample-celltype-intercept.md`); `random = "slope"` does not do it. Two
+corollaries: the shuffle null is a complete null only for within-group slopes, so under the shipped
+design it carried the same confound as the real data (why real and null were indistinguishable); and
+the between-sample association is real and should be tested at the patient level, not reported as
+niche-dependent DE. The two-stage estimator is within-sample by construction, which is why its Tumor
+index was calibrated where the GLM's was not.
+
 Two levers were measured on the complete null (flat BH, false calls at alpha .05):
 
 | restriction | tests | BH .01 | BH .05 |
