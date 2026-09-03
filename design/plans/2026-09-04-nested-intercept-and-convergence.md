@@ -1267,6 +1267,19 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ### Task 8: Regenerate the shipped test fixtures under the new defaults
 
+> **DEVIATION (2026-09-04): not done, deliberately.** Regenerating would have
+> destroyed a more valuable asset than it created. `updateObject()` turned out
+> to be unable to fill a slot whose prototype is `NULL` (`attr(x, "s") <- NULL`
+> removes an attribute rather than setting it), so every fit serialised before
+> the `polish` slot existed broke on `show()` and could not be repaired by the
+> documented repair path. The shipped fixtures are the only objects in the
+> repository serialised before that slot existed, which makes them the
+> regression corpus for that bug -- `test-polish.R` asserts the repair against
+> them and skips if they are ever regenerated. The contract tests they support
+> (slot presence, `@df` shape, `covtype` levels) all still pass, because those
+> contracts did not change. Regenerate only alongside a second, deliberately
+> stale fixture kept for the backward-compatibility test.
+
 **Files:**
 - Modify: `data-raw/make_test_fixtures.R`, `inst/extdata/testfits/*.rds`
 - Test: `tests/testthat/test-mixedEffects.R`, `tests/testthat/test-satterthwaite.R`
