@@ -1,6 +1,6 @@
 # A (sample × cell type) random intercept in the niche design
 
-**Status:** proposed, validation running (2026-09-03). Evidence in
+**Status:** proposed; the research equivalent is validated on all twelve raw shuffle grids (2026-09-03). Implementation next. Evidence in
 `research/fdr-ordering/FINDINGS.md` (2026-09-03 entry, §7) and `REPORT.md` §5d.
 
 ## The defect
@@ -71,15 +71,37 @@ patient-level covariates `fitSpiDE()` rejects. It answers "do patients with
 B-cell-rich tumour compartments express X differently?", which is a different
 question from spiDE's, and must not be reported as niche-dependent DE.
 
-## Validation (running)
+## Validation (done for the research equivalent)
 
-1. `convnull_centred.sbatch` (job 27963912): the 12-grid converged null with
-   centred niche columns. Pass criterion: per-gene `sd(null t)` in the top-5%
-   band at ~1.0 with no expression gradient, and `|t| > 4.89` exceedances
-   near the N(0,1) expectation (0.8 per 8 grids × 671 genes × 132 columns).
-2. Real-data discoveries on the centred design against the centred free
-   shuffles, scored with `.claude/skills/calibration-check/`.
-3. Then the package implementation above, with the simulation study
-   (`research/reports/benchmarks/spiDE-simulation.Rmd`) re-run for type-I and
-   power — the simulation has no between-sample composition effect, so power
-   should be unchanged and the fix costs nothing there.
+`convnull_centred.sbatch` (job 27963912): the 12-grid converged null with every
+niche-dependent column centred within (sample, cell type), scored with
+`CONVNULL_SUFFIX=_centred R/score_convnull.R`. Median per-gene `sd(null t)`,
+ML `psi` + Pearson:
+
+| band | production | converged | centred, block | centred, free |
+|---|---|---|---|---|
+| below the top 5% | 0.929 | 1.002 | 0.988 | 0.984 |
+| top 5%, aveLogCPM < 8.2 | 1.078 | 1.086 | 1.019 | 0.984 |
+| 8.2–9 | 0.878 | 1.252 | 1.095 | 0.977 |
+| 9–9.9 | 0.760 | 1.395 | 1.163 | 0.988 |
+| ≥ 9.9 | 0.221 | 1.423 | 1.188 | 0.963 |
+| gradient | 1.149 / 1.198 | 1.230 / 1.132 | 1.037 | 1.000 |
+| `|t| > 4.89` exceedances | 555 / 95 | 1,091 / 133 | 138 | 0 |
+
+Under `free` shuffles: flat, no gradient, no extreme tail, per-gene spread
+0.92–1.05. Under `block`: a residual 1.10–1.19 in the ~100 brightest genes
+(the spatially-smooth-covariate component). Real-data calls beyond
+`|t| > 4.89` on the 769-gene panel: 182 → 87.
+
+## Validation still owed (package)
+
+1. The package implementation above, checked against the centred research
+   fit gene by gene (the two should agree on the tested slopes up to the
+   shrinkage of the new intercepts).
+2. The simulation study (`research/reports/benchmarks/spiDE-simulation.Rmd`)
+   re-run for type-I and power — the simulation has no between-sample
+   composition effect, so power should be unchanged and the fix costs nothing
+   there.
+3. Real-data discoveries on the fixed design against `block` shuffles, scored
+   with `.claude/skills/calibration-check/`; `block` is the conservative null
+   because it keeps the spatial component the centred null still shows.

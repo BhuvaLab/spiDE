@@ -404,7 +404,10 @@ cell-level SE. The excess is a *bias of the estimand*, not a variance, which is 
 variance-side candidate failed; it scales with cells per index type and is confined to bright genes.
 Centring the niche-dependent columns within (sample, cell type) removes it (bias 1.5 → 0.09, RMS of
 the null `t` 1.83 → 0.99 = HC0, in every index type) and collapses CDV3's real Tumor `t` from 1.69 to
-0.82 RMS. **The fix is in `R/design.R`**: a ridge-penalised (sample × cell type) intercept block next
+0.82 RMS. **Validated on all twelve raw grids**: the centred, converged null is flat at 0.96–0.99 in every
+expression band under `free` shuffles (gradient 1.000, per-gene spread 0.92–1.05, zero `|t| > 4.89`
+exceedances against 95 for production); `block` shuffles keep 1.10–1.19 in the ~100 brightest genes,
+the spatially-smooth-covariate component, so calibrate against `block` on the fixed design. **The fix is in `R/design.R`**: a ridge-penalised (sample × cell type) intercept block next
 to the per-sample block in `.buildRandomEffects()` (spec:
 `design/specs/2026-09-03-sample-celltype-intercept.md`); `random = "slope"` does not do it. Two
 corollaries: the shuffle null is a complete null only for within-group slopes, so under the shipped
