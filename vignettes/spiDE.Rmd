@@ -48,10 +48,26 @@ table(toySpiDE$cell_type, toySpiDE$condition)
 # The full workflow in one call
 
 `spiDE()` defaults to `random = "intercept"`, a per-sample random intercept that
-corrects the cell-level pseudo-replication described below. Note what that
-implies for covariates: a per-sample random intercept already absorbs *all*
-between-sample variation, so a sample-level covariate such as `Age` is
-collinear with it and is rejected. Adjust for cell-level covariates only.
+corrects the cell-level pseudo-replication described below, together with two
+further defaults that matter for what the results mean:
+
+- **`re.celltype = TRUE`** adds a nested **(sample × cell type)** random
+  intercept. Without it the tested niche slopes absorb a *between-sample
+  composition effect* — samples whose index cells happen to sit in denser
+  surroundings also differ in mean expression there — and report it with a
+  cell-level standard error. That is a patient-level association, not
+  neighbourhood-dependent expression. A permutation null does not catch it,
+  because permuting within (sample, cell type) preserves each group's mean
+  niche density and therefore preserves the confound.
+- **`converge = TRUE`** converges each gene to its own penalised
+  negative-binomial optimum after the shared multi-gene fit, and re-estimates
+  its dispersion there. It needs **integer counts**.
+
+Both are explained in `vignette("spiDE-model")`, and both can be switched off to
+reproduce earlier results. Note what the random intercept implies for
+covariates: it already absorbs *all* between-sample variation, so a sample-level
+covariate such as `Age` is collinear with it and is rejected. Adjust for
+cell-level covariates only.
 
 ```{r full}
 res <- spiDE(
@@ -190,6 +206,26 @@ res <- spiDE(toySpiDE, condition = "condition", sigma = c(10, 30, 50),
 ```
 
 The model, the ridge = random-effects equivalence, and a worked calibration example are described in the companion vignette *The spiDE model, mixed-effects inference, and two-stage estimation*. Note that a per-sample random intercept absorbs all between-sample effects, so sample-level covariates (e.g. `Age`) must be dropped when random effects are used.
+
+## Reading the fit's diagnostics
+
+A mixed, converged fit carries its own diagnostics. `@tau2` is a *named* vector
+of variance components — `SampleInt` and, under the default `re.celltype = TRUE`,
+the nested `SampleCellTypeInt` — so index it by name rather than by position.
+`@polish` is a per-gene table, keyed by gene, recording how the convergence
+stage behaved:
+
+```{r diagnostics, eval = FALSE}
+f <- fits(res)[[1]]
+f@tau2                                    # named variance components
+colSums(f@polish[, c("restarted", "capped", "singular", "psi_bound")])
+```
+
+`polished = FALSE` marks a gene the stage could not converge, which keeps the
+multi-gene fit's estimate rather than substituting a worse one; `psi_bound` marks
+a gene carrying no information about overdispersion, which keeps the moderated
+dispersion. Both are expected in small numbers; a large count is worth
+investigating before trusting that bandwidth.
 
 An alternative, structurally different route to the same question is `twoStageSpiDE()`, which estimates each patient's niche slope first and then contrasts the patient slopes with a moderated *t*-test — removing the pseudo-replication by construction rather than by correction. It removes the pseudo-replication by construction rather than by correction, at a substantial cost in power (roughly 0.45 vs 0.66 raw power at 30 samples for its best stage-1 arm, `"ols"`), and its calibration degrades in thin (patient, index) subsets where the mixed-effects model's joint fit borrows strength — so it is intended for pre-specified (restricted) hypotheses over well-populated index types, not as a default. The model vignette documents it in full, and the *Two-stage estimation* benchmark report on the spiDE-research site (https://bhuvalab.github.io/spiDE-research/) reports its operating characteristics, including a niche-shuffle null on the real cohort that bounds what either estimator detects there.
 

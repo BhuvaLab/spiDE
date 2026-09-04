@@ -913,12 +913,16 @@ fixed-effects fit:
 
 | slot | what it holds | how to read it |
 |---|---|---|
-| `@tau2` | the fitted variance component(s), named `SampleInt` (and `SampleSlope` under `random = "slope"`) | on the **log-mean scale**: a patient with $u_s = +\hat\tau$ has roughly $e^{\hat\tau}$-fold higher baseline expression than average. If `@tau2` is tiny, patients barely differ beyond sampling noise (the mixed fit will look similar to, but always slightly more conservative than, the fixed fit); if it is large relative to the within-patient (Poisson/NB) noise, a sizeable share of what a fixed-effects fit reported as "response signal" was actually between-patient noise leaking through |
+| `@tau2` | the fitted variance component(s), named `SampleInt`, `SampleCellTypeInt` (the nested block, under the default `re.celltype = TRUE`) and `SampleSlope` (under `random = "slope"`) | on the **log-mean scale**: a patient with $u_s = +\hat\tau$ has roughly $e^{\hat\tau}$-fold higher baseline expression than average. If `@tau2` is tiny, patients barely differ beyond sampling noise (the mixed fit will look similar to, but always slightly more conservative than, the fixed fit); if it is large relative to the within-patient (Poisson/NB) noise, a sizeable share of what a fixed-effects fit reported as "response signal" was actually between-patient noise leaking through |
 | `@df` | the Wald reference degrees of freedom: a **named per-coefficient vector** under `df.method = "satterthwaite"` (the default; `ResponseCellType` $\approx S-2$, niche interactions larger), or a scalar between-patient $S - 2$ under `df.method = "between"` | small df (few patients) means a wide-tailed $t$ and hence conservative p-values *even for a real effect* — expected, not a bug; the default `"satterthwaite"` relieves this for the within-patient-informed niche coefficients while leaving the between-patient main effect untouched. Index it (`@df[[col]]`) rather than passing the vector to `pt()` |
 | `@penalty` | the per-column ridge penalty actually used ($0$ on fixed columns, $1/\hat\tau^2_k$ on random ones) | mostly a diagnostic: a very small penalty on a random block means that group's $\hat\tau^2$ converged large, i.e. that source of between-patient variation is real and substantial |
+| `@polish` | per-gene diagnostics of the convergence stage (`converge = TRUE`, the default): `iterations`, `psi_fitnb` (the dispersion before polishing), `restarted`, `capped`, `singular`, `psi_bound`, `polished` | keyed by gene. `polished = FALSE` marks a gene whose Newton could not run at all, which keeps `fitNB`'s estimate; `psi_bound = TRUE` marks one whose profile-ML dispersion sat on its search bound (an all-zero or perfectly Poisson gene carries no information about overdispersion), which also keeps `fitNB`'s moderated value. A large count of either is worth investigating before trusting that bandwidth |
 
 For the toy fit above, `mixed$fit$tau2` pooled across 300 genes should sit
-close to the simulated $0.49$. `mixed` pins `df.method = "between"` (see the
+close to the simulated $0.49$ in its `SampleInt` entry. Note that `@tau2` is a
+*named vector*, not a scalar: under the default `re.celltype = TRUE` it also
+carries `SampleCellTypeInt`, and under `random = "slope"` a third component.
+Index it by name (`fit@tau2[["SampleInt"]]`), never by position. `mixed` pins `df.method = "between"` (see the
 `fit_mode()` chunk), so `mixed$fit$df` is the flat scalar $S-2 = 8$ ($S=10$
 patients). Under the package default `"satterthwaite"` it would instead be a
 per-coefficient vector — as `fs` in the previous section shows — whose
@@ -1019,10 +1023,33 @@ only on its own counts, the stage is blocked over genes and parallelised
 is absorbed by a Schur complement, so the per-iteration cost is one
 dense-column gram regardless of how many (sample, cell type) groups exist.
 
-Two things to know. This replaces edgeR's cross-gene moderated dispersion with a
-per-gene one; with tens of thousands of cells per gene that is well determined,
-but it is a deliberate departure from `fitNB`'s moderation. And converging the
-fit *raises* the null variance of bright genes rather than lowering it — their
+Four things to know.
+
+*It replaces edgeR's cross-gene moderated dispersion with a per-gene one.* With
+tens of thousands of cells per gene that is well determined, but it is a
+deliberate departure from `fitNB`'s moderation. Two consequences follow. A gene
+that carries no information about overdispersion — all-zero, or perfectly
+Poisson — has a profile likelihood that is monotone in $\psi$, so the optimiser
+returns a *bound* rather than an estimate; such a gene keeps `fitNB`'s moderated
+value and is flagged in `@polish$psi_bound`. And because $\psi$ is no longer
+moderated, it is no longer a safe scale for the standard error, so a polished
+fit takes the **Pearson working dispersion** instead — on both the mixed and the
+fixed-effects paths, where previously only the mixed path did.
+
+*It converges on the unclamped likelihood.* `fitNB` winsorises, which is a
+robustness device for a fit that shares one weight vector across genes. A
+per-gene converged fit does not need it, and evaluating that fit at a clamped
+mean would test a point where the score is not zero, so inference uses the same
+unclamped mean the polish converged on. A corollary: with `converge = TRUE` the
+`winsor` argument only sets the Newton starting point; it no longer determines
+the returned coefficients.
+
+*It needs integer counts.* The negative binomial likelihood is undefined off
+the integers, so a back-transformed assay (`2^logcounts - 1`, say) is refused
+with an error rather than silently collapsing every gene's dispersion to a
+bound. Supply raw counts, or pass `converge = FALSE`.
+
+*It raises the null variance of bright genes rather than lowering it.* Their
 previous, unconverged standard errors were inflated by a dispersion estimated
 off the optimum, which was hiding the inflation behind deflation. The higher
 number is the honest one.

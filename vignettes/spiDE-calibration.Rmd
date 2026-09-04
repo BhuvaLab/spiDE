@@ -236,9 +236,21 @@ of all genes* to shift. Two situations produce that:
    coordinately across a broad set of genes, the median moves with them and
    $\lambda$ exceeds 1 legitimately.
 
-These are distinguishable. A confounding-driven inflation affects the null
-genes indiscriminately; a real programme shift concentrates in one compartment
-and one direction, and should reproduce in an independent contrast. Where a
+A third possibility is specific to this design, and it is the one to rule out
+first. If the model lacks a **(sample × cell type)** intercept, every niche
+slope carries the between-sample composition effect described in
+`vignette("spiDE-model")`, and that inflates $\lambda$ in exactly the pattern a
+real programme shift would: concentrated in the compartments with the most
+cells, and largest for the brightest genes. It is not detectable by permuting
+the niche within (sample, cell type), because that permutation preserves it.
+`re.celltype = TRUE` (the default since 0.99.17) removes it; if you are reading
+$\lambda$ from an older fit, or from one built with `re.celltype = FALSE`,
+refit before interpreting an inflated compartment.
+
+The remaining two are distinguishable from each other. A confounding-driven
+inflation affects the null genes indiscriminately; a real programme shift
+concentrates in one compartment and one direction, and should reproduce in an
+independent contrast. Where a
 single cell type shows $\lambda > 1$ while the rest of the fit sits at or below
 1, a coordinated biological shift in that compartment is the more parsimonious
 reading -- and it argues for interpreting the result at the level of the
