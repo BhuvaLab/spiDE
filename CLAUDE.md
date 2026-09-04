@@ -415,8 +415,16 @@ now exceeds its null, reversing the "no detectable niche-dependent DE" conclusio
 exceedances of `|t| > 4.89` against a null range of 5-11; the 100 random control genes sit INSIDE the
 null range while every expressed band sits outside it, so it is not a residual scale artefact.
 Per-**gene** calibrated (the granularity this investigation established — per-index pools over genes
-and under-calibrates the bright ones), **84 calls at empirical FDP <= 0.05**, concentrated in B cell
-(112 of 146 at FDP 0.10) and Tumor. The fix is *why*: the old confound was present in the real data
+and under-calibrates the bright ones), **104 calls at empirical FDP <= 0.05** on the reviewed code
+(84 before the mean-function fix), concentrated in B cell and Tumor. **Do not quote that count as a
+set of findings**: three artefact arms (2026-09-04) show the estimator is calibrated everywhere
+tested (null `sd(t)` 0.99–1.03 across bandwidths, compartment definitions and covariate sets) but
+the *identity* of the calls is not stable. Splitting Plasma out of the B cell compartment keeps the
+count (70) and loses every immunoglobulin call, so the earlier plasma-activity reading was an
+artefact of the merge. Five imaging covariates keep 84 of 104 and drop the epithelial-in-immune
+calls (KRT7, KRT17), though collagens in B cells survive and per-cell morphology cannot capture
+neighbour transcript bleed. Bandwidths 10/50/70 give 75/63/61 calls of which only **4** are shared.
+The one triplet robust to every perturbation is **NDRG1 in Tumor against a Fibroblast niche**. The fix is *why*: the old confound was present in the real data
 and in every shuffle, so both inflated equally and matched; removing it from both leaves a
 difference. Segmentation spillover — confounded with the niche covariate BY CONSTRUCTION, since both
 scale with neighbour density — was tested and is not supported (called-UP genes are *depleted* in the
