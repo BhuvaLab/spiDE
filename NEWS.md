@@ -77,6 +77,20 @@
   (`psi_bound`, `polished`) rather than storing a bound or a zeroed fit.
 * `@polish` is keyed by gene rather than by position, and a wrongly sized
   `lambda.a` is refused with a message naming `re.celltype`.
+* **An underflowed fitted mean no longer becomes a `NaN` statistic.** An
+  unwinsorised linear predictor can send `exp()` to exactly 0 for a few cells,
+  and the Pearson working dispersion is then `0/0`; it propagated to the
+  standard error, the statistic and `spiGSEA()`, which failed outright. The
+  fitted mean is floored at `exp(-30)` in the convergence stage and at
+  inference, at the same value.
+* **A covariate with missing or non-finite values is refused by name.**
+  `model.matrix()` drops those rows, so the design no longer matched the
+  random-effect block and the run died in `cbind()` with `number of rows of
+  matrices must match`. `log()` of a QC column that is zero for some cells is
+  the usual way in.
+* Examples now use a single bandwidth, and the fast fixed-effects path where
+  their subject is an accessor rather than the mixed correction, taking
+  `R CMD check`'s example time from ~23 minutes to ~10.
 
 * `updateObject()` could not repair an object serialised before a slot whose
   prototype is `NULL` was added (`polish`, and latently `re_group`, `tau2`,
