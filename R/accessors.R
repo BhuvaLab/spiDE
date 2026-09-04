@@ -25,7 +25,7 @@
 #' @examples
 #' data(toySpiDE)
 #' spe <- buildNiches(toySpiDE, sigma = 20)
-#' res <- spiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+#' res <- spiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
 #' head(results(res))
 #' @rdname results
 #' @export
@@ -45,7 +45,7 @@ setMethod("results", "SpiDEResults",
 #' @examples
 #' data(toySpiDE)
 #' spe <- buildNiches(toySpiDE, sigma = 20)
-#' res <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+#' res <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
 #' fits(res)
 #' @rdname fits
 #' @export
@@ -57,8 +57,8 @@ setMethod("fits", "SpiDEResults", function(object) object@fits)
 #' @return a numeric vector of niche bandwidths.
 #' @examples
 #' data(toySpiDE)
-#' spe <- buildNiches(toySpiDE, sigma = c(10, 20))
-#' res <- fitSpiDE(spe, condition = "condition", verbose = FALSE)
+#' spe <- buildNiches(toySpiDE, sigma = 20)
+#' res <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
 #' bandwidths(res)
 #' @rdname bandwidths
 #' @export

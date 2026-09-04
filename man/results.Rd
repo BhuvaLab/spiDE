@@ -41,6 +41,6 @@ Extract the tidy spiDE results table
 \examples{
 data(toySpiDE)
 spe <- buildNiches(toySpiDE, sigma = 20)
-res <- spiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+res <- spiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
 head(results(res))
 }

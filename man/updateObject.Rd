@@ -30,6 +30,6 @@ class prototype and leave every present slot untouched.
 \examples{
 data(toySpiDE)
 spe <- buildNiches(toySpiDE, sigma = 20)
-fit <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+fit <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
 updateObject(fit)
 }

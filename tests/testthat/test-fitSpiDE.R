@@ -72,3 +72,19 @@ test_that(".toySPE(composition = 0) is unchanged and composition plants a betwee
   expect_gt(abs(cor(as.numeric(m), as.numeric(pb[names(m)]),
                     method = "spearman")), 0.6)
 })
+
+test_that("a covariate with non-finite values is refused by name", {
+  # model.matrix() drops those rows, so the design no longer matches the
+  # random-effect block and the run died with "number of rows of matrices must
+  # match" -- an error naming neither the covariate nor the cause.
+  spe <- buildNiches(.toySPE(), sigma = 20)
+  SummarizedExperiment::colData(spe)$bad <- log(c(0, runif(ncol(spe) - 1)))
+  expect_error(
+    fitSpiDE(spe, "condition", sigma = 20, covariates = "bad",
+             random = "intercept", verbose = FALSE),
+    "non-finite")
+  expect_error(
+    fitSpiDE(spe, "condition", sigma = 20, covariates = "bad",
+             random = "intercept", verbose = FALSE),
+    "bad")
+})

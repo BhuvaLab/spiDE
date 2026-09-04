@@ -21,6 +21,6 @@ Extract per-bandwidth fits
 \examples{
 data(toySpiDE)
 spe <- buildNiches(toySpiDE, sigma = 20)
-res <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+res <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
 fits(res)
 }

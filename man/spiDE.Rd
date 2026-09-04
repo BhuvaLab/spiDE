@@ -184,7 +184,7 @@ calling \code{\link[=buildNiches]{buildNiches()}} (if the niches are not already
 \examples{
 data(toySpiDE)
 spe <- toySpiDE
-res <- spiDE(spe, condition = "condition", sigma = c(10, 20), verbose = FALSE)
+res <- spiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
 head(results(res))
 
 }

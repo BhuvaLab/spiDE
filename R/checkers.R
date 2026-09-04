@@ -73,6 +73,22 @@ checkCovariates <- function(spe, covariates) {
   if (length(missing) > 0) {
     stop(sprintf("covariate(s) not found in colData(spe): %s", paste(missing, collapse = ", ")))
   }
+  # model.matrix() drops rows with a missing value, so the design comes back
+  # shorter than the random-effect block built from the full-length sample
+  # labels and the two fail to cbind with "number of rows of matrices must
+  # match" -- an error that says nothing about which covariate is at fault. A
+  # non-finite value is the usual cause and is easy to produce by accident:
+  # log() of a zero-valued QC column gives -Inf, and centring that gives NaN.
+  cd <- SummarizedExperiment::colData(spe)
+  bad <- covariates[vapply(covariates, function(cv) {
+    x <- cd[[cv]]
+    is.numeric(x) && !all(is.finite(x))
+  }, logical(1))]
+  if (length(bad) > 0) {
+    stop(sprintf(
+      "covariate(s) with missing or non-finite values: %s. Every cell needs a finite value (log() of a zero-valued column is the usual cause -- use log1p, or drop the affected cells).",
+      paste(bad, collapse = ", ")), call. = FALSE)
+  }
   invisible(TRUE)
 }
 

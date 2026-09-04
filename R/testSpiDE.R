@@ -51,8 +51,8 @@
 #'
 #' @examples
 #' data(toySpiDE)
-#' spe <- buildNiches(toySpiDE, sigma = c(10, 20))
-#' res <- fitSpiDE(spe, condition = "condition", verbose = FALSE)
+#' spe <- buildNiches(toySpiDE, sigma = 20)
+#' res <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
 #' res <- testSpiDE(res, spe = spe)
 #' head(results(res))
 #'

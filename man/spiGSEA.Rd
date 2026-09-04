@@ -142,7 +142,7 @@ reading the q-value alone.
 \examples{
 data(toySpiDE)
 spe <- buildNiches(toySpiDE, sigma = 20)
-res <- spiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+res <- spiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
 gs <- list(setA = rownames(spe)[1:5], setB = rownames(spe)[6:10])
 spiGSEA(res, spe, gs, min.size = 3, fdr = 1)
 }

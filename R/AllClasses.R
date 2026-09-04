@@ -363,7 +363,7 @@ setValidity("SpiDEResults", validSpiDEResults)
 #' @examples
 #' data(toySpiDE)
 #' spe <- buildNiches(toySpiDE, sigma = 20)
-#' fit <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+#' fit <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
 #' updateObject(fit)
 #' @importFrom BiocGenerics updateObject
 #' @rdname updateObject
