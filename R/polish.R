@@ -28,6 +28,17 @@
 #' @return a numeric scalar.
 #' @importFrom stats dnbinom
 #' @noRd
+# The fitted mean is floored here and at inference, at the same value. A
+# linear predictor below about -745 underflows exp() to exactly 0, and the
+# negative binomial quantities built from it then divide by zero: the Pearson
+# working dispersion (y - mu)^2 / (mu + psi mu^2) becomes 0/0 = NaN, which
+# propagates to the standard error, the statistic and every gene-set test
+# downstream. exp(-30) is far below any mean the model can meaningfully
+# estimate, so flooring there is a numerical guard, not a statistical clamp --
+# and applying the SAME floor in both stages keeps the polish and the inference
+# on one mean function, which is the point of not winsorising here.
+.MU_FLOOR <- exp(-30)
+
 .nbPenLoglik <- function(y, mu, psi, a, pen) {
   sum(stats::dnbinom(y, size = 1 / psi, mu = mu, log = TRUE)) -
     0.5 * sum(pen * a^2)
@@ -174,7 +185,7 @@
   }
 
   newton <- function(a, psi, maxit) {
-    mu <- as.numeric(exp(W %*% a))
+    mu <- pmax(as.numeric(exp(W %*% a)), .MU_FLOOR)
     ll <- .nbPenLoglik(y, mu, psi, a, pen)
     it <- 0L
     converged <- FALSE
@@ -203,7 +214,7 @@
       halvings <- 0L
       while (step > 1e-6) {
         a1 <- a + step * d
-        mu1 <- as.numeric(exp(W %*% a1))
+        mu1 <- pmax(as.numeric(exp(W %*% a1)), .MU_FLOOR)
         ll1 <- .nbPenLoglik(y, mu1, psi, a1, pen)
         if (is.finite(ll1) && ll1 >= ll - 1e-9 * abs(ll)) {
           ok <- TRUE

@@ -365,3 +365,21 @@ test_that("a wrongly sized lambda.a is refused with a message naming re.celltype
     spiDE:::.polishFit(Y, d$W, A0, c(1, 1), rep(0, ncol(d$W) - 1L)),
     "re.celltype")
 })
+
+test_that("an underflowed fitted mean does not become a NaN statistic", {
+  # An unwinsorised linear predictor can send exp() to exactly 0 for a few
+  # cells. The Pearson working dispersion, which a polished fit now uses on
+  # BOTH paths, is then (y - 0)^2 / 0 = NaN, and that propagated to the SE, the
+  # statistic and every gene-set test downstream: 18 of 120 statistics were NA
+  # on this fixture, and spiGSEA() died with "NAs are not allowed in
+  # subscripted assignments".
+  spe <- buildNiches(.toyNiche(), sigma = 30)
+  r <- spiDE(spe, condition = NULL, sigma = 30, random = "none", fdr = 1,
+             verbose = FALSE)
+  f <- fits(r)[[1]]
+  expect_false(anyNA(f@t_stat))
+  expect_false(anyNA(f@se))
+  # and the gene-set path that surfaced it runs
+  gs <- list(set1 = rownames(f@alpha)[1:5])
+  expect_no_error(spiGSEA(r, spe = spe, genesets = gs, type = "niche"))
+})

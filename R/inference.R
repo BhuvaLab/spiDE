@@ -556,6 +556,10 @@
     } else {
       mub <- SpaNorm::calculateMu(zero_gmean, alpha_block, W_full,
                                   winsor = winsor_use)
+      # same floor the polish uses: an unwinsorised linear predictor can
+      # underflow exp() to exactly 0, and the Pearson dispersion below would
+      # then be 0/0 = NaN for that gene
+      mub <- pmax(mub, .MU_FLOOR)
       wtb <- 1 / (1 / mub + psib) # nblock x ncells
       loglikb <- rowSums(dnbinom(Yb, mu = mub, size = 1 / psib, log = TRUE))
       if (use_pearson) {
