@@ -64,7 +64,7 @@ checkCondition <- function(spe, condition) {
 }
 
 # Nuisance covariates must be present in colData.
-checkCovariates <- function(spe, covariates) {
+checkCovariates <- function(spe, covariates, finite.only = FALSE) {
   if (length(covariates) == 0) {
     return(invisible(TRUE))
   }
@@ -79,6 +79,12 @@ checkCovariates <- function(spe, covariates) {
   # match" -- an error that says nothing about which covariate is at fault. A
   # non-finite value is the usual cause and is easy to produce by accident:
   # log() of a zero-valued QC column gives -Inf, and centring that gives NaN.
+  #
+  # OPT-IN, because it is only the GLM design that breaks this way.
+  # twoStageSpiDE() deliberately DROPS patients with a missing patient-level
+  # covariate and reports the dropout, which is a documented behaviour its
+  # tests assert; rejecting there would remove a feature.
+  if (!finite.only) return(invisible(TRUE))
   cd <- SummarizedExperiment::colData(spe)
   bad <- covariates[vapply(covariates, function(cv) {
     x <- cd[[cv]]

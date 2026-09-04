@@ -466,7 +466,7 @@ nicheDesign <- function(spe, condition = NULL, sigma, index = NULL,
   random <- match.arg(random)
   checkSPE(spe, cell_type = cell_type)
   if (!is.null(condition)) checkCondition(spe, condition)
-  checkCovariates(spe, covariates)
+  checkCovariates(spe, covariates, finite.only = TRUE)
   checkNiche(spe, sigma, name = name)
   res <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
                            cell_type, name, sample_id, random,

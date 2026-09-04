@@ -344,7 +344,7 @@ setMethod(
     checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
     # condition = NULL selects the condition-free (niche-only) design
     if (!is.null(condition)) checkCondition(spe, condition)
-    checkCovariates(spe, covariates)
+    checkCovariates(spe, covariates, finite.only = TRUE)
     if (random != "none") {
       checkSample(spe, condition, sample_id, covariates)
       if (!is.numeric(re.prop) || length(re.prop) != 1 || re.prop <= 0 ||
