@@ -232,7 +232,11 @@ log-likelihood tolerance for the per-gene convergence stage.}
 \code{\link[=testSpiDE]{testSpiDE()}} for the same argument at inference time). NULL fits every
 gene in one block.}
 
-\item{BPPARAM}{a BiocParallelParam (reserved for the inference stage).}
+\item{BPPARAM}{a BiocParallelParam. Used by the per-gene convergence
+stage (\code{converge = TRUE}), which is blocked over genes and
+dispatched with it; each worker densifies its own gene block, so
+peak memory scales with the number of workers. Absent an explicit
+\code{block.size}, one block per worker is used.}
 
 \item{verbose}{a logical, whether to print fitting progress.}
 }

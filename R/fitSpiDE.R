@@ -73,6 +73,7 @@
       penalty
     }
     pol <- .polishFit(Y, W, fit$alpha, fit$psi, pen_vec, des$re_group,
+                      covtype = des$covtype,
                       maxit = converge.maxit, tol = converge.tol,
                       block.size = block.size, BPPARAM = BPPARAM,
                       verbose = verbose)
@@ -83,6 +84,9 @@
 
   alpha <- fit$alpha
   rownames(alpha) <- rownames(Y)
+  # fitNB returns alpha unnamed, so the polish diagnostics were keyed by
+  # position ("1", "2", ...) and fit@polish["G1", ] gave an all-NA row
+  if (!is.null(polish)) rownames(polish) <- rownames(Y)
   colnames(alpha) <- colnames(W)
 
   # per-gene log-likelihood for Cauchy weighting (recomputed from the fit; the
@@ -295,7 +299,11 @@
 #' @param block.size genes per block in the per-gene convergence stage (see
 #'   [testSpiDE()] for the same argument at inference time). NULL fits every
 #'   gene in one block.
-#' @param BPPARAM a BiocParallelParam (reserved for the inference stage).
+#' @param BPPARAM a BiocParallelParam. Used by the per-gene convergence
+#'   stage (\code{converge = TRUE}), which is blocked over genes and
+#'   dispatched with it; each worker densifies its own gene block, so
+#'   peak memory scales with the number of workers. Absent an explicit
+#'   \code{block.size}, one block per worker is used.
 #' @param verbose a logical, whether to print fitting progress.
 #' @param ... further arguments forwarded to \code{\link[SpaNorm]{fitNB}}.
 #'
@@ -351,7 +359,7 @@ setMethod(
     checkNiche(spe, sigma, name = name)
 
     Y <- SummarizedExperiment::assay(spe, assay)
-    checkCounts(Y)
+    checkCounts(Y, integer.only = isTRUE(converge))
 
     fits <- lapply(sigma, function(sg) {
       if (verbose) message(sprintf("Fitting bandwidth sigma = %s", sg))

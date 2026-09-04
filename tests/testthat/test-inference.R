@@ -212,11 +212,24 @@ test_that("batched Cauchy path matches the per-gene .waldBrownGene loop (CPU)", 
   uniq_index <- unique(index_ct)
   alpha_sub <- tf$fit@alpha[, cols_gene, drop = FALSE]
   psi <- tf$fit@psi
-  mu <- SpaNorm::calculateMu(rep(0, nrow(tf$fit@alpha)), tf$fit@alpha, W_full)
+  # Mirror .blockedInference()'s own choices, or this reference tests a
+  # different estimator: a POLISHED fit (converge = TRUE, the default) is
+  # evaluated at the unclamped mean, because the polish converged on the
+  # unclamped likelihood, and its SE is scaled by the Pearson working
+  # dispersion rather than the now-unmoderated per-gene psi.
+  polished <- !is.null(tf$fit@polish)
+  mu <- SpaNorm::calculateMu(rep(0, nrow(tf$fit@alpha)), tf$fit@alpha, W_full,
+                             winsor = if (polished) Inf else 4)
   wt <- 1 / (1 / mu + psi)
+  scale_g <- if (polished) {
+    disp_df <- max(nrow(W_full) - sum(covtype != "Random"), 1)
+    rowSums((tf$Y - mu)^2 / (mu + psi * mu^2)) / disp_df
+  } else {
+    psi
+  }
 
   ref <- lapply(seq_len(nrow(alpha_sub)), function(i) {
-    spiDE:::.waldBrownGene(alpha_sub[i, ], Wsub, wt[i, ], psi[i], cov_niche,
+    spiDE:::.waldBrownGene(alpha_sub[i, ], Wsub, wt[i, ], scale_g[i], cov_niche,
                            index_ct, uniq_index, combine = "cauchy")
   })
   ref_t <- do.call(rbind, lapply(ref, `[[`, "t_stat"))

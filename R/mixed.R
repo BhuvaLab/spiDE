@@ -219,16 +219,26 @@
     # "between" df is the documented, more conservative alternative (scalar
     # S - 2), so degrade to it with a warning rather than stopping. That trades
     # power for validity, which is the right direction to fail in.
+    df_fallback <- FALSE
     minv <- tryCatch(SpaNorm::invert_mat(A + diag(pen)), error = function(e) NULL)
     if (is.null(minv)) {
       warning("Satterthwaite df unavailable (singular penalised information); ",
               "falling back to the conservative between-sample df. Inference ",
               "will be valid but lower-powered.", call. = FALSE)
-      return(max(n_samples - 2, 1))
+      # `df <- df_between`, NOT `return(...)`: returning here exits .fitNBmixed()
+      # with a bare numeric instead of the fit list, so the caller's very next
+      # line (fit$penalty) died with "$ operator is invalid for atomic vectors".
+      # The documented fail-toward-validity path was itself fatal.
+      df_fallback <- TRUE
     }
     tested <- which(cols_tested)
-    df <- .satterthwaiteDF(A, minv, pen, re_group, tau2, tested, ncol(Y),
-                          colnames(W)[tested])
+    df <- if (df_fallback) NULL else
+      .satterthwaiteDF(A, minv, pen, re_group, tau2, tested, ncol(Y),
+                       colnames(W)[tested])
+    # .satterthwaiteDF() returns NULL when the variance-parameter information is
+    # singular (it warns there); degrade to the documented conservative scalar
+    # rather than storing a NULL df that every downstream consumer must branch on
+    if (is.null(df)) df <- df_between
   } else {
     df <- df_between
   }
@@ -266,8 +276,16 @@
     tr_UMU <- sum((minvLminv %*% Aa) * Aa)
     I[1, a + 1L] <- I[a + 1L, 1] <- 0.5 * (tr_Baa - tr_UMU)
   }
-  cov <- tryCatch(solve(I),
-                  error = function(e) SpaNorm::invert_mat(I))
+  # invert_mat() is exactly the call documented as throwing on a singular
+  # matrix, so using it as an unguarded error handler re-raises. Nearly-collinear
+  # variance parameters make that reachable: a per-(sample x cell type)
+  # intercept averaged over types is close to a per-sample one, and
+  # re.celltype = TRUE puts both in this matrix. Return NULL and let the caller
+  # degrade to the conservative between-sample df, as its sibling site does.
+  cov <- tryCatch(solve(I), error = function(e) {
+    tryCatch(SpaNorm::invert_mat(I), error = function(e2) NULL)
+  })
+  if (is.null(cov)) return(NULL)
   list(cov = cov, groups = groups, gcols = gcols)
 }
 
@@ -280,6 +298,13 @@
 .satterthwaiteDF <- function(A, minv, pen, re_group, tau2, tested, ncells,
                              tested_names) {
   vp <- .varParamCov(A, minv, pen, re_group, ncells)
+  if (is.null(vp)) {
+    warning("the variance-parameter information matrix is singular, so ",
+            "Satterthwaite degrees of freedom are unavailable; falling back to ",
+            "the conservative between-sample df. Inference stays valid and ",
+            "loses power.", call. = FALSE)
+    return(NULL)
+  }
   Vt  <- minv[tested, , drop = FALSE]      # k x p
   vjj <- diag(minv)[tested]                # k
   grad <- matrix(0, length(tested), length(vp$groups) + 1L)

@@ -50,6 +50,7 @@ Imports:
     stats,
     utils
 Suggests:
+    edgeR,
     testthat (>= 3.1.2),
     knitr,
     rmarkdown,

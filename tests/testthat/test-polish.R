@@ -123,7 +123,8 @@ test_that(".polishFit is invariant to gene blocking", {
   expect_equal(a$psi, b$psi)
   expect_equal(nrow(a$polish), ng)
   expect_setequal(colnames(a$polish),
-                  c("iterations", "psi_fitnb", "restarted", "capped", "singular"))
+                  c("iterations", "psi_fitnb", "restarted", "capped", "singular",
+                 "psi_bound", "polished"))
   expect_equal(a$polish$psi_fitnb, psi0)
 })
 
@@ -281,4 +282,86 @@ test_that(".fillSlots can fill every NULL-prototype slot of a stripped object", 
   expect_true(all(nulls %in% names(attributes(filled))))
   expect_true(all(vapply(nulls, function(s) is.null(methods::slot(filled, s)),
                          logical(1))))
+})
+
+test_that("non-integer counts are refused before the fit, not after it", {
+  # dnbinom() is -Inf off the integers, so the polish would reject every Newton
+  # step, leave alpha at fitNB's value and return the dispersion optimiser's
+  # UPPER BOUND for every gene -- measured psi 999.96 -- while reporting success.
+  spe <- buildNiches(.toySPE(), sigma = 20)
+  Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
+  SummarizedExperiment::assay(spe, "counts") <- Y + 0.5
+  expect_error(
+    fitSpiDE(spe, "condition", sigma = 20, random = "none", verbose = FALSE),
+    "integer counts")
+  # and the message must name the way out
+  err <- tryCatch(fitSpiDE(spe, "condition", sigma = 20, random = "none",
+                           verbose = FALSE), error = conditionMessage)
+  expect_match(err, "converge = FALSE")
+})
+
+test_that("a dispersion optimum on its search bound keeps fitNB's estimate", {
+  set.seed(4)
+  n <- 300
+  W <- cbind(1, scale(rnorm(n)))
+  sv <- spiDE:::.newtonSolver(W, c(0, 0))
+  # an all-zero gene has no information about overdispersion: the profile
+  # likelihood is monotone and optimize() returns its ceiling (~976), which is
+  # not an estimate. On the fixed-effects path psi scales the SE directly.
+  r <- suppressWarnings(
+    spiDE:::.polishGene(rep(0, n), W, c(0, 0), 0.7, c(0, 0), sv))
+  expect_true(r$psi_bound)
+  expect_equal(r$psi, 0.7)
+  # a well-identified gene is unaffected
+  y <- rnbinom(n, mu = exp(W %*% c(1.5, 0.3)), size = 1 / 0.4)
+  r2 <- spiDE:::.polishGene(y, W, c(0, 0), 1, c(0, 0), sv)
+  expect_false(r2$psi_bound)
+  expect_true(r2$polished)
+  expect_gt(r2$psi, 0.1)
+})
+
+test_that("an unusable Newton keeps fitNB's fit rather than the sane start", {
+  # Returning the sane start would zero every tested coefficient, which
+  # inference reports as t = 0 with a finite SE: a confident null for a gene
+  # that was never converged. A singular solver must fall back to the input.
+  set.seed(5)
+  n <- 120
+  W <- cbind(1, scale(rnorm(n)))
+  y <- rnbinom(n, mu = 4, size = 2)
+  a0 <- c(0.9, 0.25)
+  bad <- list(solve = function(w, s) NULL, xcov = function(w) NULL)
+  r <- spiDE:::.polishGene(y, W, a0, 0.6, c(0, 0), bad)
+  expect_identical(r$alpha, a0)
+  expect_equal(r$psi, 0.6)
+  expect_true(r$singular)
+  expect_false(r$polished)
+})
+
+test_that("a polished fixed-effects fit is scaled by the Pearson dispersion", {
+  # psi is no longer edgeR's moderated value, so using it as the SE scale
+  # rescaled every gene by the sqrt of a noisy estimate: measured sd(t)
+  # 2.11 -> 2.45 on this fixture before the fix.
+  spe <- buildNiches(.toySPE(), sigma = 30)
+  a <- spiDE(spe, "condition", sigma = 30, random = "none", converge = FALSE,
+             fdr = 1, verbose = FALSE)
+  b <- spiDE(spe, "condition", sigma = 30, random = "none", converge = TRUE,
+             fdr = 1, verbose = FALSE)
+  expect_lt(sd(fits(b)[[1]]@t_stat), sd(fits(a)[[1]]@t_stat))
+})
+
+test_that("the per-gene diagnostics are keyed by gene, not by position", {
+  spe <- buildNiches(.toySPE(), sigma = 20)
+  f <- fits(fitSpiDE(spe, "condition", sigma = 20, random = "none",
+                     verbose = FALSE))[[1]]
+  expect_identical(rownames(f@polish), rownames(f@alpha))
+  expect_false(anyNA(f@polish["G1", ]))
+})
+
+test_that("a wrongly sized lambda.a is refused with a message naming re.celltype", {
+  d <- toy_design()
+  A0 <- matrix(0, 2, ncol(d$W), dimnames = list(c("a", "b"), colnames(d$W)))
+  Y <- matrix(rpois(2 * nrow(d$W), 3), 2, dimnames = list(c("a", "b"), NULL))
+  expect_error(
+    spiDE:::.polishFit(Y, d$W, A0, c(1, 1), rep(0, ncol(d$W) - 1L)),
+    "re.celltype")
 })

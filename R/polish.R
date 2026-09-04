@@ -140,22 +140,32 @@
 #' @param pen the per-column ridge penalty.
 #' @param solver a \code{.newtonSolver()} for this \code{W} and \code{pen}.
 #' @param maxit,tol iteration cap and relative log-likelihood tolerance.
+#' @param ct_cols a logical over the columns of \code{W} marking the cell-type
+#'   intercepts (from the design's covtype tags).
+#' @param psi.range the search interval for the profile-ML dispersion.
 #' @return a list with \code{alpha}, \code{psi}, \code{loglik},
-#'   \code{iterations}, \code{restarted}, \code{capped}, \code{singular}.
+#'   \code{iterations}, \code{restarted}, \code{capped}, \code{singular},
+#'   \code{psi_bound} and \code{polished}.
 #' @importFrom stats optimize
 #' @noRd
-.polishGene <- function(y, W, a0, psi0, pen, solver, maxit = 50L, tol = 1e-8) {
+.polishGene <- function(y, W, a0, psi0, pen, solver, maxit = 50L, tol = 1e-8,
+                        ct_cols = NULL, psi.range = c(1e-3, 1e3)) {
   restarted <- FALSE
   singular <- FALSE
 
-  # the sane start: cell-type (or, absent a cell-type block, overall) log means
+  # the sane start: cell-type (or, absent a cell-type block, overall) log means.
+  # `ct_cols` comes from the design's own covtype tags. It used to be recovered
+  # by a regex on colnames(W), which is a second, weaker parser of a convention
+  # .tagCovtype() already owns: a user covariate literally named "CellTypeScore"
+  # matched it and was assigned a log mean as though it were an indicator, and a
+  # cell-type label containing ":" did not match at all.
   sane_start <- function() {
     a <- numeric(ncol(W))
-    ct <- grep("^CellType[^:]*$", colnames(W))
+    ct <- if (is.null(ct_cols)) integer(0) else which(ct_cols)
     if (length(ct)) {
       for (j in ct) {
         cells <- W[, j] != 0
-        a[j] <- log(mean(y[cells]) + 1e-3)
+        a[j] <- if (any(cells)) log(mean(y[cells]) + 1e-3) else 0
       }
     } else {
       a[1] <- log(mean(y) + 1e-3)
@@ -167,7 +177,7 @@
     mu <- as.numeric(exp(W %*% a))
     ll <- .nbPenLoglik(y, mu, psi, a, pen)
     it <- 0L
-    capped <- TRUE
+    converged <- FALSE
     stale <- 0L
     w <- NULL
     while (it < maxit) {
@@ -178,9 +188,14 @@
         stale <- 0L
       }
       d <- solver$solve(w, s)
-      if (is.null(d)) {
+      # solve() only ERRORS below rcond ~1e-7; between that and well-conditioned
+      # it returns a finite but numerically meaningless answer, which the line
+      # search can accept because a badly scaled step in roughly the right
+      # direction still raises the objective. A NaN/Inf right-hand side does not
+      # error either. Treat both as singular rather than letting a wrong number
+      # through as a converged coefficient.
+      if (is.null(d) || !all(is.finite(d))) {
         singular <<- TRUE
-        capped <- FALSE
         break
       }
       step <- 1
@@ -205,7 +220,6 @@
           stale <- 0L
           next
         }
-        capped <- FALSE
         break
       }
       # a hard line search or a stale matrix both call for a rebuild next step
@@ -215,21 +229,39 @@
       mu <- mu1
       ll <- ll1
       if (gain < tol * abs(ll)) {
-        capped <- FALSE
+        converged <- TRUE
         break
       }
     }
-    list(a = a, mu = mu, ll = ll, it = it, capped = capped)
+    list(a = a, mu = mu, ll = ll, it = it, converged = converged)
   }
 
+  # Profile ML for psi at a fixed mean. The optimiser needs a bounded interval,
+  # so an under-dispersed or near-empty gene lands ON a bound -- measured: a
+  # Poisson gene returns 0.0046 and an all-zero gene 976, neither of which is an
+  # estimate. Storing a bound as though it were one is worse than not polishing
+  # the dispersion at all, because on the fixed-effects path psi scales the
+  # standard error directly. Report it instead, and let the caller keep fitNB's
+  # moderated value.
   psi_ml <- function(mu) {
-    exp(stats::optimize(
-      function(lp) {
-        -sum(stats::dnbinom(y, size = 1 / exp(lp), mu = mu, log = TRUE))
-      },
-      c(log(1e-3), log(1e3)))$minimum)
+    lo <- log(psi.range[1]); hi <- log(psi.range[2])
+    o <- stats::optimize(function(lp) {
+      -sum(stats::dnbinom(y, size = 1 / exp(lp), mu = mu, log = TRUE))
+    }, c(lo, hi))
+    edge <- (o$minimum - lo) < 1e-3 * (hi - lo) ||
+      (hi - o$minimum) < 1e-3 * (hi - lo)
+    list(psi = exp(o$minimum), at_bound = edge)
   }
 
+  fallback <- function(why) {
+    # Hand back fitNB's own estimate, NOT the sane start. Returning the sane
+    # start would replace a usable fit with cell-type log means and exact zeros
+    # on every tested coefficient, which inference then reports as t = 0 with a
+    # finite SE -- a confident null for a gene that was never converged.
+    list(alpha = a0, psi = psi0, loglik = NA_real_, iterations = 0L,
+         restarted = FALSE, capped = FALSE, singular = identical(why, "singular"),
+         psi_bound = FALSE, polished = FALSE)
+  }
   a <- a0
   psi <- psi0
   if (!all(is.finite(a)) || min(as.numeric(W %*% a)) < -10) {
@@ -242,15 +274,29 @@
     restarted <- TRUE
     f <- newton(sane_start(), psi, maxit)
   }
+  # both starts failed: keep fitNB's fit rather than an unconverged guess
+  if (singular || !all(is.finite(f$a)) || !is.finite(f$ll)) {
+    return(fallback(if (singular) "singular" else "nonfinite"))
+  }
+  converged <- f$converged
   it_total <- f$it
+  psi_bound <- FALSE
   for (k in 1:2) {
-    psi <- psi_ml(f$mu)
+    pm <- psi_ml(f$mu)
+    if (pm$at_bound) {
+      # the dispersion is not identified for this gene; keep the moderated one
+      psi_bound <- TRUE
+      break
+    }
+    psi <- pm$psi
     f2 <- newton(f$a, psi, 20L)
     it_total <- it_total + f2$it
+    converged <- converged && f2$converged
     f <- f2
   }
   list(alpha = f$a, psi = psi, loglik = f$ll, iterations = it_total,
-       restarted = restarted, capped = f$capped, singular = singular)
+       restarted = restarted, capped = !converged, singular = singular,
+       psi_bound = psi_bound, polished = TRUE)
 }
 
 #' Converge every gene's fit, blocked over genes
@@ -261,6 +307,9 @@
 #' @param pen the per-column ridge penalty (scalar or length ncol(W)).
 #' @param re_group the per-column random-effect group, used only to locate the
 #'   indicator block; \code{NULL} for a fixed-effects fit.
+#' @param covtype the design's per-column covariate tags, used to locate the
+#'   cell-type intercepts for the restart. \code{NULL} falls back to the
+#'   first column.
 #' @param maxit,tol forwarded to \code{.polishGene()}.
 #' @param block.size,BPPARAM gene blocking and dispatch, as in [testSpiDE()].
 #' @param verbose logical.
@@ -268,12 +317,36 @@
 #'   \code{polish} data.frame.
 #' @importFrom BiocParallel bplapply SerialParam bpnworkers
 #' @noRd
-.polishFit <- function(Y, W, alpha, psi, pen, re_group = NULL,
+.polishFit <- function(Y, W, alpha, psi, pen, re_group = NULL, covtype = NULL,
                        maxit = 50L, tol = 1e-8, block.size = NULL,
                        BPPARAM = BiocParallel::SerialParam(), verbose = FALSE) {
   ng <- nrow(alpha)
+  if (!length(pen) %in% c(1L, ncol(W))) {
+    stop("'lambda.a' must be a single value or one per design column (",
+         ncol(W), " here, ", length(pen), " supplied). Note re.celltype = TRUE ",
+         "adds one column per non-empty (sample, cell type), so a vector sized ",
+         "for an earlier design is now too short.", call. = FALSE)
+  }
   if (length(pen) == 1L) pen <- rep(pen, ncol(W))
   if (length(psi) == 1L) psi <- rep(psi, ng)
+  # The negative binomial likelihood is defined on counts. On a non-integer
+  # assay dnbinom() returns -Inf for every cell, so the line search rejects
+  # every step, alpha is left exactly at fitNB's value and the dispersion
+  # optimiser -- maximising a constant -Inf -- returns its upper bound for EVERY
+  # gene. Measured: psi 999.96 across the board, with `capped` and `singular`
+  # both reporting success. That is silent, total corruption, and the documented
+  # real-cohort object (counts <- 2^logcounts - 1) is exactly such an assay, so
+  # refuse it here rather than let it through.
+  chk <- as.numeric(Y[seq_len(min(nrow(Y), 20L)), , drop = FALSE])
+  chk <- chk[is.finite(chk)]
+  if (length(chk) && max(abs(chk - round(chk))) > 1e-8) {
+    stop("converge = TRUE needs integer counts: the negative binomial ",
+         "likelihood is undefined otherwise, and every gene's dispersion would ",
+         "silently collapse to its upper bound.\n  The assay passed is not ",
+         "integer-valued (e.g. a back-transform such as 2^logcounts - 1).\n  ",
+         "Use the raw counts, or pass converge = FALSE.", call. = FALSE)
+  }
+  ct_cols <- if (is.null(covtype)) NULL else as.character(covtype) == "CellType"
   nested <- if (is.null(re_group)) {
     rep(FALSE, ncol(W))
   } else {
@@ -286,9 +359,16 @@
   # caller asked for. Absent an explicit block.size, split at least one block
   # per worker (this stage is exact per gene, so blocking never changes the
   # answer -- test-polish.R asserts that).
-  nw <- BiocParallel::bpnworkers(BPPARAM)
-  if (is.null(block.size) && nw > 1L) {
-    block.size <- max(1L, ceiling(ng / nw))
+  # .chunkGenes(ng, NULL) is ONE block. That would (a) hand every gene to a
+  # single worker however many BPPARAM has, and (b) -- worse -- densify the
+  # WHOLE counts matrix at line `as.matrix(Y[gi, ])`: 13,348 x 77,454 doubles is
+  # 8.3 GB, inside fitSpiDE(), under its own default SerialParam(). The
+  # architecture's invariant is that the counts matrix is never eagerly
+  # densified, so cap the block regardless of worker count, the way
+  # .blockLoglik() does with its 2000-gene default.
+  nw <- max(1L, BiocParallel::bpnworkers(BPPARAM))
+  if (is.null(block.size)) {
+    block.size <- max(1L, min(2000L, ceiling(ng / nw)))
   }
   blocks <- .chunkGenes(ng, block.size)
   if (verbose) {
@@ -312,7 +392,7 @@
     out <- lapply(seq_along(gi), function(i) {
       g <- gi[[i]]
       .polishGene(as.numeric(Yb[i, ]), W, alpha[g, ], psi[[g]], pen, solver,
-                  maxit = maxit, tol = tol)
+                  maxit = maxit, tol = tol, ct_cols = ct_cols)
     })
     if (verbose && (b %% step == 0L || b == nb)) {
       message(sprintf("    block %d/%d (%.1f min elapsed)", b, nb,
@@ -321,6 +401,15 @@
     out
   }, BPPARAM = BPPARAM)
   res <- unlist(res, recursive = FALSE)
+  if (verbose) {
+    message(sprintf(
+      "  polished %d/%d genes (%d restarted, %d not converged, %d singular, %d dispersion at a bound)",
+      sum(vapply(res, `[[`, logical(1), "polished")), ng,
+      sum(vapply(res, `[[`, logical(1), "restarted")),
+      sum(vapply(res, `[[`, logical(1), "capped")),
+      sum(vapply(res, `[[`, logical(1), "singular")),
+      sum(vapply(res, `[[`, logical(1), "psi_bound"))))
+  }
 
   out_alpha <- alpha
   out_psi <- psi
@@ -334,6 +423,11 @@
     restarted = vapply(res, `[[`, logical(1), "restarted"),
     capped = vapply(res, `[[`, logical(1), "capped"),
     singular = vapply(res, `[[`, logical(1), "singular"),
+    # the dispersion optimum sat on its search bound, so fitNB's moderated psi
+    # was kept for this gene rather than a boundary value stored as an estimate
+    psi_bound = vapply(res, `[[`, logical(1), "psi_bound"),
+    # FALSE when the gene fell back to fitNB's fit entirely
+    polished = vapply(res, `[[`, logical(1), "polished"),
     row.names = rownames(alpha)
   )
   list(alpha = out_alpha, psi = out_psi,

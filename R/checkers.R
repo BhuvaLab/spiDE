@@ -23,10 +23,28 @@ checkSPE <- function(spe, assay = "counts", cell_type = "cell_type", sample_id =
 
 # Counts must be non-negative (NB GLM assumption). Only a min() reduction is
 # forced, which is cheap and DelayedArray-friendly (no full realisation).
-checkCounts <- function(Y) {
+checkCounts <- function(Y, integer.only = FALSE) {
   mn <- suppressWarnings(min(Y, na.rm = TRUE))
   if (!is.finite(mn) || mn < 0) {
     stop("counts should be non-negative")
+  }
+  # The negative binomial likelihood is defined on counts. dnbinom() returns
+  # -Inf for a non-integer value, so the per-gene convergence stage would
+  # reject every Newton step, leave alpha exactly at fitNB's value, and -- while
+  # maximising a constant -Inf -- return the dispersion optimiser's upper bound
+  # for EVERY gene, with its own diagnostics reporting success. Measured:
+  # psi 999.96 across the board. Refuse it here, before the fit, rather than
+  # after an hour of work.
+  if (integer.only) {
+    ss <- as.numeric(Y[seq_len(min(nrow(Y), 20L)), , drop = FALSE])
+    ss <- ss[is.finite(ss)]
+    if (length(ss) && max(abs(ss - round(ss))) > 1e-8) {
+      stop("converge = TRUE requires integer counts, and this assay is not ",
+           "integer-valued (a back-transform such as 2^logcounts - 1 is the ",
+           "usual cause).\n  Every gene's dispersion would silently collapse ",
+           "to its upper bound.\n  Supply raw counts, or pass converge = FALSE.",
+           call. = FALSE)
+    }
   }
   invisible(TRUE)
 }

@@ -184,11 +184,12 @@
   } else {
     # Cauchy (ACAT) combination: correlation-agnostic, no poolr / mvnconv. The
     # tan transform blows up at p = 0/1, so clamp the one-sided p-values first.
-    eps <- 1e-15
-    clamp <- function(xn) pmin(pmax(xn, eps), 1 - eps)
-    combineP <- function(xn) .cauchyCombine(matrix(clamp(xn), nrow = 1))
+    # .clampP() is the one place the ACAT floor is defined; it used to be
+    # written out here and again in .waldCauchyBlock(), so the within-gene and
+    # cross-bandwidth combinations could silently drift onto different floors.
+    combineP <- function(xn) .cauchyCombine(matrix(.clampP(xn), nrow = 1))
     combinePsub <- function(xn, is_ct) {
-      .cauchyCombine(matrix(clamp(xn[is_ct]), nrow = 1))
+      .cauchyCombine(matrix(.clampP(xn[is_ct]), nrow = 1))
     }
   }
 
@@ -344,7 +345,6 @@
     .ptByCol(t, df, lower.tail)
   }
 
-  eps <- 1e-15
   # This is the ACAT path, so combine TWO-SIDED p-values (see .waldBrownGene for
   # why: one-sided ACAT cancels exactly on bidirectional genes). The identical
   # combination is returned on both sides; two.sided tells the cascade not to
@@ -352,7 +352,7 @@
   p_two_all <- pmin(2 * pmin(ptail(t_stat, FALSE), ptail(t_stat, TRUE)), 1)
   dirs <- lapply(c(p.pos = FALSE, p.neg = TRUE), function(lower.tail) {
     p_all <- p_two_all
-    p_niche <- pmin(pmax(p_all[, cov_niche, drop = FALSE], eps), 1 - eps)
+    p_niche <- .clampP(p_all[, cov_niche, drop = FALSE])
     p_gene <- .cauchyCombine(p_niche)
     p_ct <- vapply(uniq_index, function(ct) {
       .cauchyCombine(p_niche[, index_ct == ct, drop = FALSE])
@@ -456,9 +456,30 @@
   sel <- if (full_cov) which(cols_gene) else NULL
   penalty <- if (full_cov) fit@penalty else NULL
   df_ref <- fit@df
+  # Was this fit converged per gene? Two consequences.
+  #
+  # (1) The SE scale. A fixed-effects fit forms se = sqrt(psi * diag(V)), which
+  # is safe only while psi is edgeR's cross-gene MODERATED dispersion. The
+  # convergence stage replaces it with an unshrunk per-gene profile ML, so using
+  # it as the SE scale rescales every gene by the square root of a noisy
+  # estimate -- measured on the toy fixture, sd(t) 2.11 -> 2.45 and max|t|
+  # 12.3 -> 14.2. The Pearson working dispersion is the robust scale the mixed
+  # path already uses; a polished fit takes it too.
+  #
+  # (2) The mean function. calculateMu() winsorises each gene's log-mu at
+  # rowmedian + 4*MAD, a robustness device for fitNB's shared-weight fit. A
+  # converged fit maximises the UNCLAMPED likelihood, so evaluating it at the
+  # clamped mean tests a point where the score is not zero. Measured on the toy,
+  # the clamp bites 4 of 20 genes and moves their Pearson dispersion by up to
+  # 0.67 on the log scale. Use one mean function for both stages.
+  polished <- !is.null(fit@polish)
+  use_pearson <- full_cov || polished
+  # 4 is calculateMu()'s own default (SpaNorm's DEFAULT_WINSOR is internal, so
+  # it cannot be referenced here); fitSpiDE()'s winsor default is the same value.
+  winsor_use <- if (polished) Inf else 4
   # residual df for the working-dispersion estimate (fixed columns only; the
   # penalised random columns contribute little effective df)
-  disp_df <- if (full_cov) max(nrow(W_full) - sum(!grepl("Random", covtype)), 1)
+  disp_df <- if (use_pearson) max(nrow(W_full) - sum(!grepl("Random", covtype)), 1)
 
   alpha_full <- fit@alpha
   psi <- fit@psi
@@ -517,13 +538,14 @@
     if (gpu_active) {
       Yb_dev <- SpaNorm::toGPUMatrix(Yb, backend = backend)
       mub <- SpaNorm::calculateMu(zero_gmean, alpha_block, W_full_dev,
+                                  winsor = winsor_use,
                                   backend = backend) # tensor, block x ncells
       inv_mu <- torch::torch_reciprocal(mub)
       wtb <- torch::torch_reciprocal(
         SpaNorm::add_vec_mat_gpu(psib, inv_mu, backend = backend))
       loglikb <- as.numeric(SpaNorm::toRMatrix(SpaNorm::rowSums_gpu(
         SpaNorm::dnbinom_gpu(Yb_dev, mu = mub, size = 1 / psib, log = TRUE))))
-      if (full_cov) {
+      if (use_pearson) {
         num <- (Yb_dev - mub)^2
         denom <- mub + SpaNorm::mult_vec_mat_gpu(psib, mub * mub,
                                                  backend = backend)
@@ -532,15 +554,16 @@
       }
       rhob <- .rhoPartialGPU(Yb_dev, mub, psib, backend)
     } else {
-      mub <- SpaNorm::calculateMu(zero_gmean, alpha_block, W_full)
+      mub <- SpaNorm::calculateMu(zero_gmean, alpha_block, W_full,
+                                  winsor = winsor_use)
       wtb <- 1 / (1 / mub + psib) # nblock x ncells
       loglikb <- rowSums(dnbinom(Yb, mu = mub, size = 1 / psib, log = TRUE))
-      if (full_cov) {
+      if (use_pearson) {
         dispb <- rowSums((Yb - mub)^2 / (mub + psib * mub^2)) / disp_df
       }
       rhob <- .rhoPartial(Yb, mub, psib)
     }
-    scale_block <- if (full_cov) dispb else psib
+    scale_block <- if (use_pearson) dispb else psib
 
     if (combine == "cauchy") {
       res <- .waldCauchyBlock(alpha_block[, cols_gene, drop = FALSE], Wsub,
