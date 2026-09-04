@@ -104,11 +104,15 @@
   gf <- factor(gidx, levels = seq_along(zi))
 
   parts <- function(w) {
-    A <- crossprod(X * sqrt(w))
+    # ONE weighted copy of X, reused for both the gram and the group sums.
+    # Writing it as crossprod(X * sqrt(w)) plus rowsum(cbind(w, X * w), ...)
+    # allocates two full n x ncol(X) temporaries, and at realistic sizes the
+    # memory traffic -- not the flop count -- is what this stage costs.
+    Xw <- X * w
+    A <- crossprod(X, Xw)
     diag(A) <- diag(A) + pen_x
-    agg <- rowsum(cbind(w, X * w), group = gf, reorder = TRUE)
-    cvec <- agg[, 1] + pen_z              # the diagonal of C, length G
-    B <- t(agg[, -1, drop = FALSE])       # ncol(X) x G
+    cvec <- as.numeric(rowsum(w, group = gf, reorder = TRUE)) + pen_z
+    B <- t(rowsum(Xw, group = gf, reorder = TRUE))   # ncol(X) x G
     list(S = A - B %*% (t(B) / cvec), B = B, cvec = cvec)
   }
 

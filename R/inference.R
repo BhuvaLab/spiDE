@@ -272,7 +272,8 @@
                              index_ct, uniq_index, Wgram, w_rc = NULL,
                              W_full = NULL,
                              penalty = NULL, sel = NULL, df = NULL,
-                             backend = "cpu", cov.batch = NULL) {
+                             backend = "cpu", cov.batch = NULL,
+                             absorb = NULL) {
   b <- nrow(alpha_block)
 
   # The only per-gene quantity the Wald statistics need out of the (p x p)
@@ -286,7 +287,36 @@
   # patient-level contrast variance w'Vw, accumulated while V exists
   quadB <- rep(0, b)
   on_cpu <- !SpaNorm::is_torch_tensor(wtb)
-  if (on_cpu && !is.null(cov.batch) && as.integer(cov.batch) == 1L) {
+  if (on_cpu && !is.null(absorb)) {
+    # The nested (sample x cell type) block is a 0/1 partition of the cells, so
+    # its blocks of the information matrix are a diagonal and a rowsum away and
+    # can be absorbed by a Schur complement. The tested columns are never in
+    # that block, and S^-1 IS the covariance restricted to the dense columns
+    # (test-polish.R pins this against the dense inverse, including the
+    # diagonal and the patient contrast). So the per-gene gram runs over the
+    # dense columns alone instead of building and inverting the full design's
+    # gram and then discarding the block.
+    #
+    # Measured at the real cohort shape (77,454 cells, 345 dense + 660 nested
+    # columns): 2.16 s -> 0.35 s per gene, a 6.2x saving, or 8.0 h -> 1.3 h for
+    # a 13,348-gene transcriptome, agreeing to 7e-21. The saving is NOT uniform
+    # -- at a smaller shape (20,000 cells, 400 groups) the two are within 20%
+    # and the absorption can even lose, because the Schur correction and the
+    # group sums are then a bigger share of a smaller gram. It is kept
+    # unconditional because at those sizes both paths cost well under a second
+    # per gene, so only the large case is worth optimising for.
+    for (g in seq_len(b)) {
+      vcg <- absorb$solver$xcov(wtb[g, ])
+      if (is.null(vcg)) {
+        diagB[g, ] <- NA_real_
+        if (!is.null(w_rc)) quadB[g] <- NA_real_
+        next
+      }
+      vcg <- vcg[absorb$sel_x, absorb$sel_x, drop = FALSE]
+      diagB[g, ] <- diag(vcg)
+      if (!is.null(w_rc)) quadB[g] <- as.numeric(crossprod(w_rc, vcg %*% w_rc))
+    }
+  } else if (on_cpu && !is.null(cov.batch) && as.integer(cov.batch) == 1L) {
     # Very wide designs (large p) can only afford one gene per sub-batch, and
     # at that size the batched machinery is pure overhead: the (1, p, p)
     # array, invert_mat_batched()'s vapply/aperm round-trip and the
@@ -529,6 +559,20 @@
                                backend, gpu.mem.budget)
   }
 
+  # Absorb the nested indicator block when there is one and we are on the CPU
+  # (the absorption uses rowsum(), which has no tensor equivalent here).
+  absorb <- NULL
+  if (full_cov && !gpu_active && !is.null(fit@re_group)) {
+    nested_cols <- !is.na(fit@re_group) & fit@re_group == "SampleCellTypeInt"
+    if (any(nested_cols)) {
+      xi <- which(!nested_cols)
+      # every tested column is a fixed effect, so it lies in the dense block
+      stopifnot(all(sel %in% xi))
+      absorb <- list(solver = .newtonSolver(W_full, penalty, nested_cols),
+                     sel_x = match(sel, xi))
+    }
+  }
+
   block_res <- BiocParallel::bplapply(blocks, function(gi) {
     Yb <- as.matrix(Y[gi, , drop = FALSE])
     alpha_block <- alpha_full[gi, , drop = FALSE]
@@ -575,7 +619,8 @@
                               uniq_index, Wgram, w_rc = w_rc,
                               W_full = if (full_cov) W_full else NULL,
                               penalty = penalty, sel = sel, df = df_ref,
-                              backend = backend, cov.batch = cov_batch)
+                              backend = backend, cov.batch = cov_batch,
+                              absorb = absorb)
       res$loglik <- loglikb
       res$rho_s <- rhob$s
       res$rho_n <- rhob$n

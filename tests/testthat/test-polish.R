@@ -383,3 +383,31 @@ test_that("an underflowed fitted mean does not become a NaN statistic", {
   gs <- list(set1 = rownames(f@alpha)[1:5])
   expect_no_error(spiGSEA(r, spe = spe, genesets = gs, type = "niche"))
 })
+
+test_that("the absorbed covariance equals the dense one on the TESTED columns", {
+  # The Schur complement gives the X-block of the full penalised covariance,
+  # which is exactly what the tested columns need -- so inference can avoid
+  # building a gram over the ~660 indicator columns. This is the equivalence
+  # that substitution rests on, at the sub-block inference actually reads.
+  d <- toy_design()
+  set.seed(11)
+  w <- runif(nrow(d$W), 0.2, 3)
+  sv <- spiDE:::.newtonSolver(d$W, d$pen, d$nested)
+
+  info <- crossprod(d$W * sqrt(w))
+  diag(info) <- diag(info) + d$pen
+  dense <- solve(info)
+
+  xi <- which(!d$nested)
+  absorbed <- sv$xcov(w)
+  expect_equal(absorbed, dense[xi, xi], tolerance = 1e-8)
+
+  # and the quantities inference reads off it: the diagonal, and a quadratic
+  # form in a contrast supported on the tested columns
+  k <- seq_len(min(4L, length(xi)))
+  expect_equal(diag(absorbed)[k], diag(dense)[xi[k]], tolerance = 1e-8)
+  wv <- numeric(length(xi)); wv[k] <- c(0.4, 0.3, 0.2, 0.1)[seq_along(k)]
+  wfull <- numeric(ncol(d$W)); wfull[xi] <- wv
+  expect_equal(as.numeric(crossprod(wv, absorbed %*% wv)),
+               as.numeric(crossprod(wfull, dense %*% wfull)), tolerance = 1e-8)
+})

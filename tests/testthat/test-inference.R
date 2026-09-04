@@ -307,3 +307,47 @@ test_that("mixed-effects Cauchy inference runs on a design too wide to flatten",
   expect_equal(unname(res$se), unname(ref_se), tolerance = 1e-8)
   expect_true(all(is.finite(res$t_stat)))
 })
+
+test_that("absorbing the nested block gives identical inference to the dense gram", {
+  # The nested (sample x cell type) columns are a 0/1 partition, so the per-gene
+  # covariance can be had from a Schur complement over the DENSE columns alone
+  # -- 345 rather than ~1,005 on a real cohort. That is only worth doing if it
+  # changes nothing, so compare the two paths on the same inputs.
+  spe <- buildNiches(.toySPE(), sigma = 20)
+  f <- fits(fitSpiDE(spe, "condition", sigma = 20, random = "intercept",
+                     re.celltype = TRUE, verbose = FALSE))[[1]]
+  Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
+
+  W_full <- f@W
+  covtype <- as.character(f@covtype)
+  cols_gene <- spiDE:::.testedCols(covtype, spiDE:::.fitMode(f))
+  Wsub <- W_full[, cols_gene, drop = FALSE]
+  cov_niche <- spiDE:::.nicheTestCols(covtype, spiDE:::.fitMode(f))[cols_gene]
+  cm <- f@coefmap[cols_gene, , drop = FALSE]
+  index_ct <- cm$index[cov_niche]
+  uniq_index <- unique(index_ct)
+  sel <- which(cols_gene)
+
+  mu <- pmax(SpaNorm::calculateMu(rep(0, nrow(f@alpha)), f@alpha, W_full,
+                                  winsor = Inf), spiDE:::.MU_FLOOR)
+  wt <- 1 / (1 / mu + f@psi)
+  disp_df <- max(nrow(W_full) - sum(covtype != "Random"), 1)
+  scale_b <- rowSums((Y - mu)^2 / (mu + f@psi * mu^2)) / disp_df
+
+  nested <- !is.na(f@re_group) & f@re_group == "SampleCellTypeInt"
+  expect_true(any(nested))
+  xi <- which(!nested)
+  absorb <- list(solver = spiDE:::.newtonSolver(W_full, f@penalty, nested),
+                 sel_x = match(sel, xi))
+
+  args <- list(f@alpha[, cols_gene, drop = FALSE], Wsub, wt, scale_b,
+               cov_niche, index_ct, uniq_index, W_full,
+               W_full = W_full, penalty = f@penalty, sel = sel, df = f@df)
+  dense <- do.call(spiDE:::.waldCauchyBlock, c(args, list(cov.batch = 1L)))
+  absorbed <- do.call(spiDE:::.waldCauchyBlock, c(args, list(absorb = absorb)))
+
+  expect_equal(absorbed$se, dense$se, tolerance = 1e-8)
+  expect_equal(absorbed$t_stat, dense$t_stat, tolerance = 1e-8)
+  expect_equal(absorbed$p.pos, dense$p.pos, tolerance = 1e-8)
+  expect_equal(absorbed$se_pat, dense$se_pat, tolerance = 1e-8)
+})

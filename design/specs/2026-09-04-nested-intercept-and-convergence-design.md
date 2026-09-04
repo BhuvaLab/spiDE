@@ -46,10 +46,14 @@ In scope:
 
 Out of scope (a second spec):
 
-- Absorbing the indicator block inside `.blockedInference()`'s batched grams,
-  or reusing the polish stage's converged standard errors there. With ~660
-  extra dense columns the per-gene inference gram is ~8× slower on the real
-  cohort (hours rather than an hour on CPU). Accepted for now.
+- ~~Absorbing the indicator block inside `.blockedInference()`'s batched grams~~
+  **DONE (2026-09-04)**, after a package-wide review flagged the unused
+  `xcov()` three times over. `.blockedInference()` now takes the Schur path on
+  the CPU whenever a nested block is present. Measured at the cohort shape:
+  2.16 s → 0.35 s per gene, 8.0 h → 1.3 h for a transcriptome, agreeing to
+  7e-21 (`test-inference.R`). Note the saving is size-dependent and can invert
+  on small designs — a 20,000-cell proxy showed a 20% *slowdown*, which is why
+  the first measurement of this change was nearly a false negative.
 - The simulation re-run and the real-cohort calibration check (research
   runs, after the package change).
 

@@ -88,6 +88,14 @@
   random-effect block and the run died in `cbind()` with `number of rows of
   matrices must match`. `log()` of a QC column that is zero for some cells is
   the usual way in.
+* **Inference absorbs the nested indicator block.** The (sample x cell type)
+  columns are a 0/1 partition of the cells, so the per-gene covariance comes
+  from a Schur complement over the dense columns alone rather than a gram over
+  the full design. Measured at the real cohort shape (77,454 cells, 345 dense +
+  660 nested columns): **2.16 s -> 0.35 s per gene**, or 8.0 h -> 1.3 h for a
+  13,348-gene transcriptome, agreeing with the dense path to 7e-21. The saving
+  is size-dependent -- at a smaller shape the two are within 20% -- so it is
+  kept unconditional only because both are cheap there.
 * Examples now use a single bandwidth, and the fast fixed-effects path where
   their subject is an accessor rather than the mixed correction, taking
   `R CMD check`'s example time from ~23 minutes to ~10.
