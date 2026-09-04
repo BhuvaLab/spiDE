@@ -50,6 +50,34 @@
 
 ## Bug Fixes
 
+* **Non-integer counts are refused when `converge = TRUE`.** `dnbinom()` is
+  `-Inf` off the integers, so the convergence stage rejected every step, left
+  the coefficients at `fitNB`'s values and returned the dispersion optimiser's
+  *upper bound* for every gene (measured 999.96) while its own diagnostics
+  reported success. `checkCounts()` now refuses such an assay before the fit.
+* **The convergence stage no longer densifies the whole counts matrix.** Its
+  automatic block size only applied with more than one worker, so under the
+  default `SerialParam()` a single block realised every gene at once (8.3 GB on
+  a real cohort), breaking the package's never-densify invariant.
+* **A polished fit is scaled by the Pearson working dispersion on both paths.**
+  The fixed-effects path scaled its standard errors by `psi`, which is safe only
+  while `psi` is edgeR's moderated value; after convergence it is not. Measured
+  on the toy fixture, converging took `sd(t)` from 2.11 to 2.45 before this fix
+  and to 1.92 after it.
+* **Fit and inference now use one mean function.** The convergence stage
+  maximises the unclamped likelihood, so inference evaluates it unclamped rather
+  than at `calculateMu()`'s winsorised mean; the planted toy effect's statistic
+  goes 3.98 to 5.78. With `converge = TRUE`, `winsor` therefore sets only the
+  Newton starting point.
+* **The Satterthwaite fallback no longer aborts the fit.** Its documented
+  degrade-to-`"between"` path returned a bare number from `.fitNBmixed()`, so
+  the caller died with `$ operator is invalid for atomic vectors`.
+* A dispersion optimum sitting on its search bound, and a gene whose Newton
+  cannot run, both now keep `fitNB`'s estimate and are flagged in `@polish`
+  (`psi_bound`, `polished`) rather than storing a bound or a zeroed fit.
+* `@polish` is keyed by gene rather than by position, and a wrongly sized
+  `lambda.a` is refused with a message naming `re.celltype`.
+
 * `updateObject()` could not repair an object serialised before a slot whose
   prototype is `NULL` was added (`polish`, and latently `re_group`, `tau2`,
   `penalty`, `df`). `.fillSlots()` used `attr(object, s) <- value`, and
