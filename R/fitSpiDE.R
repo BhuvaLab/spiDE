@@ -313,7 +313,8 @@
 #' fit <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
 #' fit
 #'
-#' fit0 <- fitSpiDE(spe, condition = NULL, sigma = 20, verbose = FALSE)
+#' fit0 <- fitSpiDE(spe, condition = NULL, sigma = 20, random = "none",
+#'                  verbose = FALSE)
 #' fit0
 #'
 #' @rdname fitSpiDE

@@ -32,7 +32,7 @@ RoxygenNote: 8.0.0
 biocViews: Software, Spatial, DifferentialExpression, GeneExpression,
     Transcriptomics, Regression, CellBiology
 Depends:
-    R (>= 4.4)
+    R (>= 4.5.0)
 Imports:
     BiocGenerics,
     SpaNorm (>= 1.7.7),
