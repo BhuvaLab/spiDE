@@ -76,8 +76,14 @@
   `testSpiDE(dispersion = "ql")` replaces the Pearson scale with the
   edgeR-v4-style quasi-likelihood dispersion (`.qlDispersion()`, adjusted
   deviance over effective df) moderated across genes with `squeezeVar()`.
-  Both are measured, not adopted: see the dispersion arms in the research
-  harness. CPU only; the QL scale needs a mixed or converged fit.
+  Both are measured, not adopted (research `fdr-ordering/FINDINGS.md`,
+  2026-09-08). On the synthetic null the psi rule changes nothing, while the
+  QL scale is the only configuration that holds the nominal level at every
+  sample size (0.050–0.055 against 0.068–0.091 shipped), at the no-switch
+  design's power and a realised FDP far below nominal; on the real cohort
+  both variants call the same triplets as the shipped fit, the moderated psi
+  at two thirds of the wall time and the QL pre-pass at no extra cost. CPU
+  only; the QL scale needs a mixed or converged fit.
 
 ## Documentation
 
