@@ -54,7 +54,12 @@ so they can be forwarded via `...` without renaming.
 **Entry points.** `spiDE()` chains the three stages below; `buildNiches()` → `fitSpiDE()` →
 `testSpiDE()` is the same pipeline unrolled. `twoStageSpiDE()` is a *separate estimator* over the
 same niche `reducedDims` (see "The two-stage estimator"), and `spiGSEA()` runs on an already-fitted
-object.
+object. `compositionTest()` (`R/composition.R`) is a *different question*: the between-sample
+composition association that `fitSpiDE()`'s nested intercept deliberately absorbs, tested at the
+patient level — pseudobulk per (sample, index type), the sample's mean niche density around those
+cells, `limma` across samples, with `"niche"` (pooled) and `"condition:niche"` (the patient-level
+counterpart of the three-way term). It is real signal and it is not niche-dependent DE; never
+report one as the other.
 
 ### Pipeline (three stages, chained by `spiDE()`)
 
@@ -175,7 +180,14 @@ Exported examples and the vignette use the pre-baked `data(toySpiDE)` instead (b
 `data-raw/make_toySpiDE.R`), since exported-function `@examples` cannot call internal helpers under
 `R CMD check`. `field`/`n_per` were tuned (500 units, 80 cells/sample) specifically so all four default
 bandwidths (10/30/50/70) fit without IRLS collinearity failures — don't shrink the field without
-re-checking every bandwidth still converges.
+re-checking every bandwidth still converges. `.toySPE(composition = k)` plants a **between-sample
+composition confound** (each sample's A cells shifted toward or away from the B-rich region, G2
+shifting with that in Responders only, zero within-sample slope) — but at the default 80 cells the
+niche covariate's per-sample mean is placement noise (between-sample sd 0.07 vs within 0.25), and
+no estimator can see a between-sample effect the covariate does not carry. Use `n_per >= 200` and
+bandwidth 50 (ratio 0.7): then `compositionTest()` sees it at t ≈ 4.6 and the nested intercept
+takes the GLM's leakage to 0.00. This cost three fixture redesigns to learn; do not "fix" it by
+lowering thresholds.
 
 ### The sample-level correction (and the default)
 
