@@ -48,6 +48,15 @@ restart, load existing parts and skip completed reps — but carry the PRIOR
 list forward rather than rebuilding it, or the resume silently drops earlier
 replicates.
 
+And do not edit the harness while an array is live — not the package (freeze
+it, §1) and not `research/R/run_task.R` either: R evaluates a driver script
+incrementally, so tasks already running resume reading the modified file at a
+stale byte offset. On 2026-09-07 that killed 255 tasks *after* they had
+written their result, which marked the array FAILED and left its `afterok`
+aggregation at `DependencyNeverSatisfied`. Edit between arrays; if it happens,
+the outputs are intact — cancel the stuck aggregation and re-run
+`aggregate.sbatch` without the dependency.
+
 ## 5. Rows, not new files
 
 A new method arm is extra **rows** in the one canonical table per scenario
