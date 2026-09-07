@@ -117,6 +117,16 @@ layer: they routinely recover genes the niche layer never reports, because a
 cell-type-wide response shift is not a neighbourhood effect and has nowhere to
 go in the three-way term.
 
+The term also fixes what the niche layer *means*. Without it — the design spiDE
+shipped before 0.99.7 — a flat response shift loads onto the niche slope, and
+the slope's standard error shrinks to about $0.7\times$ because it is then a
+regression through the origin. Such a design reports many more niche calls
+(recall 0.36 against 0.17 on the same simulated dataset), not because it is a
+better test but because it is testing a different, broader quantity. The
+niche layer here estimates the within-cell-type gradient; the
+`"celltype"` layer reports the flat shift on its own. The measurement is in
+`vignette("spiDE-model")`.
+
 The planted `G1` / index A / niche B effect is recovered with a positive (up-regulated) direction:
 
 ```{r recovered}
@@ -204,6 +214,16 @@ By default each cell is treated as an independent observation. When many cells c
 res <- spiDE(toySpiDE, condition = "condition", sigma = c(10, 30, 50),
              random = "slope")
 ```
+
+Two further defaults, `re.celltype = TRUE` and `converge = TRUE`, add a
+(sample × cell type) random intercept and converge each gene's fit. They were
+adopted on real-cohort evidence: without the nested intercept a between-patient
+composition association loads onto the tested niche slopes, and a permutation
+null that shuffles within (sample, cell type) preserves it, so the real data
+and its null were indistinguishable. On a simulation that plants no such
+association they cost a little on the null (type-I 0.071 against 0.058 at a
+nominal 0.05, averaged over $S \ge 10$; more at $S = 4$) and gain recall; the
+companion vignette gives the decomposition by switch.
 
 The model, the ridge = random-effects equivalence, and a worked calibration example are described in the companion vignette *The spiDE model, mixed-effects inference, and two-stage estimation*. Note that a per-sample random intercept absorbs all between-sample effects, so sample-level covariates (e.g. `Age`) must be dropped when random effects are used.
 

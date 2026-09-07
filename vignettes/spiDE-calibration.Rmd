@@ -137,6 +137,21 @@ which failure mode dominates:
 
 Both resolve towards 1 as information accumulates, from opposite sides.
 
+A third driver is not a variance at all. A gene whose mean expression in an
+index type differs between patients in step with how densely that type is
+surrounded — a between-patient *composition* association — loads onto the
+tested niche slopes unless the design has an intercept per (sample, cell type).
+The shipped design did not until 0.99.17, and on the real YTMA cohort the
+consequence was confined to the brightest genes in the most populous index
+types: $\mathrm{sd}(\text{null } t)$ of 1.25–1.42 in the top expression band, in
+Tumor and B cells, against 1.00–1.03 in every type under about 3,000 cells.
+`re.celltype = TRUE` (now the default) removes it — 0.96–0.99 in every band —
+and it is why a $\lambda$ that rises with a compartment's cell count is worth
+a second look. Note the defaults themselves carry a small measured cost on a
+clean synthetic null (type-I 0.071 against 0.058 at a nominal 0.05, averaged
+over $S \ge 10$), so a $\lambda$ a few percent above 1 is expected from the
+method and is not evidence of a data problem.
+
 The relationship is best seen across the cell types *within one real fit*, where
 compartment sizes span orders of magnitude: abundant, widely distributed
 compartments sit at $\lambda \approx 1$ while sparse ones fall well below it. A
@@ -211,6 +226,20 @@ concluding that the model is at fault:
 Conservatism at small $n$ is expected behaviour for a Wald test on a sparse
 negative-binomial fit. It is not a bug, and there is no model change that
 removes it.
+
+## Do not reach for a smaller one either
+
+The opposite temptation is to drop the `CellType:condition` term because a
+design without it reports more niche calls — on the simulation benchmark its
+recall is 0.36 against 0.17 at the same nominal FDR. That is not power. Without
+the term a flat cell-type-wide response loads onto the niche slope, which
+inflates the estimate by a quarter of the flat shift and, more importantly,
+shrinks its standard error to about $0.7\times$, because the slope becomes a
+regression through the origin. The extra calls are a broader quantity reported
+under the niche label, and on the real cohort the term-restored design found
+41% more triplets, not fewer. $\lambda$ cannot tell these two designs apart on
+a null, which is exactly why the estimand has to be fixed by the design and
+not by the calibration statistic.
 
 ## Restrict what you test
 

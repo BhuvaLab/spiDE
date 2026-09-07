@@ -943,6 +943,43 @@ res <- spiDE(spe, condition = "condition", sigma = c(10, 30, 50),
 -   **Correct, not merely "fixed with extras".** The mixed fit does more than add a between-patient variance component: it also replaces `random = "none"`'s NB dispersion scaling and sub-design covariance with the correct **working (quasi-NB) dispersion** and **full penalised covariance**. So even when $\tau^2 \to 0$ (no genuine clustering) the mixed fit does *not* reproduce the `"none"` fit — it gives the correctly-scaled, and hence more conservative, standard errors. This is deliberate: `"none"` is known to be anti-conservative, so its larger apparent "power" is partly spurious. It is for this reason that `"intercept"` is now the default.
 -   **Power needs samples and effect size.** Because the test is now honest, a real response-niche effect must be visible *between patients* to be declared. With few patients, or an effect seen in only a handful of responders, the between-patient df and the inflated SEs will (correctly) leave it non-significant. `df.method = "satterthwaite"` recovers legitimate power for niche coefficients that carry within-patient information — giving them their larger effective df instead of the flat $S-2$ — without touching the honest between-patient df of the main effect; larger sample sizes restore power further.
 
+## Why the design carries `CellType:condition`
+
+The three-way `CellType:condition:niche` coefficient is meant to estimate how a
+gene's response to the condition changes *along the niche gradient within an
+index cell type*. A flat response — the gene up in every A cell of every
+Responder, regardless of neighbourhood — is a different quantity, and the
+design gives it its own column, `CellType:condition`, cell-means coded. The
+design spiDE shipped before 0.99.7 did not: its only condition column was a
+global main effect, so a cell-type-specific flat shift had nowhere to go but
+the uncentred niche slope.
+
+That earlier design looks *more* powerful on the simulation benchmark, and it
+is worth being precise about why, because the effect is large (recall 0.36
+against 0.17 at FDR 0.05 on the same dataset, concentrated in marker genes)
+and looks like a free lunch. One power dataset ($S = 24$, 300 cells per sample,
+$\beta = 2$) was fit under four package builds, including one that differs from
+the niche-only build *only* by the added term. The build makes no difference
+(the two A:B slope estimates correlate at 1.000 between that build and 0.99.17);
+the term is the whole gap. Without it the niche-only slope exceeds the
+term-restored one by $0.25\times$ the `CellType_A:condition` coefficient, gene
+by gene, on planted and null genes alike ($r = 0.88$ and $0.92$): the mean of
+the planted effect — $\beta$ times the mean niche potential, a flat
+A-in-Responders shift — is being counted as niche dependence. That inflates the
+estimate by only about 10%. The $t$ is $1.5$–$1.6\times$ larger because the
+standard error is $0.67$–$0.72\times$: with no intercept column in that
+subspace, the slope is a regression through the origin, whose precision is
+bought by assuming there is no flat shift to estimate. The `ctresp` benchmark
+family, which plants flat shifts with no niche effect, shows the same channel
+as fabricated niche calls; the effect-size sweep shows the niche-only recall
+saturating at about 0.5 from $\beta = 2$; and on the real cohort restoring the
+term recovered 41% *more* triplets. Two-sided Cauchy combination gave more
+discoveries than one-sided Brown in every build, so sidedness is not involved.
+
+The recall a design reports is only comparable across designs when they
+estimate the same quantity. The quantity spiDE estimates is the within-type
+gradient, and `results(type = "celltype")` reports the flat shift separately.
+
 ## Why the niche slope must be a within-(sample, cell type) slope
 
 Under cell-means coding the tested `CellType:condition:niche` coefficient is
@@ -986,6 +1023,28 @@ On the twelve raw shuffle grids of the real cohort, adding the block takes the
 per-gene $\mathrm{sd}(\text{null } t)$ of the brightest genes from 1.42 to 0.96,
 removes the expression gradient entirely (1.000 against 1.198), and removes
 every $|t| > 4.89$ exceedance where the uncorrected design produced 95.
+
+**What it costs where the confound is absent.** The simulation benchmark places
+niche cells by the same potential in every sample, so a sample's mean niche
+density varies only by sampling noise and is independent of its expression
+intercept: it plants no composition effect, and on it the nested block can
+only cost, never pay. Run as tokened arms (40 replicates, intercept mode,
+per-cell standard error about 0.0016), the 0.99.17 defaults are more liberal
+on the null than the design term alone: averaged over $S \ge 10$ and both
+layouts, 0.058 for the shipped design, 0.066 with convergence only, 0.068 with
+the nested block only, 0.071 with both; at $S = 4$ the pair reaches 0.085–0.096
+against 0.036–0.049. The two switches act at different sample sizes.
+Convergence costs at small $S$ and fades onto the shipped arm by $S = 24$. The
+nested block is harmless at $S = 4$ (0.037–0.043) and holds a constant $+0.010$
+from $S = 16$, which points at its Satterthwaite reference df or at the
+estimation of its variance component. The pair gains recall — 0.402 against
+0.361 at $S = 30$ — with slightly better FDP from $S = 10$ and a worse one at
+$S = 4$ (0.59 against 0.35). Both facts hold at once: the defaults were chosen
+for a confound that real cohorts carry, because patients differ in
+composition, and that this simulator does not contain. The synthetic null is
+not a reason to revert; it is the measurement the two candidate cures — a
+moderated dispersion at the converged mean, and the nested block's reference
+df — will be judged against.
 
 If the between-sample association is itself of interest — "do patients whose
 tumour compartment is B-cell-rich express this gene differently *in* tumour
@@ -1044,6 +1103,11 @@ value and is flagged in `@polish$psi_bound`. And because $\psi$ is no longer
 moderated, it is no longer a safe scale for the standard error, so a polished
 fit takes the **Pearson working dispersion** instead — on both the mixed and the
 fixed-effects paths, where previously only the mixed path did.
+The cost of giving up moderation is measurable and confined to few-sample
+designs: on the synthetic null, convergence alone takes type-I error at
+$S = 4$ from 0.036–0.049 to 0.086–0.095, and the gap has closed by $S = 24$.
+A moderated dispersion at the converged mean would keep the converged
+coefficients and restore the shrinkage; it is the indicated next step.
 
 *It converges on the unclamped likelihood.* `fitNB` winsorises, which is a
 robustness device for a fit that shares one weight vector across genes. A
@@ -1446,8 +1510,10 @@ the full story).
 
 -   **Prefer `fitSpiDE(random = "intercept")`** (the package default) for
     genome-wide discovery: it is more powerful, its mild anti-conservatism
-    is quantified, and the hierarchical FDR is designed for the full
-    hypothesis space.
+    is quantified (null type-I 0.058 for the design term alone and 0.071 with
+    the 0.99.17 defaults, averaged over $S \ge 10$ on the synthetic study;
+    worse at $S = 4$, see above), and the hierarchical FDR is designed for
+    the full hypothesis space.
 -   **Prefer `twoStageSpiDE()`** when the conclusion must survive a
     sceptical error audit on a *pre-specified* hypothesis — a restricted set
     of index types, niches and genes — with enough patients ($S \gtrsim 16$

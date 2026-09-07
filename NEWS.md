@@ -69,6 +69,14 @@
   version tied B-cell prevalence to condition, which moved the between-sample
   mean too little to matter next to the within-sample spread.
 
+## Documentation
+
+* The three vignettes carry the 2026-09-07 measurements: the synthetic null
+  cost of the 0.99.17 defaults decomposed by switch, the finding that the
+  legacy niche-only design's higher recall is a different estimand with a
+  smaller standard error rather than a better test, and what that means for
+  reading the niche and cell-type result layers and the calibration statistic.
+
 ## Bug Fixes
 
 * **Non-integer counts are refused when `converge = TRUE`.** `dnbinom()` is
