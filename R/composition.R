@@ -81,6 +81,7 @@
 #' @param min.cells minimum cells of the index type a sample must contribute.
 #' @param prior.count the pseudocount in the log2-CPM.
 #' @param verbose report progress.
+#' @param ... further arguments passed to the method.
 #' @return a data.frame with one row per (gene, index type, niche type, term):
 #'   \code{gene}, \code{ct_index}, \code{ct_niche}, \code{term}, \code{coef}
 #'   (log2-CPM per unit log1p density), \code{t}, \code{p}, \code{fdr} (BH

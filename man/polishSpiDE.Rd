@@ -25,6 +25,8 @@ A \code{\link[=twoStageSpiDE]{twoStageSpiDE()}} result has no per-gene GLM fit a
 
 \item{spe}{the SpatialExperiment the fit was made from (for the counts).}
 
+\item{...}{further arguments passed to the method.}
+
 \item{assay}{a character, the counts assay.}
 
 \item{lambda.a}{the ridge the fit was made with, for a fixed-effects fit

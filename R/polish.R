@@ -533,6 +533,7 @@
 #'   \code{BPPARAM} worker.
 #' @param BPPARAM a BiocParallelParam; the stage is blocked over genes.
 #' @param verbose report progress.
+#' @param ... further arguments passed to the method.
 #' @return the object with converged \code{alpha} and \code{psi}, per-gene
 #'   diagnostics in \code{@polish}, and inference cleared.
 #' @examples
@@ -563,7 +564,7 @@ setMethod(
     missing_genes <- setdiff(rownames(object@fits[[1]]@alpha), rownames(Y))
     if (length(missing_genes)) {
       stop("the fit's genes are not all in the counts: e.g. ",
-           paste(head(missing_genes, 3), collapse = ", "), call. = FALSE)
+           paste(utils::head(missing_genes, 3), collapse = ", "), call. = FALSE)
     }
     object@fits <- lapply(seq_along(object@fits), function(i) {
       if (verbose) message(sprintf("Polishing bandwidth sigma = %s",

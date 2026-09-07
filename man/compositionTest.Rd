@@ -26,6 +26,8 @@ compositionTest(spe, ...)
 \arguments{
 \item{spe}{a SpatialExperiment with niche reducedDims (see \code{\link[=buildNiches]{buildNiches()}}).}
 
+\item{...}{further arguments passed to the method.}
+
 \item{condition}{a character, the colData column of the condition (constant
 within sample), or \code{NULL}.}
 
