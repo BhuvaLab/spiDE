@@ -714,12 +714,21 @@ working tree** is not one experiment: tasks start at different times, so edits m
 tasks different code. A previously reported result ("two-stage null inflation grows with S, 0.078 →
 0.127") came from such a run and **did not survive re-measurement on a frozen snapshot** — the paired
 ablation shows no trend with S in either configuration (p = 0.82 / 0.62). Always pin `SPIDE_PKG` to a
-snapshot (`.claude/skills/run-benchmark-arm/scripts/freeze_snapshot.sh`). The same applies to the
-**driver**: R evaluates `Rscript research/R/run_task.R` incrementally, so editing that file while an
-array is live corrupts the tasks already running — on 2026-09-07 255 tasks wrote their result and then
-died on parse garbage, which marked the array FAILED and left its `afterok` aggregation at
-`DependencyNeverSatisfied` (the outputs were intact; only the dependency was lost). Edit the harness
-between arrays, never during one.
+snapshot (`.claude/skills/run-benchmark-arm/scripts/freeze_snapshot.sh`). The same applies to **every
+`Rscript` driver**, not only the package: R parses a script file incrementally through an 8 KB stdio
+buffer, so a task that is inside its multi-hour fit reads the *next* expression from whatever the
+live file holds by then, at the old byte offset. Two losses on 2026-09-07: 255 benchmark tasks wrote
+their result and then died on parse garbage (the outputs were intact; the array was marked FAILED and
+its `afterok` aggregation left at `DependencyNeverSatisfied`), and at 22:26 an in-place edit of
+`research/fdr-ordering/R/package_fixed_design.R` killed the eight cohort tasks whose fit ended after
+it, six to seven hours each. Every sbatch therefore now copies its driver to a task-private temp
+file at task start and runs the copy, and `freeze_snapshot.sh` puts frozen copies of both drivers
+under `$SPIDE_PKG/drivers/`, which the sbatch scripts prefer. Two facts that made the rescue
+possible: a `git checkout` or `sed -i` writes a **new inode** and cannot touch a running reader,
+while the Edit tool and a shell `>` rewrite **in place** and can; and a reader that has not yet
+refilled its buffer (position 8192 in `/proc/<pid>/fdinfo`, visible through `srun --overlap
+--cpu-bind=none` on the task's raw job id) is saved by truncating and rewriting the file in place
+with the bytes it expects. Edit the harness between arrays, never during one.
 
 ### Checkers
 
