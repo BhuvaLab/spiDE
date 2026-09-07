@@ -1012,8 +1012,11 @@ expression sat one to four standard errors from its own optimum, with
 log-likelihood gaps of $10^4$–$10^6$, and the dispersion estimated at that point
 was about 1.6 times too large.
 
-`converge = TRUE` (the default) fixes this after the fact. For each gene it
-maximises that gene's own penalised negative-binomial log-likelihood
+`converge = TRUE` (the default) fixes this after the fact, and
+`polishSpiDE()` applies the same stage to an existing fit — one made with
+`converge = FALSE`, or serialised by an older version — without refitting;
+the two routes share one implementation and give the same fit. For each gene
+it maximises that gene's own penalised negative-binomial log-likelihood
 
 $$
 \ell_g(\alpha) \;=\; \sum_i \log \mathrm{NB}\!\left(y_{gi};\, \mu_{gi} = e^{w_i'\alpha},\, \psi_g\right) \;-\; \tfrac{1}{2}\sum_j \lambda_j \alpha_j^2

@@ -448,3 +448,137 @@
   list(alpha = out_alpha, psi = out_psi,
        loglik = vapply(res, `[[`, numeric(1), "loglik"), polish = polish)
 }
+
+#' The per-column ridge the polish must respect
+#'
+#' A mixed fit carries its penalty vector; a fixed-effects fit carries none
+#' (\code{@penalty} is what selects the mixed inference path, so it cannot be
+#' set on a fixed fit) and the ridge is whatever \code{lambda.a} the fit was
+#' made with. One helper for both routes, so \code{fitSpiDE(converge = TRUE)}
+#' and \code{polishSpiDE()} cannot disagree on what they polish against.
+#' @noRd
+.polishPenalty <- function(penalty, lambda.a, p) {
+  if (!is.null(penalty)) return(penalty)
+  if (length(lambda.a) == 1L) rep(lambda.a, p) else lambda.a
+}
+
+#' Polish one SpiDEFit in place: converged coefficients, inference invalidated
+#' @noRd
+.polishSpiDEFit <- function(f, Y, lambda.a = 0, maxit = 50L, tol = 1e-8,
+                            block.size = NULL,
+                            BPPARAM = BiocParallel::SerialParam(),
+                            verbose = TRUE) {
+  f <- updateObject(f)
+  Yf <- Y[rownames(f@alpha), , drop = FALSE]
+  pen <- .polishPenalty(f@penalty, lambda.a, ncol(f@W))
+  pol <- .polishFit(Yf, f@W, f@alpha, f@psi, pen, f@re_group,
+                    covtype = as.character(f@covtype),
+                    maxit = maxit, tol = tol, block.size = block.size,
+                    BPPARAM = BPPARAM, verbose = verbose)
+  alpha <- pol$alpha
+  dimnames(alpha) <- dimnames(f@alpha)
+  polish <- pol$polish
+  rownames(polish) <- rownames(f@alpha)
+  f@alpha <- alpha
+  f@psi <- as.numeric(pol$psi)
+  f@polish <- polish
+  f@loglik <- as.numeric(.blockLoglik(Yf, alpha, f@W, f@psi, winsor = Inf))
+  # everything inference derived from the old coefficients is now stale
+  f@t_stat <- NULL
+  f@se <- NULL
+  f@p.combined.pos <- NULL
+  f@p.combined.neg <- NULL
+  f@se_patient <- numeric(0)
+  f@rho <- numeric(0)
+  f@two.sided <- FALSE
+  f
+}
+
+#' Converge an existing fit, gene by gene
+#'
+#' A post-hoc adjustment: takes a fitted [fitSpiDE()] object and converges
+#' every gene to its own penalised negative-binomial optimum, re-estimating
+#' the dispersion at the converged mean. This is exactly the stage that
+#' \code{fitSpiDE(converge = TRUE)} (the default) runs after
+#' \code{SpaNorm::fitNB} returns; as a separate function it can be applied to a
+#' fit made with \code{converge = FALSE}, to a fit serialised by an older
+#' version of the package, or re-applied with different iteration settings,
+#' without refitting. The two routes share one implementation and one penalty
+#' vector, so \code{polishSpiDE(fitSpiDE(..., converge = FALSE))} and
+#' \code{fitSpiDE(..., converge = TRUE)} give the same fit.
+#'
+#' Why it exists: \code{fitNB} fits all genes in one IRLS loop with a shared
+#' cell-weight vector and an aggregate convergence criterion, and for bright,
+#' cell-type-restricted genes it stops one to four standard errors short of
+#' the gene's own optimum, with a dispersion estimated off the optimum that is
+#' too large. Converging each gene calibrates the null and, on the toy fixture,
+#' sharpens the planted signal (see the model vignette).
+#'
+#' Every inference slot derived from the old coefficients (\code{t_stat},
+#' \code{se}, the combined p-values, the results table and the cross-bandwidth
+#' weights) is cleared; call [testSpiDE()] again afterwards. The reference
+#' degrees of freedom (\code{@df}) and the variance components are kept, as
+#' they are under \code{fitSpiDE(converge = TRUE)}.
+#'
+#' @param object a SpiDEResults from [fitSpiDE()] (one GLM fit per bandwidth).
+#'   A [twoStageSpiDE()] result has no per-gene GLM fit and is refused.
+#' @param spe the SpatialExperiment the fit was made from (for the counts).
+#' @param assay a character, the counts assay.
+#' @param lambda.a the ridge the fit was made with, for a fixed-effects fit
+#'   (\code{random = "none"}), which does not record it; ignored for a mixed
+#'   fit, which carries its own penalty vector.
+#' @param maxit,tol iteration cap and relative log-likelihood tolerance per
+#'   gene (the \code{converge.maxit} / \code{converge.tol} of [fitSpiDE()]).
+#' @param block.size genes per block; \code{NULL} splits one block per
+#'   \code{BPPARAM} worker.
+#' @param BPPARAM a BiocParallelParam; the stage is blocked over genes.
+#' @param verbose report progress.
+#' @return the object with converged \code{alpha} and \code{psi}, per-gene
+#'   diagnostics in \code{@polish}, and inference cleared.
+#' @examples
+#' data(toySpiDE)
+#' spe <- buildNiches(toySpiDE, sigma = 20)
+#' fit0 <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none",
+#'                  converge = FALSE, verbose = FALSE)
+#' fit1 <- polishSpiDE(fit0, spe, verbose = FALSE)
+#' head(fits(fit1)[[1]]@polish)
+#' @seealso [fitSpiDE()] for the same stage as a default, [testSpiDE()] to
+#'   recompute inference afterwards.
+#' @rdname polishSpiDE
+#' @export
+setMethod(
+  "polishSpiDE",
+  signature = "SpiDEResults",
+  definition = function(object, spe, assay = "counts", lambda.a = 0,
+                        maxit = 50L, tol = 1e-8, block.size = NULL,
+                        BPPARAM = BiocParallel::SerialParam(), verbose = TRUE) {
+    object <- updateObject(object)
+    if (!length(object@fits)) {
+      stop("nothing to polish: the object carries no per-gene GLM fit ",
+           "(a twoStageSpiDE() result has none)", call. = FALSE)
+    }
+    checkSPE(spe, assay = assay)
+    Y <- SummarizedExperiment::assay(spe, assay)
+    checkCounts(Y, integer.only = TRUE)
+    missing_genes <- setdiff(rownames(object@fits[[1]]@alpha), rownames(Y))
+    if (length(missing_genes)) {
+      stop("the fit's genes are not all in the counts: e.g. ",
+           paste(head(missing_genes, 3), collapse = ", "), call. = FALSE)
+    }
+    object@fits <- lapply(seq_along(object@fits), function(i) {
+      if (verbose) message(sprintf("Polishing bandwidth sigma = %s",
+                                   object@sigma[i]))
+      .polishSpiDEFit(object@fits[[i]], Y, lambda.a = lambda.a,
+                      maxit = maxit, tol = tol, block.size = block.size,
+                      BPPARAM = BPPARAM, verbose = verbose)
+    })
+    names(object@fits) <- names(updateObject(object)@fits)
+    # cross-bandwidth combination and the results table are stale too
+    object@gene.weights <- NULL
+    object@p.cauchy.pos <- NULL
+    object@p.cauchy.neg <- NULL
+    object@results <- data.frame()
+    object@fdr <- NA_real_
+    object
+  }
+)

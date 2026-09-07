@@ -54,7 +54,10 @@ so they can be forwarded via `...` without renaming.
 **Entry points.** `spiDE()` chains the three stages below; `buildNiches()` → `fitSpiDE()` →
 `testSpiDE()` is the same pipeline unrolled. `twoStageSpiDE()` is a *separate estimator* over the
 same niche `reducedDims` (see "The two-stage estimator"), and `spiGSEA()` runs on an already-fitted
-object. `compositionTest()` (`R/composition.R`) is a *different question*: the between-sample
+object. `polishSpiDE()` (`R/polish.R`) is the per-gene convergence stage as a post-hoc adjustment on an
+existing fit; it shares one implementation and one penalty rule (`.polishPenalty()`) with
+`fitSpiDE(converge = TRUE)`, so the two routes give the same fit, and it clears the inference slots.
+`compositionTest()` (`R/composition.R`) is a *different question*: the between-sample
 composition association that `fitSpiDE()`'s nested intercept deliberately absorbs, tested at the
 patient level — pseudobulk per (sample, index type), the sample's mean niche density around those
 cells, `limma` across samples, with `"niche"` (pooled) and `"condition:niche"` (the patient-level

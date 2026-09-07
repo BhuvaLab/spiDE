@@ -48,6 +48,13 @@
 * `.toySPE()` gains `composition`, which plants a between-sample composition
   confound with zero within-sample niche slope.
 
+* `polishSpiDE()`: the per-gene convergence stage as a **post-hoc
+  adjustment** on an existing fit — a fit made with `converge = FALSE`, one
+  serialised by an older version, or one to re-converge with other settings —
+  without refitting. It shares one implementation and one penalty rule with
+  `fitSpiDE(converge = TRUE)`, so the two routes give the same fit (tested to
+  1e-8), and it clears every inference slot derived from the old
+  coefficients so `testSpiDE()` recomputes them.
 * `compositionTest()`: the between-sample composition association that the
   nested intercept absorbs, tested on its own terms at the patient level —
   pseudobulk per (sample, index type), the sample's mean niche density around

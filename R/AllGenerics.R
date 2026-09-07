@@ -48,3 +48,7 @@ setGeneric("spiGSEA", function(object, spe = NULL, genesets, ...)
 #' @rdname compositionTest
 #' @export
 setGeneric("compositionTest", function(spe, ...) standardGeneric("compositionTest"))
+
+#' @rdname polishSpiDE
+#' @export
+setGeneric("polishSpiDE", function(object, spe, ...) standardGeneric("polishSpiDE"))

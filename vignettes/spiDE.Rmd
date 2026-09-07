@@ -229,6 +229,21 @@ investigating before trusting that bandwidth.
 
 An alternative, structurally different route to the same question is `twoStageSpiDE()`, which estimates each patient's niche slope first and then contrasts the patient slopes with a moderated *t*-test — removing the pseudo-replication by construction rather than by correction. It removes the pseudo-replication by construction rather than by correction, at a substantial cost in power (roughly 0.45 vs 0.66 raw power at 30 samples for its best stage-1 arm, `"ols"`), and its calibration degrades in thin (patient, index) subsets where the mixed-effects model's joint fit borrows strength — so it is intended for pre-specified (restricted) hypotheses over well-populated index types, not as a default. The model vignette documents it in full, and the *Two-stage estimation* benchmark report on the spiDE-research site (https://bhuvalab.github.io/spiDE-research/) reports its operating characteristics, including a niche-shuffle null on the real cohort that bounds what either estimator detects there.
 
+# Converging an existing fit
+
+`fitSpiDE()` converges every gene to its own optimum after the shared fit
+(`converge = TRUE`, the default). The same stage is available as a post-hoc
+adjustment, `polishSpiDE()`, for a fit made with `converge = FALSE` or one
+saved by an older version of the package: it returns the object with converged
+coefficients and dispersions, per-gene diagnostics in `@polish`, and inference
+cleared, so `testSpiDE()` is run again afterwards.
+
+```{r polish, eval = FALSE}
+fit0 <- fitSpiDE(spe, condition = "condition", converge = FALSE, verbose = FALSE)
+fit1 <- polishSpiDE(fit0, spe, verbose = FALSE)
+res1 <- testSpiDE(fit1, spe = spe)
+```
+
 # The between-sample composition association, on its own terms
 
 `fitSpiDE()`'s nested (sample × cell type) intercept — `re.celltype = TRUE`,

@@ -81,14 +81,20 @@
 #' @return a numeric vector of per-gene log-likelihoods.
 #' @importFrom stats dnbinom
 #' @noRd
-.blockLoglik <- function(Y, alpha, W, psi, block.size = 2000L) {
+.blockLoglik <- function(Y, alpha, W, psi, block.size = 2000L, winsor = 4) {
   ng <- nrow(alpha)
   blocks <- .chunkGenes(ng, block.size)
   ll <- numeric(ng)
   for (gi in blocks) {
     Yb <- as.matrix(Y[gi, , drop = FALSE])
+    # ONE mean function per fit: fitNB's coefficients are read back through
+    # calculateMu()'s 4-MAD clamp, exactly as inference reads them; a polished
+    # fit is defined on the unclamped, floored mean and must be read back the
+    # same way (winsor = Inf), or its log-likelihood is evaluated at a mean it
+    # was never converged on -- the mismatch the inference review removed.
     mub <- SpaNorm::calculateMu(rep(0, length(gi)),
-                                alpha[gi, , drop = FALSE], W)
+                                alpha[gi, , drop = FALSE], W, winsor = winsor)
+    mub <- pmax(mub, .MU_FLOOR)
     ll[gi] <- rowSums(stats::dnbinom(Yb, mu = mub, size = 1 / psi[gi],
                                      log = TRUE))
   }

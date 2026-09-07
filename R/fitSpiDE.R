@@ -67,11 +67,8 @@
   # stage is per-gene and therefore blockable, unlike the fit itself.
   polish <- NULL
   if (converge) {
-    pen_vec <- if (is.null(penalty)) {
-      if (length(lambda.a) == 1L) rep(lambda.a, ncol(W)) else lambda.a
-    } else {
-      penalty
-    }
+    # the same penalty rule polishSpiDE() uses, so the two routes are one
+    pen_vec <- .polishPenalty(penalty, lambda.a, ncol(W))
     pol <- .polishFit(Y, W, fit$alpha, fit$psi, pen_vec, des$re_group,
                       covtype = des$covtype,
                       maxit = converge.maxit, tol = converge.tol,
@@ -93,7 +90,7 @@
   # fitNB $loglik is per-iteration, not per-gene). Computed gene-block-wise so
   # the whole counts matrix is never densified (the invariant); .blockedInference
   # recomputes this too, so this value is only used if inference is skipped.
-  loglik <- .blockLoglik(Y, alpha, W, fit$psi)
+  loglik <- .blockLoglik(Y, alpha, W, fit$psi, winsor = if (converge) Inf else 4)
 
   new(
     "SpiDEFit",
