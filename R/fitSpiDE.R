@@ -28,6 +28,7 @@
                              re.min.cells = 100L, df.method = "satterthwaite",
                              re.celltype = TRUE, converge = TRUE,
                              converge.maxit = 50L, converge.tol = 1e-8,
+                             polish.psi = "profile",
                              block.size = NULL,
                              BPPARAM = BiocParallel::SerialParam(), ...) {
   des <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
@@ -73,7 +74,7 @@
                       covtype = des$covtype,
                       maxit = converge.maxit, tol = converge.tol,
                       block.size = block.size, BPPARAM = BPPARAM,
-                      verbose = verbose)
+                      verbose = verbose, psi.method = polish.psi)
     fit$alpha <- pol$alpha
     fit$psi <- pol$psi
     polish <- pol$polish
@@ -291,6 +292,11 @@
 #'   gene that is well determined, but it is a deliberate departure from
 #'   \code{fitNB}'s moderation. Set \code{FALSE} to reproduce pre-correction
 #'   fits.
+#' @param polish.psi how the convergence stage sets each gene's dispersion:
+#'   \code{"profile"} (default) re-estimates it by profile maximum likelihood
+#'   at the converged mean; \code{"moderated"} keeps \code{fitNB}'s cross-gene
+#'   moderated value and converges only the coefficients. Only used with
+#'   \code{converge = TRUE}.
 #' @param converge.maxit,converge.tol iteration cap and relative
 #'   log-likelihood tolerance for the per-gene convergence stage.
 #' @param block.size genes per block in the per-gene convergence stage (see
@@ -334,8 +340,10 @@ setMethod(
                         df.method = c("satterthwaite", "between"),
                         re.celltype = TRUE, converge = TRUE,
                         converge.maxit = 50L, converge.tol = 1e-8,
+                        polish.psi = c("profile", "moderated"),
                         block.size = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
+  polish.psi <- match.arg(polish.psi)
     backend <- match.arg(backend)
     random <- match.arg(random)
     df.method <- match.arg(df.method)
@@ -369,6 +377,7 @@ setMethod(
                        re.maxit.psi = re.maxit.psi,
                        re.min.cells = re.min.cells, df.method = df.method,
                        re.celltype = re.celltype, converge = converge,
+                       polish.psi = polish.psi,
                        converge.maxit = converge.maxit,
                        converge.tol = converge.tol, block.size = block.size,
                        BPPARAM = BPPARAM, ...)

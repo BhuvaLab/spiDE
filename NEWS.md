@@ -69,6 +69,16 @@
   version tied B-cell prevalence to condition, which moved the between-sample
   mean too little to matter next to the within-sample spread.
 
+## Prototype (branch `ql-dispersion`, not on main)
+
+* `fitSpiDE(polish.psi = "moderated")` keeps `fitNB`'s cross-gene moderated
+  dispersion at the converged mean instead of the per-gene profile-ML value;
+  `testSpiDE(dispersion = "ql")` replaces the Pearson scale with the
+  edgeR-v4-style quasi-likelihood dispersion (`.qlDispersion()`, adjusted
+  deviance over effective df) moderated across genes with `squeezeVar()`.
+  Both are measured, not adopted: see the dispersion arms in the research
+  harness. CPU only; the QL scale needs a mixed or converged fit.
+
 ## Documentation
 
 * The vignettes are reorganised into four, written top-down rather than in

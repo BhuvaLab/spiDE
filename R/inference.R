@@ -454,8 +454,10 @@
                               combine = c("cauchy", "brown"),
                               backend = c("cpu", "auto", "gpu"),
                               gpu.mem.budget = NULL,
-                              BPPARAM = BiocParallel::SerialParam()) {
+                              BPPARAM = BiocParallel::SerialParam(),
+                              dispersion = c("pearson", "ql")) {
   combine <- match.arg(combine)
+  dispersion <- match.arg(dispersion)
   backend <- match.arg(backend)
   W_full <- fit@W
   covtype <- as.character(fit@covtype)
@@ -579,6 +581,35 @@
     }
   }
 
+  # The quasi-likelihood scale (edgeR v4 form): per gene, the adjusted NB
+  # deviance over its effective df, moderated ACROSS genes by squeezeVar. It
+  # replaces the Pearson scale for the standard errors. Its cross-gene
+  # moderation has to see every gene before any block is scored, so it is a
+  # pre-pass over the same blocks; the reference df is unchanged.
+  use_ql <- dispersion == "ql"
+  ql_scale <- NULL
+  if (use_ql) {
+    if (gpu_active) stop("dispersion = \"ql\" is implemented on the CPU backend only",
+                         call. = FALSE)
+    if (!use_pearson) stop("dispersion = \"ql\" needs a mixed or converged fit",
+                           call. = FALSE)
+    fixed_cols <- !grepl("Random", covtype)
+    ql_parts <- BiocParallel::bplapply(blocks, function(gi) {
+      Yb <- as.matrix(Y[gi, , drop = FALSE])
+      mub <- SpaNorm::calculateMu(rep(0, length(gi)), alpha_full[gi, , drop = FALSE],
+                                  W_full, winsor = winsor_use)
+      mub <- pmax(mub, .MU_FLOOR)
+      q <- .qlDispersion(Yb, mub, psi[gi], W_full[, fixed_cols, drop = FALSE],
+                         leverage = "trace")
+      list(s2 = q$s2, df = q$df, ave = log2(rowMeans(Yb) + 0.5))
+    }, BPPARAM = BPPARAM)
+    s2 <- unlist(lapply(ql_parts, `[[`, "s2")); dfq <- unlist(lapply(ql_parts, `[[`, "df"))
+    ave <- unlist(lapply(ql_parts, `[[`, "ave"))
+    ok <- is.finite(s2) & s2 > 0 & dfq > 0
+    sq <- limma::squeezeVar(s2[ok], dfq[ok], covariate = ave[ok], robust = TRUE)
+    ql_scale <- rep(NA_real_, ng); ql_scale[ok] <- sq$var.post
+  }
+
   block_res <- BiocParallel::bplapply(blocks, function(gi) {
     Yb <- as.matrix(Y[gi, , drop = FALSE])
     alpha_block <- alpha_full[gi, , drop = FALSE]
@@ -617,7 +648,10 @@
       }
       rhob <- .rhoPartial(Yb, mub, psib)
     }
-    scale_block <- if (use_pearson) dispb else psib
+    scale_block <- if (use_ql) {
+      # a gene the QL pre-pass could not score keeps its Pearson scale
+      sb <- ql_scale[gi]; sb[is.na(sb)] <- dispb[is.na(sb)]; sb
+    } else if (use_pearson) dispb else psib
 
     if (combine == "cauchy") {
       res <- .waldCauchyBlock(alpha_block[, cols_gene, drop = FALSE], Wsub,

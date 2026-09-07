@@ -33,6 +33,7 @@ fitSpiDE(spe, condition = NULL, ...)
   converge = TRUE,
   converge.maxit = 50L,
   converge.tol = 1e-08,
+  polish.psi = c("profile", "moderated"),
   block.size = NULL,
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
@@ -227,6 +228,12 @@ fits.}
 
 \item{converge.maxit, converge.tol}{iteration cap and relative
 log-likelihood tolerance for the per-gene convergence stage.}
+
+\item{polish.psi}{how the convergence stage sets each gene's dispersion:
+\code{"profile"} (default) re-estimates it by profile maximum likelihood
+at the converged mean; \code{"moderated"} keeps \code{fitNB}'s cross-gene
+moderated value and converges only the coefficients. Only used with
+\code{converge = TRUE}.}
 
 \item{block.size}{genes per block in the per-gene convergence stage (see
 \code{\link[=testSpiDE]{testSpiDE()}} for the same argument at inference time). NULL fits every

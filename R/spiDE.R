@@ -28,6 +28,8 @@
 #' @param fdr a numeric, the target false discovery rate.
 #' @param combine one of "cauchy" (default) or "brown", the within-gene combiner
 #'   for the correlated niche p-values (passed to [testSpiDE()]).
+#' @param polish.psi,dispersion the convergence stage's dispersion rule and
+#'   the standard-error scale; see [fitSpiDE()] and [testSpiDE()].
 #' @param block.size a numeric, genes per inference block (NULL = a single
 #'   block on the CPU backend, or a memory-bounded auto-selected size on the
 #'   GPU backend).
@@ -63,11 +65,15 @@ setMethod(
                         df.method = c("satterthwaite", "between"),
                         re.celltype = TRUE, converge = TRUE,
                         converge.maxit = 50L, converge.tol = 1e-8,
+                        polish.psi = c("profile", "moderated"),
+                        dispersion = c("pearson", "ql"),
                         block.size = NULL, gpu.mem.budget = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
     random <- match.arg(random)
     combine <- match.arg(combine)
+    polish.psi <- match.arg(polish.psi)
+    dispersion <- match.arg(dispersion)
     df.method <- match.arg(df.method)
 
     # build niches if the requested bandwidths are not already present
@@ -87,10 +93,12 @@ setMethod(
                     re.celltype = re.celltype, converge = converge,
                     converge.maxit = converge.maxit,
                     converge.tol = converge.tol, block.size = block.size,
-                    BPPARAM = BPPARAM, verbose = verbose, ...)
+                    BPPARAM = BPPARAM, verbose = verbose, ...,
+                    polish.psi = polish.psi)
 
     testSpiDE(res, spe = spe, assay = assay, fdr = fdr, combine = combine,
               block.size = block.size, backend = backend,
-              gpu.mem.budget = gpu.mem.budget, BPPARAM = BPPARAM)
+              gpu.mem.budget = gpu.mem.budget, BPPARAM = BPPARAM,
+                     dispersion = dispersion)
   }
 )

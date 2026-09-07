@@ -18,7 +18,8 @@ testSpiDE(object, ...)
   backend = c("auto", "cpu", "gpu"),
   gpu.mem.budget = NULL,
   BPPARAM = BiocParallel::SerialParam(),
-  ...
+  ...,
+  dispersion = c("pearson", "ql")
 )
 }
 \arguments{
@@ -66,6 +67,12 @@ sub-batch sized from this budget on the GPU path and from
 the latter to trade memory for speed on wide (random-slope) designs.}
 
 \item{BPPARAM}{a BiocParallelParam for the inference stage.}
+
+\item{dispersion}{the scale of the standard errors: \code{"pearson"}
+(default), the working Pearson dispersion of the fit, or \code{"ql"}, the
+edgeR-v4-style quasi-likelihood dispersion (adjusted deviance over its
+effective df) moderated across genes with \code{limma::squeezeVar()}.
+CPU backend only; needs a mixed or converged fit.}
 }
 \value{
 the input \code{object} with combined p-values and the tidy results

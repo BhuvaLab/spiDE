@@ -164,7 +164,9 @@
 #' @importFrom stats optimize
 #' @noRd
 .polishGene <- function(y, W, a0, psi0, pen, solver, maxit = 50L, tol = 1e-8,
-                        ct_cols = NULL, psi.range = c(1e-3, 1e3)) {
+                        ct_cols = NULL, psi.range = c(1e-3, 1e3),
+                        psi.method = c("profile", "moderated")) {
+  psi.method <- match.arg(psi.method)
   restarted <- FALSE
   singular <- FALSE
 
@@ -296,7 +298,10 @@
   converged <- f$converged
   it_total <- f$it
   psi_bound <- FALSE
-  for (k in 1:2) {
+  # "moderated" keeps fitNB's cross-gene moderated dispersion and converges
+  # only the mean under it; "profile" re-estimates psi by profile ML at the
+  # converged mean and re-polishes, twice
+  if (psi.method == "profile") for (k in 1:2) {
     pm <- psi_ml(f$mu)
     if (pm$at_bound) {
       # the dispersion is not identified for this gene; keep the moderated one
@@ -334,7 +339,8 @@
 #' @noRd
 .polishFit <- function(Y, W, alpha, psi, pen, re_group = NULL, covtype = NULL,
                        maxit = 50L, tol = 1e-8, block.size = NULL,
-                       BPPARAM = BiocParallel::SerialParam(), verbose = FALSE) {
+                       BPPARAM = BiocParallel::SerialParam(), verbose = FALSE,
+                       psi.method = "profile") {
   ng <- nrow(alpha)
   if (!length(pen) %in% c(1L, ncol(W))) {
     stop("'lambda.a' must be a single value or one per design column (",
@@ -407,7 +413,8 @@
     out <- lapply(seq_along(gi), function(i) {
       g <- gi[[i]]
       .polishGene(as.numeric(Yb[i, ]), W, alpha[g, ], psi[[g]], pen, solver,
-                  maxit = maxit, tol = tol, ct_cols = ct_cols)
+                  maxit = maxit, tol = tol, ct_cols = ct_cols,
+                  psi.method = psi.method)
     })
     if (verbose && (b %% step == 0L || b == nb)) {
       message(sprintf("    block %d/%d (%.1f min elapsed)", b, nb,
@@ -467,14 +474,15 @@
 .polishSpiDEFit <- function(f, Y, lambda.a = 0, maxit = 50L, tol = 1e-8,
                             block.size = NULL,
                             BPPARAM = BiocParallel::SerialParam(),
-                            verbose = TRUE) {
+                            verbose = TRUE, psi.method = "profile") {
   f <- updateObject(f)
   Yf <- Y[rownames(f@alpha), , drop = FALSE]
   pen <- .polishPenalty(f@penalty, lambda.a, ncol(f@W))
   pol <- .polishFit(Yf, f@W, f@alpha, f@psi, pen, f@re_group,
                     covtype = as.character(f@covtype),
                     maxit = maxit, tol = tol, block.size = block.size,
-                    BPPARAM = BPPARAM, verbose = verbose)
+                    BPPARAM = BPPARAM, verbose = verbose,
+                    psi.method = psi.method)
   alpha <- pol$alpha
   dimnames(alpha) <- dimnames(f@alpha)
   polish <- pol$polish
@@ -534,6 +542,10 @@
 #' @param BPPARAM a BiocParallelParam; the stage is blocked over genes.
 #' @param verbose report progress.
 #' @param ... further arguments passed to the method.
+#' @param polish.psi how the dispersion is set at the converged mean:
+#'   \code{"profile"} (the default) re-estimates each gene's dispersion by
+#'   profile maximum likelihood; \code{"moderated"} keeps \code{fitNB}'s
+#'   cross-gene moderated value and converges only the coefficients under it.
 #' @return the object with converged \code{alpha} and \code{psi}, per-gene
 #'   diagnostics in \code{@polish}, and inference cleared.
 #' @examples
@@ -552,8 +564,10 @@ setMethod(
   signature = "SpiDEResults",
   definition = function(object, spe, assay = "counts", lambda.a = 0,
                         maxit = 50L, tol = 1e-8, block.size = NULL,
-                        BPPARAM = BiocParallel::SerialParam(), verbose = TRUE) {
+                        BPPARAM = BiocParallel::SerialParam(), verbose = TRUE,
+                        polish.psi = c("profile", "moderated")) {
     object <- updateObject(object)
+    polish.psi <- match.arg(polish.psi)
     if (!length(object@fits)) {
       stop("nothing to polish: the object carries no per-gene GLM fit ",
            "(a twoStageSpiDE() result has none)", call. = FALSE)
@@ -570,6 +584,7 @@ setMethod(
       if (verbose) message(sprintf("Polishing bandwidth sigma = %s",
                                    object@sigma[i]))
       .polishSpiDEFit(object@fits[[i]], Y, lambda.a = lambda.a,
+                      psi.method = polish.psi,
                       maxit = maxit, tol = tol, block.size = block.size,
                       BPPARAM = BPPARAM, verbose = verbose)
     })

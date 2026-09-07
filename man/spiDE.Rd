@@ -29,6 +29,8 @@ spiDE(spe, condition = NULL, ...)
   converge = TRUE,
   converge.maxit = 50L,
   converge.tol = 1e-08,
+  polish.psi = c("profile", "moderated"),
+  dispersion = c("pearson", "ql"),
   block.size = NULL,
   gpu.mem.budget = NULL,
   BPPARAM = BiocParallel::SerialParam(),
@@ -157,6 +159,9 @@ after the shared fit. Default \code{TRUE}. See \code{\link[=fitSpiDE]{fitSpiDE()
 
 \item{converge.maxit, converge.tol}{iteration cap and relative
 log-likelihood tolerance for the per-gene convergence stage.}
+
+\item{polish.psi, dispersion}{the convergence stage's dispersion rule and
+the standard-error scale; see \code{\link[=fitSpiDE]{fitSpiDE()}} and \code{\link[=testSpiDE]{testSpiDE()}}.}
 
 \item{block.size}{a numeric, genes per inference block (NULL = a single
 block on the CPU backend, or a memory-bounded auto-selected size on the
