@@ -557,6 +557,32 @@ S = 16; and the best real-data shuffle calibration above.
 respectable) — the two measure different things, and reading only the null table would have declared
 it fine. Any sub-analysis that thins the patient count re-enters this regime.
 
+**The 0.99.17 defaults cost null type-I on the synthetic benchmark (2026-09-07), and the benchmark
+cannot show their benefit.** Arms `nested-converged`, `nested-only` and `converged-only` in the
+canonical tables (40 reps, intercept mode, per-cell SE ~0.0016): over S ≥ 10 the shipped
+celltype-response arm is at 0.058, converged-only 0.066, nested-only 0.068, both 0.071. Two
+mechanisms: at S = 4 the nested block is harmless (0.037–0.043) and convergence carries the whole
+excess (0.086–0.095); at S ≥ 16 convergence fades toward the shipped arm while the nested block holds
+a constant +0.010. The pair gains recall (0.402 vs 0.361 TPR at S = 30) with slightly better FDP at
+S ≥ 10 and FDP 0.59 vs 0.35 at S = 4. The simulator places niche cells by the same potential in every
+sample, so it plants **no** between-sample composition effect: on it the nested intercept can only
+cost, and the real-cohort shuffle grids are where it earned its place. Both facts hold; do not read
+the synthetic null as a reason to revert. Candidate cures, unmeasured: a moderated `psi` at the
+converged mean for the small-S convergence cost, and the nested block's Satterthwaite df.
+
+**The legacy niche-only design's higher simulation recall is a different estimand, not a better
+test** (`research/notes/design_power_decomposition.R`: one power dataset under four libraries,
+including a build from `5027da1` that differs from the niche-only build only by the
+`CellType:condition` term). The build makes no difference (slopes correlate at 1.000); the term is
+the whole gap. Without it, the mean of the planted effect — β times the mean niche potential, a flat
+A-in-Responders shift — loads onto the uncentred slope: the niche-only A:B slope exceeds the other
+design's by 0.25× the `CellType_A:condition` coefficient (r 0.88 on planted genes, 0.92 on null
+genes), a ~10% larger estimate, yet its `t` is 1.5–1.6× because its SE is 0.67–0.72×: with no
+intercept column the slope is a regression through the origin. Its recall (0.36 vs 0.17, Brown
+pinned; concentrated in marker genes) is bought by assuming the estimand, it saturates at ~0.5 by
+β = 2, and the term-restored design recovered 41% more triplets on the real cohort. Sidedness is not
+the reason: two-sided Cauchy gives *more* discoveries than one-sided Brown in all four arms.
+
 **If using `twoStageSpiDE()`, prefer `stage1 = "ols"` over the `"spanorm"` default**: better
 calibrated (0.043–0.054 vs 0.058–0.071), **1.6× the raw power** (0.451 vs 0.274 at S = 30), much
 better precision (FDP 0.032 vs 0.173 at S = 16), and it needs no stored SpaNorm fit so it is the

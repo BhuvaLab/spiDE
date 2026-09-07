@@ -54,7 +54,11 @@ spide_pal <- list(
   # Dark2 pair, like `condition`/`combine`: the shipped design takes the teal,
   # the demoted niche-only arm the orange. The pair's CVD separation was
   # validated with the method trio (worst deutan dE 11.6).
-  design = c("celltype-response" = "#1B9E77", "niche-only" = "#D95F02"),
+  design = c("celltype-response" = "#1B9E77", "niche-only" = "#D95F02",
+             # the 0.99.17 switch arms (benchmark rows since 2026-09-07): the
+             # remaining Dark2 hues, so every design figure stays CVD-safe
+             "nested-converged" = "#7570B3", "nested-only" = "#E7298A",
+             "converged-only" = "#66A61E"),
   # one- vs two-sided input to a combiner. Brown keeps its `combine` colour;
   # the two Cauchy variants are split off it so the pair reads as one family.
   sided = c("Brown (1-sided)" = "#7570B3", "Cauchy (1-sided)" = "#D95F02",
