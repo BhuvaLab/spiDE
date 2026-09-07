@@ -712,7 +712,12 @@ working tree** is not one experiment: tasks start at different times, so edits m
 tasks different code. A previously reported result ("two-stage null inflation grows with S, 0.078 →
 0.127") came from such a run and **did not survive re-measurement on a frozen snapshot** — the paired
 ablation shows no trend with S in either configuration (p = 0.82 / 0.62). Always pin `SPIDE_PKG` to a
-snapshot (`.claude/skills/run-benchmark-arm/scripts/freeze_snapshot.sh`).
+snapshot (`.claude/skills/run-benchmark-arm/scripts/freeze_snapshot.sh`). The same applies to the
+**driver**: R evaluates `Rscript research/R/run_task.R` incrementally, so editing that file while an
+array is live corrupts the tasks already running — on 2026-09-07 255 tasks wrote their result and then
+died on parse garbage, which marked the array FAILED and left its `afterok` aggregation at
+`DependencyNeverSatisfied` (the outputs were intact; only the dependency was lost). Edit the harness
+between arrays, never during one.
 
 ### Checkers
 
