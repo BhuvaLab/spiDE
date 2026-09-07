@@ -228,15 +228,16 @@ test_that(".polishFit splits into one block per worker when block.size is NULL",
 
   # a multi-worker BPPARAM must not collapse to a single block. Fork-based
   # parallelism, so the workers inherit the loaded namespace (a snow cluster
-  # cannot see package internals under devtools::load_all()).
+  # cannot see package internals under devtools::load_all()). Two workers,
+  # not more: R CMD check caps BiocParallel at two (_R_CHECK_LIMIT_CORES_).
   skip_on_os("windows")
-  bp <- BiocParallel::MulticoreParam(3, progressbar = FALSE)
-  skip_if_not(BiocParallel::bpnworkers(bp) == 3)
+  bp <- BiocParallel::MulticoreParam(2, progressbar = FALSE)
+  skip_if_not(BiocParallel::bpnworkers(bp) == 2)
 
   msgs <- capture_messages(
     par <- spiDE:::.polishFit(Y, d$W, A0, rep(0.4, ng), d$pen, re_group,
                               BPPARAM = bp, verbose = TRUE))
-  expect_match(paste(msgs, collapse = " "), "3 blocks")
+  expect_match(paste(msgs, collapse = " "), "2 blocks")
 
   serial <- capture_messages(
     ser <- spiDE:::.polishFit(Y, d$W, A0, rep(0.4, ng), d$pen, re_group,
