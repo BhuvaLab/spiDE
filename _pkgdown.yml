@@ -27,14 +27,14 @@ navbar:
         href: articles/spiDE-simulation.html
       - text: Two-stage estimation — benchmark
         href: articles/spiDE-twostage-benchmark.html
-      - text: The niche-shuffle null (real cohort)
-        href: articles/spiDE-shuffle-null.html
-      - text: Mixed-fit speedups (re.prop)
-        href: articles/spiDE-mixed-benchmark.html
+      - text: The real cohort — the null tail, its cause, the fix
+        href: articles/spiDE-cohort.html
       - text: Combining niche p-values — Brown vs Cauchy
         href: articles/spiDE-cauchy-vs-brown.html
       - text: Gene-set inference — spiGSEA calibration
         href: articles/spiDE-gsea-benchmark.html
+      - text: What was tried and rejected
+        href: articles/spiDE-rejected.html
       - text: -------
       - text: Standalone mirror (research site)
         href: https://bhuvalab.github.io/spiDE-research/
@@ -65,7 +65,7 @@ articles:
   contents:
   - articles/spiDE-simulation
   - articles/spiDE-twostage-benchmark
-  - articles/spiDE-shuffle-null
-  - articles/spiDE-mixed-benchmark
+  - articles/spiDE-cohort
+  - articles/spiDE-rejected
   - articles/spiDE-cauchy-vs-brown
   - articles/spiDE-gsea-benchmark

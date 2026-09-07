@@ -316,8 +316,8 @@ The sharpest test in this package's history, and the one to repeat before any
 claim of niche-dependent DE: a **niche-shuffle null** on a 55-patient CosMx
 cohort, permuting the rows of the niche matrix within (sample, cell type) so
 that the true slope is zero by construction, in `free` (random rows) and
-`block` (toroidal shift, preserving spatial smoothness) forms. Report: *The
-niche-shuffle null*.
+`block` (toroidal shift, preserving spatial smoothness) forms. Report: *The real
+cohort*.
 
 - **Under the design shipped before 0.99.17, the real data were
   indistinguishable from their null**: $\mathrm{sd}(t)$ 1.100 against a

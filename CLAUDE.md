@@ -228,7 +228,7 @@ stratified cell subsample (`re.prop`, sampled per cell type × sample with a
 inference uses — so subsampling only perturbs the shared `tau2`, not the per-gene
 effects. Defaults (`re.prop=1`, i.e. subsampling OFF, and `re.maxit.psi=1L`) speed up the mixed fit on
 CPU while keeping the response-niche t-stats highly correlated with the full fit
-(see `research/reports/benchmarks/spiDE-mixed-benchmark.Rmd`); `re.prop=1` restores the
+(see the *What was tried and rejected* report, `research/reports/benchmarks/spiDE-rejected.Rmd`); `re.prop=1` restores the
 reproducible, all-cell path. No seed is set internally (set one externally).
 `.blockedInference()` (`R/inference.R`) then uses
 the **full** penalised covariance `(X'WX + Λ)⁻¹`, the working **Pearson** dispersion (not the NB
@@ -277,8 +277,9 @@ within condition, each coefficient tested against its own split-plot error strat
 at **one of eighteen** measured design points and collapses to zero rejections as cells per sample
 grow, because the between-sample mean square is the wrong scale for a cell-means condition contrast
 — the inflation the contrast needs is constant while that mean square grows as `sqrt(cells per
-stratum)`. Do not rebuild it without reading `research/reports/between-sample-stratum.html`, which
-records the measurements and the two intermediate findings that *were* correct.
+stratum)`. Do not rebuild it without reading the *What was tried and rejected* report
+(`research/reports/benchmarks/spiDE-rejected.Rmd`), which records the measurements and the two
+intermediate findings that *were* correct.
 
 ### The two-stage estimator (`twoStageSpiDE()`)
 
@@ -679,8 +680,8 @@ down. Before changing one, read the corresponding record:
 - `vignettes/spiDE-model.Rmd` — the model stated once, top-down, organised around Frisch–Waugh–Lovell;
   `vignettes/spiDE-twostage.Rmd` the two-stage estimator; `vignettes/spiDE-calibration.Rmd` reads
   lambda and is the **only** place in the package that quotes benchmark numbers — keep it that way.
-- `research/reports/benchmarks/` — the five validation reports (simulation study, combiner,
-  mixed-fit speedups, two-stage arm, spiGSEA calibration), rendered to a static site at
+- `research/reports/benchmarks/` — the six reports in reading order (simulation study, the real
+  cohort, two-stage estimator, combiner, spiGSEA calibration, what was tried and rejected), rendered to a static site at
   `research/docs/` by `build_site.R` (https://bhuvalab.github.io/spiDE-research/). They moved out of
   `vignettes/` because the eight built vignettes alone exceeded Bioconductor's 10 MB tarball cap;
   the package keeps the quickstart, model, two-stage and calibration vignettes.
@@ -689,7 +690,7 @@ down. Before changing one, read the corresponding record:
   `research/plasmode/install_twostage.R`). **One canonical table per scenario**: a new method arm is
   extra *rows*, not a parallel file that would carry a stale copy of the others.
 - `research/` — a git submodule (`BhuvaLab/spiDE-research`) holding the benchmark harness and the
-  written-up negative results (e.g. `research/reports/between-sample-stratum.html`).
+  written-up negative results, collected in the *What was tried and rejected* report.
 - `research/fdr-ordering/` — all eight FDR procedures scored on the real-cohort shuffle null, on
   injected signal and end-to-end; the per-gene tail addendum above. `R/recover.R` recovers exact
   p-values from any stored `fdr = 1` table, so orderings are comparable without refitting.
