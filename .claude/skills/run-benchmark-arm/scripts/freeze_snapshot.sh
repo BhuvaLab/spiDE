@@ -24,5 +24,13 @@ rsync -a --exclude='.git' --exclude='research' --exclude='docs' \
       && echo && echo "--- git status ---" && git status --porcelain \
       && echo && echo "--- diff stat vs HEAD ---" && git diff --stat )
 } > "$SNAP/SNAPSHOT_PROVENANCE.txt"
-chmod -R a-w "$SNAP/R" 2>/dev/null || true
+# The Rscript drivers too: R parses a script incrementally, so a task that is
+# inside its multi-hour fit reads the NEXT expression from whatever the live
+# file holds by then. The sbatch scripts run the copy under drivers/ when it
+# exists (and copy it again to a task-private file at task start).
+mkdir -p "$SNAP/drivers"
+for d in research/R/run_task.R research/fdr-ordering/R/package_fixed_design.R; do
+  [ -f "$SRC/$d" ] && cp "$SRC/$d" "$SNAP/drivers/"
+done
+chmod -R a-w "$SNAP/R" "$SNAP/drivers" 2>/dev/null || true
 echo "$SNAP"
