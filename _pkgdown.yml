@@ -57,6 +57,7 @@ articles:
   contents:
   - spiDE
   - spiDE-model
+  - spiDE-twostage
   - spiDE-calibration
 - title: Statistical validation
   desc: >

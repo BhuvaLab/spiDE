@@ -1,2 +1,6 @@
 *.Rmd
 tables/
+fdr-figures/
+fdr-summary/
+stratum-data/
+niche-transform-summary/
