@@ -1,12 +1,12 @@
 ---
-title: "Is this fit calibrated? Reading lambda per cell type"
+title: "Calibration: reading lambda, and what the benchmarks measured"
 author: "Dharmesh D. Bhuva"
 package: spiDE
 output:
   BiocStyle::html_document:
     toc_float: true
 vignette: >
-  %\VignetteIndexEntry{Calibration diagnostics: lambda per cell type}
+  %\VignetteIndexEntry{Calibration: reading lambda, and what the benchmarks measured}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -27,263 +27,330 @@ source(system.file("spide_palette.R", package = "spiDE"))
 
 # Overview
 
+This vignette has two halves. The first is a diagnostic: how to read the
+genomic inflation factor $\lambda$ from your own fit, per cell type, and what
+to do about it. The second is the evidence: every number this package quotes
+about its defaults — null calibration, power, and what was measured on a real
+cohort — collected in one place with pointers to the reports that carry the
+full tables (https://bhuvalab.github.io/spiDE-research/). The model those
+numbers are about is in `vignette("spiDE-model")`.
+
+# Reading lambda
+
 A `spiDE` fit tests thousands of genes against hundreds of
 `celltype:condition:niche` coefficients, and those coefficients are **not
 equally well estimated**. A tumour compartment with tens of thousands of cells
-spread over every patient supports a very different quality of inference from a
-dendritic-cell compartment with a few hundred cells concentrated in a handful of
-patients -- yet both are reported in the same table, against the same FDR
-threshold.
+spread over every patient supports a very different quality of inference from
+a dendritic-cell compartment with a few hundred cells concentrated in a
+handful of patients — yet both are reported in the same table, against the
+same FDR threshold. $\lambda$ detects that.
 
-This vignette is about detecting that, using the genomic inflation factor
-$\lambda$, and about what to do once you have. The short version:
-
-- $\lambda$ measures whether your test statistics follow the null distribution
-  you assumed. It is a property of the **test**, not of the biology.
-- In `spiDE` it varies *within a single fit*, across cell types, because the
-  cell types differ in how many patients contribute cells.
+- $\lambda$ measures whether your test statistics follow the null
+  distribution you assumed. It is a property of the **test**, not of the
+  biology.
+- In `spiDE` it varies *within a single fit*, across cell types, because cell
+  types differ in how many patients contribute cells.
 - $\lambda < 1$ costs **power, not validity**. A null result for a poorly
   calibrated cell type is weak evidence of absence.
 - The right response is to restrict which coefficients you test, **not** to
   rescale the statistics and **not** to change the model.
 
-# What lambda is
+## What lambda is
 
 For a one-degree-of-freedom test, the squared statistic $t^2$ is a $\chi^2_1$
-variate under the null. The genomic inflation factor compares the median you
-observed with the median the null predicts:
+variate under the null. The genomic inflation factor compares the observed
+median with the null's:
 
 $$\lambda = \frac{\mathrm{median}(t^2)}{\mathrm{median}(\chi^2_1)}
           = \frac{\mathrm{median}(t^2)}{0.4549}$$
 
-The **median** is the important choice. A minority of true positives, however
-large their statistics, barely moves it, so $\lambda$ reads the bulk of the
-distribution -- which is overwhelmingly nulls. That is the whole design of the
-statistic: it estimates whether your *null* is the null you assumed. It comes
-from genome-wide association studies, where population stratification inflates
-every association statistic at once (Devlin and Roeder, 1999).
+The median is the important choice: a minority of true positives, however
+large, barely moves it, so $\lambda$ reads the bulk of the distribution, which
+is overwhelmingly nulls (Devlin and Roeder, 1999).
 
 | $\lambda$ | reading |
 |---|---|
-| $= 1$ | observed null matches the theoretical null; p-values mean what they say |
+| $= 1$ | the observed null matches the theoretical one; p-values mean what they say |
 | $> 1$ | statistics too large: confounding or anti-conservatism, **or** genuinely widespread signal |
-| $< 1$ | statistics too small: the test is conservative, p-values are too big |
+| $< 1$ | statistics too small: the test is conservative |
 
 ```{r lambda-fn}
-# lambda from any matrix or vector of t-statistics
 lambda <- function(t) stats::median(t^2, na.rm = TRUE) / stats::qchisq(0.5, 1)
 ```
 
-# Lambda below 1 does not mean "there is no signal"
+## Lambda below 1 does not mean "no signal"
 
-This is the point most often got wrong, so it is worth demonstrating rather than
-asserting. Under a pure null with a correctly calibrated test, $\lambda = 1$
-**exactly**. Absence of biology gives you 1, not less than 1.
+Under a pure null with a calibrated test, $\lambda = 1$ exactly. Absence of
+biology gives 1, not less than 1:
 
 ```{r pure-null}
-z <- matrix(rnorm(200 * 50), 200, 50)     # pure null, perfectly calibrated
+z <- matrix(rnorm(200 * 50), 200, 50)
 round(lambda(z), 3)
 ```
 
-So $\lambda = 0.68$ is never a statement that a cell type is quiescent. It says
-the reference distribution is wrong for the statistic's actual sampling
-behaviour -- here, that the test is conservative. Mechanically, Wald tests are
-asymptotic:
-when few patients contribute cells the asymptotics have not arrived, the
-variance is biased upward relative to the true sampling variance, and $|t|$
-comes out systematically too small.
-
-## What that costs
-
-Because $|t|$ is scaled by $\sqrt{\lambda}$, a deflated test needs a
-proportionally larger effect to clear the same bar. Take a real effect that
-deserves $p = 0.001$ and ask what a fit at each $\lambda$ actually reports:
+So $\lambda = 0.68$ is never a statement that a cell type is quiescent. It
+says the reference distribution is wrong for the statistic's sampling
+behaviour — here, that the test is conservative. Wald tests are asymptotic:
+when few patients contribute cells, the variance is biased upward and $|t|$
+comes out systematically too small. Because $|t|$ scales with
+$\sqrt\lambda$, a deflated test needs a proportionally larger effect to clear
+the same bar:
 
 ```{r cost-table}
-t_true <- stats::qnorm(1 - 0.001 / 2)          # |t| = 3.29
+t_true <- stats::qnorm(1 - 0.001 / 2)          # |t| = 3.29 for p = 0.001
 lam <- c(1.00, 0.90, 0.80, 0.70, 0.60, 0.50)
-cost <- data.frame(
-  lambda      = lam,
-  t_observed  = round(t_true * sqrt(lam), 2),
-  p_reported  = signif(2 * stats::pnorm(-abs(t_true * sqrt(lam))), 2)
-)
+cost <- data.frame(lambda = lam,
+                   t_observed = round(t_true * sqrt(lam), 2),
+                   p_reported = signif(2 * stats::pnorm(-abs(t_true * sqrt(lam))), 2))
 cost$times_worse <- round(cost$p_reported / 0.001, 1)
 cost
 ```
 
-A cell type at $\lambda = 0.5$ reports a genuine $p = 0.001$ effect as roughly
-$p = 0.02$. Multiply that penalty by a multiple-testing correction over millions
-of tests and such a compartment becomes effectively unable to produce a
-discovery, however real its biology.
+A cell type at $\lambda = 0.5$ reports a genuine $p = 0.001$ effect as about
+$p = 0.02$; after a genome-wide correction such a compartment is effectively
+unable to produce a discovery.
 
-# What drives lambda in a spiDE fit
+## What drives it
 
-The `condition` contrast is **between patients**, and the random intercept
-already absorbs patient-level shifts. What buys precision is therefore the
-number of *patients* contributing usable cells of that type -- not the raw cell
-count. The two are correlated but they come apart, and when they do it is the
-patient count that tracks calibration.
+The `condition` contrast is between patients, and the random intercept
+absorbs patient-level shifts, so what buys precision is the number of
+*patients* contributing usable cells of that type, not the raw cell count.
+$\lambda$ can depart from 1 in either direction, and the direction says which
+failure dominates:
 
-$\lambda$ can depart from 1 in **either** direction, and which way tells you
-which failure mode dominates:
+- **Many cells over few patients** — pseudo-replication; statistics too
+  large, $\lambda > 1$. This is what the mixed-effects correction fixes.
+- **Few cells and few patients** — small-sample Wald conservatism;
+  statistics too small, $\lambda < 1$.
 
-- **Many cells spread over few patients** -- cell-level pseudo-replication. The
-  reduced-design Wald standard errors treat cells as independent replicates, so
-  statistics come out too *large* and $\lambda > 1$. This is what the
-  mixed-effects correction exists to fix (see `vignette("spiDE-model")`).
-- **Few cells and few patients** -- small-sample Wald conservatism. The
-  asymptotics have not arrived, the variance is biased upward, statistics come
-  out too *small* and $\lambda < 1$.
+Both resolve toward 1 as information accumulates. A third driver is not a
+variance at all: a between-patient composition association loading onto the
+niche slopes when the design has no (sample × cell type) intercept. It
+inflates $\lambda$ in exactly the pattern a real programme shift would —
+concentrated in the compartments with the most cells, largest for the
+brightest genes — and `re.celltype = TRUE` (the default) removes it; refit
+before interpreting an inflated compartment from an older fit. The measured
+form is under *The real cohort* below. A small measured cost of the defaults
+on a clean null also means a $\lambda$ a few percent above 1 is expected from
+the method and is not evidence of a data problem.
 
-Both resolve towards 1 as information accumulates, from opposite sides.
+## Diagnosing your own fit
 
-A third driver is not a variance at all. A gene whose mean expression in an
-index type differs between patients in step with how densely that type is
-surrounded — a between-patient *composition* association — loads onto the
-tested niche slopes unless the design has an intercept per (sample, cell type).
-The shipped design did not until 0.99.17, and on the real YTMA cohort the
-consequence was confined to the brightest genes in the most populous index
-types: $\mathrm{sd}(\text{null } t)$ of 1.25–1.42 in the top expression band, in
-Tumor and B cells, against 1.00–1.03 in every type under about 3,000 cells.
-`re.celltype = TRUE` (now the default) removes it — 0.96–0.99 in every band —
-and it is why a $\lambda$ that rises with a compartment's cell count is worth
-a second look. Note the defaults themselves carry a small measured cost on a
-clean synthetic null (type-I 0.071 against 0.058 at a nominal 0.05, averaged
-over $S \ge 10$), so a $\lambda$ a few percent above 1 is expected from the
-method and is not evidence of a data problem.
-
-The relationship is best seen across the cell types *within one real fit*, where
-compartment sizes span orders of magnitude: abundant, widely distributed
-compartments sit at $\lambda \approx 1$ while sparse ones fall well below it. A
-small simulated design cannot show this -- its variance-component estimate is
-itself unstable at small $n$, so repeated fits of the same configuration scatter
-$\lambda$ more than changing the configuration does. A compartment with a healthy total cell count but
-most of its cells concentrated in a few patients behaves like a much rarer
-population -- the cell count flatters it, the patient count does not.
-
-# Diagnosing your own fit
-
-$\lambda$ should be read **per index cell type**, never as a single number for
-the fit. A global value is an abundance-weighted mixture of well- and
-poorly-calibrated compartments and hides exactly the heterogeneity you need.
+Read $\lambda$ **per index cell type**, never as one number for the fit — a
+global value is an abundance-weighted mixture that hides the heterogeneity.
 
 ```{r per-celltype, eval = FALSE}
 lambda_by_celltype <- function(fit, type = "ResponseNiche") {
   cm <- as.data.frame(fit@coefmap)
-  # `covtype` spans EVERY design column, including the random-effect block,
-  # whereas `t_stat` holds only the tested ones. A logical index built from
-  # covtype therefore overruns t_stat -- always match on column names.
+  # `covtype` spans every design column, `t_stat` only the tested ones:
+  # always match on column names
   cols <- intersect(colnames(fit@t_stat), cm$covariate[cm$type == type])
   idx  <- cm$index[match(cols, cm$covariate)]
   out  <- lapply(split(cols, idx), function(cc) {
-    data.frame(n_col = length(cc),
-               lambda = lambda(fit@t_stat[, cc, drop = FALSE]))
+    data.frame(n_col = length(cc), lambda = lambda(fit@t_stat[, cc, drop = FALSE]))
   })
   cbind(index = names(out), do.call(rbind, out))
 }
-
-# ff <- fits(res)[[1]]
-# lambda_by_celltype(ff)
+# lambda_by_celltype(fits(res)[[1]])
 ```
 
-Pair that with the number of patients contributing at least a handful of cells
-of each type, which is the quantity that actually predicts it:
+Pair it with the number of patients contributing cells of each type, the
+quantity that predicts it:
 
 ```{r patient-spread, eval = FALSE}
 tab <- table(spe$cell_type, spe$sample_id)
-data.frame(
-  index       = rownames(tab),
-  n_cells     = rowSums(tab),
-  n_patients  = rowSums(tab > 0),
-  n_pat_ge10  = rowSums(tab >= 10)
-)
+data.frame(index = rownames(tab), n_cells = rowSums(tab),
+           n_patients = rowSums(tab > 0), n_pat_ge10 = rowSums(tab >= 10))
 ```
 
-# What to do about it
+## What to do about it
 
-## Do not rescale by lambda
+**Do not rescale by lambda.** Classical genomic control divides every
+statistic by $\lambda$; it assumes one inflation factor for all tests, whereas
+here $\lambda$ varies between cell types within a fit. A global correction
+deflates the calibrated compartments and leaves the sparse ones
+under-powered. The heterogeneity is the finding.
 
-Classical genomic control divides every statistic by $\lambda$. **That is the
-wrong move here.** It assumes a single inflation factor applies to all tests,
-whereas in a `spiDE` fit $\lambda$ varies substantially between cell types
-*within the same fit*. A global correction deflates the well-calibrated
-compartments and still leaves the sparse ones under-powered. The heterogeneity
-is the finding, not noise to be divided out.
-
-## Do not reach for a bigger model
-
-A random slope, a different ridge penalty, or a refit will not move $\lambda$
-when the cause is small-sample conservatism. Two checks are worth running before
-concluding that the model is at fault:
-
-- **Compare a fixed-effects fit against the mixed fit.** If the mixed model were
-  over-shrinking, the fixed fit would be the better calibrated of the two. If it
-  is instead *worse*, the random effect is helping and is not the culprit.
-- **Look at the dispersion multiplier used at inference.** If its median is
-  below 1 it is *shrinking* standard errors and improving $\lambda$, so it
-  cannot be the source of deflation either.
-
+**Do not reach for a bigger model.** A random slope, a different penalty or a
+refit will not move $\lambda$ when the cause is small-sample conservatism.
+Two checks before blaming the model: a fixed-effects fit should be *worse*
+calibrated than the mixed fit, not better; and the dispersion multiplier at
+inference should have a median below 1, i.e. be shrinking standard errors.
 Conservatism at small $n$ is expected behaviour for a Wald test on a sparse
-negative-binomial fit. It is not a bug, and there is no model change that
-removes it.
+negative binomial fit.
 
-## Do not reach for a smaller one either
+**Restrict what you test.** Stop testing coefficients that cannot support
+inference, filtering on patients contributing cells rather than on total
+cells. The under-powered tail stops consuming the multiple-testing budget, and
+the output stops presenting uninformative nulls as evidence. Report the
+threshold, and treat a null from an excluded compartment as weak evidence of
+absence.
 
-The opposite temptation is to drop the `CellType:condition` term because a
-design without it reports more niche calls — on the simulation benchmark its
-recall is 0.36 against 0.17 at the same nominal FDR. That is not power. Without
-the term a flat cell-type-wide response loads onto the niche slope, which
-inflates the estimate by a quarter of the flat shift and, more importantly,
-shrinks its standard error to about $0.7\times$, because the slope becomes a
-regression through the origin. The extra calls are a broader quantity reported
-under the niche label, and on the real cohort the term-restored design found
-41% more triplets, not fewer. $\lambda$ cannot tell these two designs apart on
-a null, which is exactly why the estimand has to be fixed by the design and
-not by the calibration statistic.
+**When lambda exceeds 1.** Because it is a median, a handful of strong hits
+cannot move it; a large fraction of genes must shift. Residual confounding
+affects null genes indiscriminately; a genuine programme-level shift
+concentrates in one compartment and one direction and reproduces in an
+independent contrast. Where one cell type shows $\lambda > 1$ and the rest of
+the fit sits at or below 1, a coordinated shift in that compartment is the
+more parsimonious reading — and it argues for interpreting at the level of
+the programme rather than gene by gene.
 
-## Restrict what you test
+# What the benchmarks measured
 
-The productive response is to stop testing coefficients that cannot support
-inference, filtering on **patients contributing cells** rather than on total
-cells. This helps twice: the under-powered tail stops consuming the
-multiple-testing budget, so the well-calibrated compartments gain power, and the
-output stops presenting uninformative nulls as though they were evidence.
+Each paragraph is one measured fact with the number that matters, in the
+order the defaults are introduced in the model vignette. The simulation study
+uses a realistic simulator (Gamma gene means, a mean–variance dispersion
+trend, library sizes of about 1,500–2,000 counts per cell, configurable
+spatial layouts), 40 replicates per design point, sample sizes $S$ from 4 to
+30 and 300 cells per sample unless stated. Full tables: the *Simulation study*
+report on the benchmark site. All figures are for `random = "intercept"` with
+`df.method = "satterthwaite"` unless stated.
 
-Whatever threshold you choose, report it, and treat a null result from an
-excluded or poorly calibrated compartment as **weak evidence of absence** rather
-than evidence of no effect.
+## The random intercept
 
-# When lambda exceeds 1
+On a null with per-sample intercepts and no response effect,
+`random = "none"` rejects the response contrast at about **0.71** against a
+nominal 0.05, worse as cell counts become imbalanced across samples; the
+random intercept holds about **0.04**, matching a calibrated pseudobulk
+reference. That is why `"none"` is not the default and should not be used for
+inference.
 
-$\lambda > 1$ is not automatically alarming. Because it is a median, it cannot
-be pushed up by a handful of strong hits -- moving it requires a *large fraction
-of all genes* to shift. Two situations produce that:
+## The reference degrees of freedom
 
-1. **Residual confounding or anti-conservative inference.** The classical
-   concern, and the reason to check the design before interpreting.
-2. **A genuine programme-level shift.** If a compartment really does change
-   coordinately across a broad set of genes, the median moves with them and
-   $\lambda$ exceeds 1 legitimately.
+`df.method = "between"` tests every coefficient against the scalar $S - 2$
+and is severely over-conservative for the niche slopes when patients are few:
+null type-I about **0.001** at $S = 4$ against 0.05, with near-zero power.
+`"satterthwaite"` holds type-I in **0.042–0.065** over the whole sampled range
+and gains about **0.10** in recall, with a mild liberal drift at larger $S$
+(worst 0.065). A Kenward–Roger correction of the covariance is the indicated
+refinement.
 
-A third possibility is specific to this design, and it is the one to rule out
-first. If the model lacks a **(sample × cell type)** intercept, every niche
-slope carries the between-sample composition effect described in
-`vignette("spiDE-model")`, and that inflates $\lambda$ in exactly the pattern a
-real programme shift would: concentrated in the compartments with the most
-cells, and largest for the brightest genes. It is not detectable by permuting
-the niche within (sample, cell type), because that permutation preserves it.
-`re.celltype = TRUE` (the default since 0.99.17) removes it; if you are reading
-$\lambda$ from an older fit, or from one built with `re.celltype = FALSE`,
-refit before interpreting an inflated compartment.
+## The small-sample regime
 
-The remaining two are distinguishable from each other. A confounding-driven
-inflation affects the null genes indiscriminately; a real programme shift
-concentrates in one compartment and one direction, and should reproduce in an
-independent contrast. Where a
-single cell type shows $\lambda > 1$ while the rest of the fit sits at or below
-1, a coordinated biological shift in that compartment is the more parsimonious
-reading -- and it argues for interpreting the result at the level of the
-programme rather than gene by gene.
+`fitSpiDE(random = "intercept")` is the most powerful calibrated estimator
+once samples are plentiful — recall **0.66** at $S = 30$ against 0.45 for the
+best two-stage arm — but it fails at small $S$ in a way the null table does
+not show: realised FDP **0.35** at $S = 4$ against a nominal 0.05, recovering
+to 0.04 by $S = 16$. Any sub-analysis that thins the patient count re-enters
+this regime.
+
+## The 0.99.17 defaults: nested intercept and per-gene convergence
+
+The two defaults were adopted on real-cohort evidence (below). Measured as
+switch arms on the simulation study, which places niche cells by the same
+potential in every sample and therefore plants **no** composition effect, they
+can only cost there, and they do:
+
+| null type-I, mean over $S \ge 10$ | at $S = 4$ |
+|---|---|
+| design term alone: 0.058 | 0.036–0.049 |
+| convergence only: 0.066 | 0.086–0.095 |
+| nested block only: 0.068 | 0.037–0.043 |
+| both (the defaults): 0.071 | 0.085–0.096 |
+
+(Per-cell standard error about 0.0016.) The two switches act at different
+sample sizes. Convergence's cost is a small-$S$ effect — the per-gene
+dispersion gives up cross-gene moderation, which matters most when data are
+few — and fades onto the design-term arm by $S = 24$. The nested block is
+harmless at $S = 4$ and holds a constant $+0.010$ from $S = 16$, which points
+at its reference df or the estimation of its variance component. The pair
+gains recall (**0.402** against 0.361 at $S = 30$) with slightly better FDP
+from $S = 10$ and a worse one at $S = 4$ (0.59 against 0.35). None of this is
+a reason to revert: the defaults were chosen for a confound real cohorts
+carry, because patients differ in composition. The two candidate refinements
+— a moderated dispersion at the converged mean, and the nested block's
+reference df — are what this measurement will judge.
+
+## The `CellType:condition` term, and a design that looks more powerful
+
+The design spiDE shipped before 0.99.7 had no `CellType:condition` column,
+and on the simulation study it reports far more niche calls: recall **0.36**
+against 0.17 at FDR 0.05 on the same dataset, concentrated in marker genes.
+That is not a better test. One power dataset ($S = 24$, $\beta = 2$) was fit
+under four package builds including one that differs from that design *only*
+by the added column; the build makes no difference (slopes correlate at
+1.000), the column is the whole gap. Without it the niche slope exceeds the
+term-restored one by **0.25×** the flat-response coefficient, gene by gene
+($r = 0.88$ on planted genes, 0.92 on null genes) — the mean of the planted
+effect counted as niche dependence — which inflates the estimate by only
+about 10%; the $t$ is 1.5–1.6× larger because the standard error is
+**0.67–0.72×**, a regression through the origin. On flat-shift genes with no
+niche effect the same channel produces fabricated niche calls; the recall
+saturates at about 0.5 from $\beta = 2$; and on the real cohort the
+term-restored design recovered **41% more** triplets. Two-sided Cauchy
+combination gave more discoveries than one-sided Brown in every build, so
+sidedness is not involved. The recall of a design is comparable across
+designs only when they estimate the same quantity.
+
+## The combiner
+
+Cauchy (two-sided) matches or beats Brown's method on power while holding
+type-I error under correlation without estimating the correlation matrix;
+report: *Combining niche p-values*.
+
+## The two-stage estimator
+
+On the simulation study its `"ols"` stage-1 path is the best-calibrated arm
+(null type-I **0.043–0.054**, flat in $S$), with raw power **0.451** at
+$S = 30$ against 0.293 (`"nb"`) and 0.274 (`"spanorm"`, the most liberal at
+0.055–0.071 and the least powerful); FDP 0.032 against 0.173 for `"spanorm"`
+at $S = 16$. Pooling the dispersion per sample (`pool.psi = TRUE`) is
+consistently better calibrated (0.067 against 0.073 paired over 30 datasets).
+On the real cohort the picture reverses for thin index types: its
+$\mathrm{sd}(t)$ tracks cells per (patient, index) subset at $r = -0.84$ —
+Tumor at 388 cells per subset is calibrated (1.05), Mast at 38 cells is not
+(1.65) — and the mixed GLM, which fits all cells jointly, is the better
+calibrated estimator across all index types (1.04 against 1.36). Dropout
+confounded with condition also fires there in B cell, DC and Monocyte.
+Report: *Two-stage estimation*.
+
+## The gene-set layer
+
+`spiGSEA(test = "competitive")` is calibrated; the self-contained form is
+not (it called 20.6 of 208 null sets per replicate, all false) and is kept
+only to reproduce older scripts. Report: *Gene-set inference*.
+
+## The real cohort
+
+The sharpest test in this package's history, and the one to repeat before any
+claim of niche-dependent DE: a **niche-shuffle null** on a 55-patient CosMx
+cohort, permuting the rows of the niche matrix within (sample, cell type) so
+that the true slope is zero by construction, in `free` (random rows) and
+`block` (toroidal shift, preserving spatial smoothness) forms. Report: *The
+niche-shuffle null*.
+
+- **Under the design shipped before 0.99.17, the real data were
+  indistinguishable from their null**: $\mathrm{sd}(t)$ 1.100 against a
+  shuffle maximum of 1.101. The heavy tail was per-gene — standardising each
+  gene by its own null spread took the $p < 10^{-6}$ excess from 59.9× to
+  2.6× — and confined to the brightest genes in the most populous index
+  types. Twelve variance-side explanations were refuted. The cause was the
+  composition confound of the model vignette: with a gene's converged fit
+  held fixed, the permutation $t$ had the expected spread but a per-column
+  mean up to $\pm 3$ that equalled the real-data $t$ column by column
+  ($r = 0.66$); the shuffle preserves each group's mean niche density and so
+  preserves the confound, which is why real and null matched.
+- **With the nested intercept and convergence** the `free` null is flat at
+  **0.96–0.98** in every expression band with zero $|t| > 4.89$ exceedances
+  of 101,508 where the old design produced 95; the `block` null keeps a
+  0.99 → 1.21 gradient in the ~100 brightest genes, the spatially smooth
+  component, so calibrate against `block`. The real cohort now exceeds its
+  null — 97 exceedances against a replicated null range of 5–11, with 100
+  random control genes inside the range — and gives about a hundred calls at
+  a per-gene empirical FDP of 0.05.
+- **The count is not a set of findings.** Splitting Plasma out of the B cell
+  compartment keeps the count and loses every immunoglobulin call; five
+  imaging covariates keep 84 of 104 and drop the keratin-in-immune calls;
+  bandwidths 10, 50 and 70 share only four triplets. One triplet survives
+  every perturbation. The patient-level composition test on the same cohort
+  shows neighbour types' own markers rising in the index cells' pseudobulk
+  with the neighbours' density, uniformly across conditions — which is what
+  the old design's immunoglobulin-in-tumour calls were.
+- **Raw counts with a global library-size slope** are the best-calibrated
+  substrate measured: the expression gradient of the null went from 1.207 to
+  1.149 and the median null $\mathrm{sd}(t)$ from 1.055 to 1.008. A
+  back-transformed assay is not counts, and cell-type-specific size factors
+  buy nothing.
 
 # Session info
 

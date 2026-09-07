@@ -113,7 +113,7 @@
 #' roughly 4,000 tests is the order at which a \eqn{p \approx 10^{-5}} effect
 #' survives.
 #'
-#' @seealso The model vignette (`vignette("spiDE-model")`) documents the
+#' @seealso The model vignette (`vignette("spiDE-twostage")`) documents the
 #'   estimator's two stages with full equations; the *Two-stage estimation*
 #'   benchmark report on the spiDE-research site
 #'   (<https://bhuvalab.github.io/spiDE-research/>) reports its measured operating

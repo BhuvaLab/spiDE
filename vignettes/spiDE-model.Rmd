@@ -1,42 +1,40 @@
 ---
-title: "The spiDE model: neighbourhood-dependent DE, mixed-effects inference, and two-stage estimation"
+title: "The spiDE model"
 author: "Dharmesh D. Bhuva"
 package: spiDE
 output:
   BiocStyle::html_document:
     toc_float: true
 vignette: >
-  %\VignetteIndexEntry{The spiDE model, mixed-effects inference, and two-stage estimation}
+  %\VignetteIndexEntry{The spiDE model}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
 
 ```{r setup, include = FALSE}
-# echo = TRUE: this vignette is a code-along walkthrough ("a small worked
-# example you can run and modify yourself") -- its prose narrates the chunks,
-# so hiding them orphans sentences that end in a colon. Pure display tables
-# opt out per-chunk with echo = FALSE.
+# echo = TRUE: this vignette is a code-along walkthrough -- its prose narrates
+# the chunks. Pure display tables opt out per chunk with echo = FALSE.
 knitr::opts_chunk$set(echo = TRUE, collapse = TRUE, comment = "#>")
 set.seed(1)
 ```
 
 # Overview
 
-This vignette documents the statistical models behind `spiDE` (Spatial Influence DE). It has four parts:
+This vignette states the model behind `spiDE` once, from the top down: the
+quantity it estimates, the design that isolates that quantity, why cells are
+not replicates and what the random effects do about it, how each gene's fit is
+converged, and how a Wald statistic becomes a row of `results()`. It is the
+reference for the other vignettes. The quickstart (`vignette("spiDE")`) shows
+the calls; the calibration vignette (`vignette("spiDE-calibration")`) holds
+every benchmark number quoted in this package; the two-stage estimator, a
+different route to the same question, has its own vignette
+(`vignette("spiDE-twostage")`).
 
-1.  the full `spiDE` model — how the effective niche is built and how gene expression is modelled as a function of cell type, neighbourhood, and clinical response;
-2.  why a cell-level Wald test (`random = "none"`) is anti-conservative when many cells come from few patients;
-3.  the mixed-effects correction, implemented through the **ridge = random effects** equivalence so it reuses the same `SpaNorm::fitNB` engine; and
-4.  the **two-stage estimator** (`twoStageSpiDE()`) — a structurally different route to the same scientific question that removes the pseudo-replication *by construction* rather than by correction: it estimates each patient's niche slope first, then contrasts the patient slopes.
-
-`fitSpiDE()` and `spiDE()` **default to `random = "intercept"`**. On a null with
-per-sample intercepts, `random = "none"` rejects at $\approx 0.71$ against a
-nominal $0.05$, while the random intercept holds $\approx 0.04$ against a
-calibrated pseudobulk reference of $\approx 0.04$. `"none"` remains available
-for back-compatibility and for reproducing pre-correction results; it should not
-be used for inference.
-
-For a task-oriented quickstart, see the companion vignette *Neighbourhood-dependent differential expression with spiDE*.
+One idea organises the whole design and is used throughout: the
+**Frisch–Waugh–Lovell theorem**. Every nuisance block in the design removes one
+component from the tested slope, and the model is best read as a sequence of
+such removals. It is stated in full in the section *What each block does to
+the tested slope*.
 
 ```{r load, message = FALSE}
 library(spiDE)
@@ -45,81 +43,223 @@ library(ggplot2)
 source(system.file("spide_palette.R", package = "spiDE"))
 ```
 
-# The full spiDE model
+# The question, and the quantity estimated
+
+Within an **index** cell type, does a gene's response to an experimental
+**condition** change with the local density of a **niche** cell type? That is
+one hypothesis per (gene, index type, niche type) *triplet*, and the quantity
+behind it is a slope: how much the condition effect on log expression changes
+per unit of niche density, among cells of the index type.
+
+Three quantities have to be kept apart, and the design gives each its own
+column so that the tested slope carries only the third:
+
+1. **A flat cell-type response.** The gene is up in every index cell of every
+   Responder, regardless of neighbourhood. This is a between-patient
+   contrast on cells of one type; `results(type = "celltype")` reports it.
+2. **A condition-independent niche slope.** Expression in the index type
+   tracks the niche's density in every patient, Responder or not. This is a
+   nuisance in the conditioned analysis and the tested quantity in
+   niche-only mode (`condition = NULL`).
+3. **The niche-dependent response.** The *difference* in that slope between
+   conditions — the three-way `cell type : condition : niche` term.
+
+Two more things are deliberately *not* part of the third quantity, and the
+model's random effects exist to keep them out. Patients differ in baseline
+expression of every gene, and patients differ in composition: a patient whose
+index cells sit, on average, in a denser niche of some type may also express
+the gene differently in that type for reasons that have nothing to do with
+the neighbourhood of any single cell. Both are patient-level associations with
+one observation per patient. The second is a legitimate question of its own
+and `compositionTest()` asks it at the patient level; it is not
+neighbourhood-dependent expression and the niche slope must not carry it.
+
+# The effective niche
+
+Every quantity in this section is computed **within one sample at a time**,
+entirely independently of every other sample. Let $\mathcal C_s$ be the cells
+of sample $s$. For each cell $c \in \mathcal C_s$ the local intensity of cell
+type $t'$ is a kernel-smoothed count of that type's cells around $c$, with a
+Gaussian kernel $K_\sigma$ of bandwidth $\sigma$:
+
+$$
+\Lambda_{c,t',s}(\sigma) \;=\; e_s(c) \sum_{c' \in \mathcal C_s}
+  K_\sigma\!\left(d_{c,c'}\right)\,\mathbb{1}(t_{c'} = t'),
+$$
+
+where $d_{c,c'}$ is the planar distance between two cells of the same sample
+and $e_s(c)$ is Diggle's edge correction for that sample's own spatial window.
+`buildNiches()` never forms a distance matrix across samples: it splits the
+`SpatialExperiment` per sample and builds a fresh `spatstat` point pattern,
+window and density surface for each subset, so two cells from different
+samples that happen to share coordinates never interact. The expected
+log-count of type $t'$ in a disc of radius $\sigma$ is then
+
+$$
+N_{c,t',s}(\sigma) \;=\; \log\!\left(\pi\sigma^2\,\Lambda_{c,t',s}(\sigma) + 1\right),
+$$
+
+and stacking over types gives the **effective niche** of the cell,
+$N_{c,s}(\sigma)$, a vector with one entry per cell type. Per-sample results
+are row-bound into one cells × types matrix per bandwidth, stored as
+`reducedDim(spe, "Niche<sigma>")`. Several bandwidths can be built at once;
+inference combines them later.
+
+# The model
 
 ## Notation
 
-Let $Y_{c,g}$ be the (SpaNorm-normalised) expression of gene $g \in \{1,\dots,G\}$ in cell $c \in \{1,\dots,C\}$. Each cell has a type $t_c \in \{1,\dots,T\}$ and belongs to a patient tissue sample $s_c \in \{1,\dots,S\}$. The clinical response of a sample is $r_{s} \in \{0 = \text{non-responder},\, 1 = \text{responder}\}$; because it is a property of the *patient*, $r_{s}$ is **constant across all cells of a sample** — a fact that drives everything below.
+$Y_{c,g}$ is the count of gene $g$ in cell $c$; $t_c$ its cell type and $s_c$
+its sample. The condition $r_s \in \{0, 1\}$ is a property of the sample —
+**constant across all cells of a sample**, which drives everything below. $k$
+indexes the (sample, cell type) group a cell belongs to. $S$ is the number of
+samples, $C$ the number of cells, $G$ the number of genes.
 
-## Effective niche
+## The negative binomial GLM, stated once
 
-Every quantity in this section is computed **within one sample at a time, entirely independently of every other sample**. Let $\mathcal C_s = \{c' : s_{c'} = s\}$ denote the cells belonging to sample $s$. For each cell $c \in \mathcal C_s$ we summarise its local neighbourhood by a kernel-smoothed intensity of every surrounding cell type, computed **from $\mathcal C_s$ alone**. With a Gaussian kernel $K_\sigma$ of bandwidth $\sigma$, the intensity of type $t'$ around cell $c$ is
-
-$$
-\Lambda_{c,t',s}(\sigma) \;=\; e_s(c) \!\!\sum_{c' \,\in\, \mathcal C_s}\!\!
-  K_\sigma\!\left(d_{c,c'}\right)\,
-  \mathbb{1}(t_{c'} = t'),
-$$
-
-where the sum runs **only over cells of the same sample** $s$, $d_{c,c'}$ is the (planar, within-sample) distance between two cells of $\mathcal C_s$, and $e_s(c)$ is Diggle's edge correction *for sample $s$'s own spatial window* — the smallest bounding box containing $\mathcal C_s$'s coordinates. Concretely, `buildNiches()` never forms a $C \times C$ inter-cell distance matrix or a single shared spatial window: `.speApply()` first splits the `SpatialExperiment` into one subset per sample, and `.effectiveNiche()` builds a fresh `spatstat` point pattern, window and kernel density surface **for that subset only**. Two cells from different samples that happen to share the same $(x,y)$ coordinates (routine, since each sample is imaged/segmented on its own coordinate system) therefore never interact in $\Lambda$ — there is no notion of "distance between a cell in sample 3 and a cell in sample 7". The expected log-count of type $t'$ in a disc of radius $\sigma$ is
+For one bandwidth $\sigma$, gene $g$ has a negative binomial distribution with
+dispersion $\psi_g$, $\mathrm{Var}(Y_{c,g}) = \mu_{c,g} + \psi_g\mu_{c,g}^2$,
+and log-mean
 
 $$
-N_{c,t',s}(\sigma) \;=\; \log\!\left(\pi\sigma^2\,\Lambda_{c,t',s}(\sigma) + 1\right).
+\begin{aligned}
+\log \mu_{c,g} \;=\;&
+ \underbrace{\gamma_g^\top x_c \;+\; \zeta_{g,t_c}
+ \;+\; \sum_{t'} N_{c,t'}\,\alpha_{g,t_c,t'}}_{\text{within-sample, fixed}}
+ \;+\; \underbrace{\eta_{g,t_c}\, r_{s_c}
+ \;+\; r_{s_c}\sum_{t'} N_{c,t'}\,\beta_{g,t_c,t'}}_{\text{response effects, fixed, tested}} \\[4pt]
+ &+\; \underbrace{u_{g,s_c} \;+\; v_{g,s_c t_c}
+ \;+\; \sum_{t'} N_{c,t'}\, w_{g,s_c,t_c,t'}}_{\text{patient-level random effects}} ,
+\end{aligned}
 $$
 
-Stacking over cell types gives the **effective niche composition** $N_{c,s}(\sigma) = \big(N_{c,1,s}(\sigma),\dots,N_{c,T,s}(\sigma)\big)$, still computed one sample at a time. Once every sample has been processed (in parallel, via `BiocParallel::bplapply`), the per-sample results are row-bound — not recomputed jointly — into one $C \times T$ matrix $N(\sigma)$ covering all samples. In the package this is `buildNiches()`, which stores $N(\sigma)$ as `reducedDim(spe, "Niche<sigma>")`.
-
-## The negative binomial GLM
-
-For a fixed bandwidth $\sigma$, gene $g$ is modelled with a negative binomial GLM with dispersion $\phi_g$ and log-mean
+with
 
 $$
-\log \mathbb{E}\!\left(Y_{c,g}\mid s_c=s, t_c=t, r_s, N_{c,s}(\sigma)\right)
-= \gamma_g L_s + \zeta_{g,t} + \eta_g\, r_s
- + \sum_{t'=1}^{T} N_{c,t',s}(\sigma)\,\alpha_{g,t,t'}
- + r_s \sum_{t'=1}^{T} N_{c,t',s}(\sigma)\,\beta_{g,t,t'} .
+u_{g,s} \sim \mathcal N(0, \tau^2_{\text{sample}}),\qquad
+v_{g,sk} \sim \mathcal N(0, \tau^2_{\text{sample}\times\text{type}}),\qquad
+w_{g,s,t,t'} \sim \mathcal N(0, \tau^2_{\text{slope}}).
 $$
 
-Writing $\mu_{c,g} = \mathbb{E}(Y_{c,g}\mid\cdots)$ for the modelled mean, the negative-binomial **variance function** — how noisy a count is around its mean — is
+| term | meaning | design tag |
+|---|---|---|
+| $\gamma_g^\top x_c$ | cell-level covariates (`covariates =`), e.g. log library size | `Other` |
+| $\zeta_{g,t}$ | baseline expression of the gene in cell type $t$ | `CellType` |
+| $\alpha_{g,t,t'}$ | condition-independent slope of expression in type $t$ on the density of type $t'$ | `Niche` |
+| $\eta_{g,t}$ | the flat response of type $t$: quantity 1 above | `ResponseCellType` |
+| $\beta_{g,t,t'}$ | **the niche-dependent response**: quantity 3, the tested slope | `ResponseNiche` |
+| $u_{g,s}$ | random intercept per sample | `Random` (`SampleInt`) |
+| $v_{g,sk}$ | random intercept per (sample, cell type) — `re.celltype = TRUE`, the default | `Random` (`SampleCellTypeInt`) |
+| $w_{g,s,t,t'}$ | random niche slopes per sample — `random = "slope"` only | `Random` (`SampleSlope`) |
+
+The variance components $\tau^2$ carry no gene index: one value of each is
+shared by every gene, estimated from all of them. The realised deviations
+$u_{g,s}$, $v_{g,sk}$ vary by gene. `random = "intercept"` (the default) adds
+$u$ and, with `re.celltype = TRUE`, $v$; `random = "slope"` adds $w$ as well;
+`random = "none"` adds nothing and should not be used for inference (see *Why
+cells are not replicates*).
+
+We test, per triplet,
 
 $$
-\mathrm{Var}(Y_{c,g}) = \mu_{c,g} + \phi_g\,\mu_{c,g}^2 ,
+H_0:\ \beta_{g,t,t'} = 0 \qquad\text{against}\qquad H_1:\ \beta_{g,t,t'} \ne 0 .
 $$
 
-i.e. Poisson noise ($\mu_{c,g}$) plus an extra, gene-specific overdispersion term that grows with the square of the mean. $\phi_g$ is estimated genome-wide (moderated across genes by `edgeR::estimateDisp()` inside `SpaNorm::fitNB`) and reappears throughout this vignette — it sets the IRLS working weights below and, later, the SE scaling of the mixed-effects fit.
+## Cell-means coding
 
-The coefficients are:
+`nicheDesign()` assembles the fixed part as
 
-| term | meaning |
-|-----------------------------|-------------------------------------------|
-| $\gamma_g L_s$ | sample-specific library-size effect (`computeSizeFactors()` offset) |
-| $\zeta_{g,t}$ | cell-type-specific expression |
-| $\eta_g$ | global response effect |
-| $\alpha_{g,t,t'}$ | average effect of niche type $t'$ on gene $g$ in cell type $t$ |
-| $\beta_{g,t,t'}$ | **response-specific** effect of niche type $t'$ in cell type $t$ |
+```
+~ 0 + <covariates> + CellType + CellType:condition
+    + CellType:(niches) + CellType:condition:(niches) + niches
+```
 
-The scientific quantity of interest is $\beta_{g,t,t'}$. We test
+There is no bare `condition` main effect: the response contrast is carried by
+one `CellType:condition` column per cell type, each readable directly as that
+type's flat response, and the three-way columns are one per (index type, niche
+type) with the index type's own density dropped (a type's density of itself is
+not a niche). The random-effect columns are ordinary design columns — an
+indicator per sample, an indicator per (sample, cell type), and, for slopes,
+sample indicators times the `CellType:niche` bases — tagged `Random` and
+identified by the ridge penalty described under *Random effects as ridge*.
+Every column carries a tag (`fits(res)[[1]]$covtype`), and the tested tag is
+`ResponseNiche` (or `Niche` in niche-only mode).
+
+## What each block does to the tested slope: Frisch–Waugh–Lovell
+
+Consider a weighted least-squares fit of $y$ on two blocks of columns,
+$[X_1 \mid X_2]$, with weights $D$. The **Frisch–Waugh–Lovell theorem** says
+the coefficient on $X_2$ equals the coefficient from a regression of
+$M_1 y$ on $M_1 X_2$, where
 
 $$
-H_0:\ \beta_{g,t,t'} = 0 \qquad\text{vs}\qquad H_1:\ \beta_{g,t,t'} \neq 0 .
+M_1 \;=\; I - X_1\big(X_1^\top D X_1\big)^{-1} X_1^\top D
 $$
 
-When $\beta_{g,t,t'} \neq 0$, niche cell type $t'$ has a response-specific association with the expression of gene $g$ in index cell type $t$.
+removes from any vector its weighted projection on $X_1$. In words: **the
+coefficient on a column is estimated only from the part of that column, and
+of the response, that the other columns cannot explain.** Every nuisance block
+in the design above is a choice of $X_1$, and the theorem says exactly what it
+removes from $\beta$.
 
-In the package the design is assembled by `nicheDesign()` / `.buildNicheDesign()` as `~ 0 + <covariates> + CellType + CellType:condition + CellType:(niches) + CellType:condition:(niches) + niches`. This is **cell-means coding**: there is no bare `condition` main effect, so the $\eta_g$ response contrast is carried by the per-cell-type `"ResponseCellType"` columns, and the $\beta_{g,t,t'}$ (three-way `condition:CellType:niche`) columns are `"ResponseNiche"` — the ones carried through testing. The whole gene set is fit in one `SpaNorm::fitNB(Y, W, ...)` call (the dispersion $\phi_g$ is moderated across genes), and per-gene Wald statistics for $\eta_g$ / $\beta_{g,t,t'}$ are combined across correlated niches (Brown's method), across bandwidths (Cauchy combination), and corrected with a hierarchical FDR.
+**The (sample × cell type) indicators.** When $X_1$ is a set of group
+indicators, $M_1$ subtracts each group's weighted mean:
+$(M_1 x)_c = x_c - \bar x_{k(c)}$. With the nested block in the design, the
+tested slope is therefore estimated from the *within-(sample, cell type)*
+deviations of niche density and of expression, and the between-group part —
+patients whose index cells sit in denser niches also expressing the gene
+differently in that type — is removed exactly and assigned to the intercepts,
+where it belongs. Without the block, only a per-sample intercept is present,
+shared across cell types; nothing removes the between-sample covariance
+*within* an index type, so it loads onto $\beta$ and is reported with a
+standard error computed from $C$ cells rather than $S$ patients. A
+permutation of the niche rows within (sample, cell type) cannot detect this,
+because it preserves every group's mean niche density and so preserves the
+confound. That is what the nested block was added for, and it is why
+`random = "slope"` is not a substitute: per-sample slopes on the niche bases
+leave the group means untouched.
 
-# The pseudo-replication problem
+**The `CellType:condition` column.** Now let $X_1$ be the flat response of
+the index type. $M_1$ removes the condition's mean effect in that type from
+both the response and the niche column, so $\beta$ is the *gradient* of the
+response along the niche and not its level. Without the column the flat
+response has nowhere to go but the uncentred slope, and the slope's standard
+error is that of a regression through the origin — smaller, because it is
+bought by assuming there is no level to estimate. A design without this
+column reports more niche calls; it is estimating a broader quantity under the
+niche label, not testing the same one better. The measurement is in the
+calibration vignette.
 
-The GLM above treats each of the $C$ cells as an independent observation. That is fine for the within-sample coefficients ($\zeta$, $\alpha$), but the response-related coefficients $\eta_g$ and $\beta_{g,t,t'}$ are **contrasts on the patient-level label** $r_s$. There are only $S$ independent patients, yet the Wald information matrix
+**The IRLS fit.** The theorem is about least squares, and the negative
+binomial fit is not least squares — but each step of the iteratively
+reweighted least-squares (and, later, Newton) iteration *is* a weighted
+least-squares problem in the working response, so the theorem holds step by
+step and hence at the converged fit, with $D$ the working weights
+$w_{c,g} = \mu_{c,g}/(1+\psi_g\mu_{c,g})$.
 
-$$
-\widehat{\mathrm{Var}}(\hat\theta) \;=\; \phi_g\left(W_\text{sub}^\top D_g\, W_\text{sub}\right)^{-1},
-\qquad D_g = \mathrm{diag}\big(w_{c,g}\big),\ \ w_{c,g} = \frac{\mu_{c,g}}{1+\phi_g\mu_{c,g}},
-$$
+**One caveat, because it is honest.** The nested block is not free: it is
+ridge-penalised (next section), and a penalised block does not centre
+completely. With penalty $\lambda$ on the group indicators, group $k$'s mean
+is removed by the factor $n_k \bar w_k / (n_k \bar w_k + \lambda)$, where
+$n_k \bar w_k$ is the group's total working weight — exact centring only as
+$\lambda = 1/\tau^2 \to 0$ (large estimated between-group variance) or as
+groups become large. On the real cohort that this was built for, the shrunken
+centring reproduced the exact-centring null within measurement; the numbers
+are in the calibration vignette.
 
-sums over all $C$ cells. The standard error of a response contrast therefore shrinks like $1/\sqrt{C}$ instead of $1/\sqrt{S}$, and with $C \gg S$ the Wald $z$-statistics are badly inflated. This reproduces the known behaviour of the original flat-script implementation and is documented as a property of `random = "none"`, which is why it is no longer the default.
+# Why cells are not replicates
 
-We can see it directly. Below we simulate a **null** data set: every cell of a patient shares a per-patient random shift, but there is *no* response effect at all — so every response test should be null.
+The design has one row per cell. That is fine for the within-sample
+coefficients ($\zeta$, $\alpha$), but $\eta$ and $\beta$ are contrasts on the
+patient-level label $r_s$: there are $S$ independent patients, yet a Wald
+information matrix that sums over $C$ cells makes their standard errors
+shrink like $1/\sqrt C$ instead of $1/\sqrt S$. With $C \gg S$ the statistics
+are badly inflated. This is what `random = "none"` does, and the reason it is
+no longer the default.
+
+The demonstration below simulates a **null**: every cell of a patient shares
+a per-patient shift, and there is no response effect at all, so every response
+test should be null.
 
 ```{r sim}
 sim_clustered <- function(n_samples = 10, n_per = 90, n_genes = 300,
@@ -149,42 +289,35 @@ sim_clustered <- function(n_samples = 10, n_per = 90, n_genes = 300,
   list(spe = SpatialExperiment(assays = list(counts = counts),
                                colData = S4Vectors::DataFrame(cd),
                                spatialCoords = as.matrix(cd[, c("x", "y")])),
-       u = u)   # the true per-(gene, sample) random intercepts, kept for later
+       u = u)
 }
 
 sim_null <- sim_clustered()
 spe <- buildNiches(sim_null$spe, sigma = 30)
 ```
 
-300 genes, not a handful, because $\tau^2$ below is a **single value shared across every
-gene fit** (more on why in "The fitting procedure"): estimating a variance from
-only a few genes is noisy, exactly the way estimating a variance from only a
-few observations is noisy in any other setting.
+300 genes rather than a handful, because $\tau^2$ is a single value shared
+across every gene: estimating a variance from a few genes is noisy in the same
+way as estimating it from a few observations.
 
-A helper that fits one random mode once and returns both the response p-values
-and the fitted object (so later sections can reuse it instead of re-fitting):
+A helper that fits one random mode and returns the response p-values and the
+fitted object:
 
 ```{r respp}
 fit_mode <- function(random) {
-  # df.method = "between" (the scalar S - 2) is pinned here deliberately: this
-  # section is about the mixed-effects *correction*, and the between reference
-  # keeps the demo cheap to rebuild. The default "satterthwaite" per-coefficient
-  # df is demonstrated in its own section below.
+  # df.method = "between" (the scalar S - 2) is pinned here: this section is
+  # about the correction itself, and the between reference keeps the demo
+  # cheap. The default "satterthwaite" per-coefficient df has its own section.
   f <- fitSpiDE(spe, "condition", sigma = 30, random = random,
                 df.method = "between", verbose = FALSE)
   res <- testSpiDE(f, spe = spe)          # populates the Wald inference slots
   ff <- fits(res)[[1]]
-  # Under cell-means coding there is no bare `condition` main effect: the
-  # response contrast is carried by the CellType:condition columns, one per
-  # cell type. Match on column NAMES -- `covtype` spans every design column
-  # while `t_stat` holds only the tested ones.
+  # the response contrast is carried by the CellType:condition columns; match
+  # on column NAMES -- `covtype` spans every design column, `t_stat` only the
+  # tested ones
   ct <- as.character(ff$covtype)
   rc <- intersect(colnames(ff$t_stat),
                   ff$coefmap$covariate[ct == "ResponseCellType"])
-  # @df is a per-column NAMED VECTOR under the default df.method =
-  # "satterthwaite", and NULL (fixed fit) or a scalar under "between".
-  # Recycling a vector against a genes x columns matrix would run down rows,
-  # not across columns, so expand it explicitly.
   tt <- ff$t_stat[, rc, drop = FALSE]
   df <- if (is.null(ff$df)) Inf else if (length(ff$df) == 1L) ff$df else ff$df[rc]
   dfm <- matrix(rep(df, each = nrow(tt)), nrow = nrow(tt))
@@ -194,371 +327,113 @@ fixed <- fit_mode("none")
 mean(fixed$p < 0.05)  # should be ~0.05 under the null
 ```
 
-The fixed-effects fit rejects a large fraction of these null tests at $\alpha = 0.05$ — grossly anti-conservative.
+The fixed-effects fit rejects a large fraction of null tests at
+$\alpha = 0.05$.
 
-# Mixed-effects correction via ridge
+## Why not add sample as a fixed effect?
 
-If you know GLMs but have never fit or interpreted a random-effects (mixed)
-model, this section is written for you. It builds the model up from the one
-question a fixed-effects modeller always asks first, then walks through
-*exactly* what `fitSpiDE()` computes, step by step, with a small worked
-example you can run and modify yourself.
-
-## Why not just add sample as a fixed effect?
-
-The pseudo-replication problem above comes from ignoring that cells cluster by
-patient. Your instinct from fixed-effects modelling is probably: *if
-`sample_id` is a nuisance grouping variable, just add it to the design as
-another factor*, the way you would `batch` or `site`. It is worth seeing
-concretely why that does not work here, because the reason is exactly what
-motivates a random effect instead.
+The instinct from fixed-effects modelling is to add `sample_id` as a factor,
+the way one adds `batch`. It cannot work here, and the reason motivates the
+random effect:
 
 ```{r whynotfixed}
 set.seed(42)
-# a deliberately modest n_per and baseline mean: with abundant cells per
-# sample, each sample's own data pins down its baseline so precisely that a
-# random effect has little left to correct -- see "Shrinkage" below
 S <- 12; n_per <- 12
 toy_sample <- factor(rep(seq_len(S), each = n_per))
 toy_resp   <- rep(rbinom(S, 1, 0.5), each = n_per)   # constant within a sample
-true_tau2  <- 0.49                                    # matches sd_patient = 0.7
+true_tau2  <- 0.49
 u_true     <- rnorm(S, 0, sqrt(true_tau2))
 eta_true   <- 0.3 * toy_resp + u_true[as.integer(toy_sample)]
-toy_y      <- rpois(length(eta_true), exp(eta_true))
-toy <- data.frame(y = toy_y, resp = toy_resp, sample_id = toy_sample)
-
-naive_fixed <- glm(y ~ sample_id + resp, family = poisson, data = toy)
-coef(naive_fixed)["resp"]
+toy <- data.frame(y = rpois(length(eta_true), exp(eta_true)),
+                  resp = toy_resp, sample_id = toy_sample)
+coef(glm(y ~ sample_id + resp, family = poisson, data = toy))["resp"]
 ```
 
-`resp` comes back `NA`. This is not a numerical accident: because *every cell
-of a sample shares the same response label*, `resp` is an exact linear
-combination of the sample dummy columns (it is just "which samples are
-Responders", encoded twice). A design that already contains a free column per
-sample has nothing left to estimate the response contrast from — the two
-sets of columns span the same space, and `glm()` correctly refuses to invent
-information that is not there. (`spiDE` enforces the same logic the other way
-around: `checkSample()` **errors** if you pass a sample-constant covariate
-together with `random != "none"`, since the random intercept would make it
-exactly as inestimable.)
+`resp` is `NA` because every cell of a sample shares the response label:
+`resp` is an exact linear combination of the sample dummies, and a design with
+a free column per sample has nothing left to estimate the contrast from.
+`spiDE` enforces the mirror image — `checkSample()` errors if a sample-constant
+covariate is passed with `random != "none"`, since the random intercept makes
+it exactly as inestimable. A free per-sample parameter would also fit each
+sample perfectly and say nothing about how much patients differ *in general*,
+which is precisely the quantity the corrected test needs. A random effect
+sits between the two extremes: each patient gets its own deviation $u_s$, but
+the deviations are draws from a shared $\mathcal N(0, \tau^2)$, with $\tau^2$
+estimated from the data and each $\hat u_s$ shrunk toward zero by an amount
+that reflects how reliable that patient's own data is.
 
-Even setting the collinearity aside, giving every sample its own completely
-free (unpenalised) parameter throws away the one thing a mixed model is
-for: **borrowing strength across patients**. A free per-sample parameter fits
-that one sample's data perfectly and tells you nothing about how much
-patients differ *in general* — which is precisely the quantity ($\tau^2$
-below) the corrected test needs.
+# Random effects as ridge
 
-What we actually want sits **between** two extremes:
+## The identity
 
--   *ignore the patient entirely* (fixed-effects default) — one shared
-    parameter for everyone, badly anti-conservative, as shown above;
--   *give every patient a fully free parameter* (fixed factor) — inestimable
-    here, and even when it isn't, it doesn't pool information across
-    patients.
-
-A **random effect** is the middle ground: each patient gets its own deviation
-$u_s$, but those deviations are constrained to be draws from a shared
-distribution, $u_s \sim \mathcal N(0, \tau^2)$, rather than free parameters.
-$\tau^2$ — how much patients genuinely differ — is *estimated from the data*,
-and each patient's own $\hat u_s$ is pulled ("shrunk") toward zero by an
-amount that depends on how reliable its own data is relative to $\tau^2$. The
-rest of this section makes that precise and shows it happening on real
-numbers.
-
-### An aside: nesting the samples, and does cell imbalance matter?
-
-The collinearity above is an artefact of coding each sample as a *free,
-independent* effect. You can instead **nest** the samples within their
-condition group — code them with `contr.sum` inside each group — and then the
-response contrast *is* estimable: with $S$ samples you fit $S-2$ within-group
-contrasts plus `resp`, rather than $S-1$ collinear dummies. So estimability was
-never the real obstacle.
-
-The real obstacle is the **error stratum**: making `resp` estimable does not by
-itself make its test honest. On the page-5 null (per-sample intercepts, no
-response effect) we test `resp` four ways, and — because unequal cell counts are
-an obvious worry — sweep a **cell-count imbalance from 1× to 10×** (the larger
-samples get up to 10× the cells, balanced across conditions). Response-effect
-null type-I at $\alpha = 0.05$ (should be $\approx 0.05$; a few folds shown, full
-1×–10× sweep in `analysis/statistician-review/imbalance.R`):
-
-```{r nested_imbalance_table, echo = FALSE}
-knitr::kable(
-  data.frame(
-    imbalance = c("1x (balanced)", "3x", "5x", "10x"),
-    `fixed (cell SE)` = c(0.730, 0.837, 0.898, 0.905),
-    `nested, cell SE` = c(0.763, 0.832, 0.833, 0.825),
-    `nested, between-sample df` = c(0.047, 0.048, 0.040, 0.038),
-    `random intercept` = c(0.048, 0.053, 0.042, 0.045),
-    check.names = FALSE),
-  caption = paste("Response-effect null type-I across a cell-imbalance sweep.",
-                  "Nesting alone (cell SE) does not help -- and the plain",
-                  "cell-level fixed test only worsens as imbalance grows;",
-                  "testing against the between-sample stratum, or equivalently a",
-                  "random intercept, stays calibrated all the way to 10-fold."))
-```
-
-Two things to take from this. First, **the nesting alone is not the fix**:
-tested at the cell SE it is as anti-conservative as ignoring samples entirely
-($\approx 0.8$, and *worse* as imbalance grows); it is the between-sample stratum
-($S-2$ df) — exactly what the random intercept supplies — that calibrates it.
-Second, a properly-tested nested *fixed* model is a legitimate alternative to the
-random effect **for the main effect**, and both stay calibrated across the entire
-1×–10× imbalance sweep — so the choice between them is not about calibration. The
-random effect's one statistical edge is that it pools the between-sample variance
-across genes (a single $\tau^2$) and so borrows strength for the genes measured
-least reliably; that advantage is largest with **few patients** and fades as the
-cohort grows (each gene's own between-sample variance then has ample $S-2$ df).
-We use the random-effects model because it delivers that pooling and — the part
-that actually matters for the niche interactions — the per-coefficient degrees of
-freedom (see *Per-coefficient degrees of freedom* below), and because it handles
-the NB-GLM and covariates without hand-assembling error strata.
-
-#### A nested fixed model was built, measured, and rejected
-
-The "between-sample df" arm above is an **unweighted $t$-test on the $S$ sample
-means**. That test is calibrated — it is essentially a pseudobulk analysis, and
-holds $0.041$–$0.051$ across every design point we have measured. What does
-*not* work is the natural way of folding that stratum back into the GLM, which
-is worth recording because the reasoning is seductive.
-
-The idea: keep the nested `contr.sum` block in the design, form the whole-plot
-mean square from it, and substitute that for the dispersion in the Wald
-standard error,
+One IRLS step for a GLM is a weighted least-squares regression of the working
+response $z_{c,g} = \eta_{c,g} + (Y_{c,g} - \mu_{c,g})/\mu_{c,g}$ on the
+design, with weights $D_g = \mathrm{diag}(w_{c,g})$. Write the expanded design
+as $\tilde W = [\,W \mid Z\,]$ with $Z$ the random-effect columns. On this
+working scale, **a Gaussian random effect on a block of columns is exactly an
+$L_2$ (ridge) penalty on those columns** — an identity, not an approximation.
+The penalised objective
 
 $$
-\hat\sigma^2_{\mathrm{b},t}
-  = \frac{1}{S-2}\sum_s W_{st}\bigl(m_{st} - \bar m_{t,q(s)}\bigr)^2,
+\lVert z - \tilde W\theta \rVert^2_{D_g} + \theta^\top \Lambda\,\theta,
 \qquad
-\mathrm{SE}_j = \sqrt{\hat\sigma^2_{\mathrm{b},t(j)}\,(\mathbf{A}^{-1})_{jj}},
+\Lambda = \mathrm{blockdiag}\big(0_{\text{fixed}},\ \lambda_{\text{sample}} I,\
+\lambda_{\text{sample}\times\text{type}} I,\ \lambda_{\text{slope}} I\big),
 $$
 
-with $m_{st}$ the working-weighted mean residual of cell type $t$ in sample $s$,
-centred within condition group. The justification is that
-$\mathbb{E}[\hat\sigma^2_{\mathrm{b},t}] \approx \phi + \bar W_t\sigma^2_u$
-while $\phi(\mathbf{A}^{-1})_{jj} = \tfrac{4}{S}\phi/\bar W_t$, so their ratio
-is exactly the inflation $1 + \bar W_t\sigma^2_u/\phi$ that the contrast needs.
-
-**That step silently assumes $(\mathbf{A}^{-1})_{jj}$ shrinks as $1/\bar W_t$,
-so the two $\bar W_t$ terms cancel. They do not.** Measured against the true
-sampling distribution of $\hat\beta$ (geometry and gene parameters held fixed
-across replicates, so $\mathrm{sd}(\hat\beta)$ is a genuine sampling SD):
-
-```{r stratum_decomp, echo = FALSE}
-knitr::kable(
-  data.frame(
-    `cells per sample` = c(60, 160, 400),
-    `inflation required` = c(2.63, 2.59, 2.35),
-    `inflation applied` = c(3.63, 5.39, 7.60),
-    `null type-I` = c(0.0198, 0.00043, 0.000),
-    check.names = FALSE),
-  caption = paste("The required inflation is CONSTANT in cells per sample;",
-                  "the whole-plot mean square grows as sqrt(Wbar). Nominal",
-                  "type-I is 0.05, and the pseudobulk oracle holds 0.042-0.057",
-                  "at every one of these points."))
-```
-
-Across an 18-cell factorial (varying $S$, cells per sample, and $\sigma_u$, with
-a calibrated oracle and a known-broken negative control in every cell) the
-construction is calibrated at **exactly one** design point and collapses to zero
-rejections as cells per sample grow. The whole-plot mean square is the **wrong
-quantity** for a cell-means condition contrast, not a mis-scaled version of the
-right one, so there is no implementation fix. Details and the full measurements
-are in `research/reports/between-sample-stratum.html`.
-
-Two intermediate findings from that work *were* correct and are reusable: the
-stratum must be **cell-type specific** (pooling it to sample level over-inflates
-the variance by a factor of $k$), and estimating it from residual aggregates
-avoids both a $k(S-2)$ column blow-up — 4,752 columns at 24 cell types and 200
-samples — and a double count that afflicts the design-column form.
-
-## The model
-
-We add **patient-level random effects** that soak up the between-patient variability the fixed-effects model wrongly attributes to residual (cell-level) noise. Crucially, we add them only for the *response-related* effects — the only ones we do inference on — by giving each response coefficient its patient-level random counterpart:
-
-$$
-\log \mathbb{E}(Y_{c,g}\mid\cdots)
-= \underbrace{\gamma_g L_s + \zeta_{g,t}
- + \sum_{t'} N_{c,t',s}\,\alpha_{g,t,t'}}_{\text{fixed, within-sample}}
- + \underbrace{\eta_g\, r_s + r_s\!\sum_{t'} N_{c,t',s}\,\beta_{g,t,t'}}_{\text{fixed response effects (tested)}}
- + \underbrace{u_{g,s} + \sum_{t'} N_{c,t',s}\, v_{g,s,t,t'}}_{\text{patient random effects}},
-$$
-
+has the closed-form solution
+$\hat\theta = (\tilde W^\top D_g \tilde W + \Lambda)^{-1}\tilde W^\top D_g z$
 with
 
 $$
-u_{g,s} \sim \mathcal N(0,\tau^2_{\text{int}}),\qquad
-v_{g,s,t,t'} \sim \mathcal N(0,\tau^2_{\text{slope}}).
+\boxed{\ \lambda_k = 1/\tau^2_k\ } .
 $$
 
-Note the variance components $\tau^2_{\text{int}}, \tau^2_{\text{slope}}$ carry
-**no gene index**: a single value of each is shared by every gene (why, and
-how that is estimated, is the subject of "The fitting procedure" below). The
-realised deviations $u_{g,s}$ do vary by gene — each gene gets its own random
-draw — only their common variance is pooled.
+Read it either way: a ridge penalty is the log-density of a Gaussian prior
+$b \sim \mathcal N(0, 1/\lambda)$, so the penalised fit is the posterior mode
+under the random-effect distribution; or, the penalty pulls every $\hat u_s$
+toward zero, which is what borrowing strength across patients means
+numerically. The penalised estimates of the random columns are the model's
+**BLUPs**. This is the penalised quasi-likelihood construction (Breslow &
+Clayton, 1993; Schall, 1991) that `lme4`, `mgcv` and `MASS::glmmPQL()` build
+on, and it needs no change to the fitting engine: `SpaNorm::fitNB` accepts a
+per-column penalty `lambda.a`, set to $0$ on fixed columns and $1/\tau^2_k$ on
+random ones.
 
--   The random **intercept** $u_{g,s}$ is the patient-level counterpart of the response main effect $\eta_g$: it lets each patient's baseline float, so $\eta_g$ is identified from between-patient contrasts.
--   The random **slopes** $v_{g,s,t,t'}$ are the patient-level counterparts of the $\beta_{g,t,t'}$ terms: they let each patient's niche→expression slope float, so $\beta_{g,t,t'}$ is tested against between-patient *slope* variability. A random intercept alone would not protect $\beta$, because $\beta$ multiplies a covariate that varies *within* a patient.
+## Estimating the variance components
 
-`random = "intercept"` adds $u_{g,s}$ only; `random = "slope"` adds both. The slope model gives the fullest protection of $\beta$, but note the trade-off: the random slope $v_{g,s,t,t'}$ and the fixed effect $\beta_{g,t,t'}$ both describe how the niche→expression slope differs across patients, so with **few patients per response group** the random slope can absorb a genuine $\beta$ (a real effect seen in only a handful of responders is, statistically, hard to distinguish from patient-to-patient slope noise). With an adequate number of samples prefer `"slope"`; with only a few, `"intercept"` is a more powerful default and still corrects the dominant (baseline) source of pseudo-replication.
-
-## Ridge $\equiv$ random effects: the conceptual bridge
-
-If you know **ridge regression**, you already know 90% of what a random
-effect *is* — you have just not called it that. Recall ordinary IRLS for a
-GLM: at the current fit $\hat\theta$, form the linear predictor
-$\eta_{c,g} = (W\theta)_{c,g}$, the **working response**
-
-$$
-z_{c,g} \;=\; \eta_{c,g} + \frac{Y_{c,g} - \mu_{c,g}}{\mu_{c,g}},
-$$
-
-(a first-order, log-link linearisation of the count around the current fit)
-and the working weight $w_{c,g} = \mu_{c,g}/(1+\phi_g\mu_{c,g})$ from before.
-One IRLS step is then an ordinary **weighted least-squares** regression of
-$z_{c,g}$ on $W$ with weights $D_g = \mathrm{diag}(w_{c,g})$ — this is exactly
-what `SpaNorm::fitNB` already does for `spiDE`'s fixed-effects fit, and it is
-the "GLM" part you already know.
-
-Write the expanded design as $\tilde W = [\,W \mid Z\,]$, where $Z$ holds the
-random-effect columns: one indicator per sample for $u$, and sample-indicator
-$\times$ `CellType:niche` columns for $v$. **A Gaussian random effect on a
-group of columns is, on this same working scale, exactly an $L_2$ (ridge)
-penalty applied only to those columns** — not an approximation, an identity.
-Maximising the penalised weighted least-squares objective
+The one thing the identity does not supply is $\tau^2$. `.fitNBmixed()` gets
+it with two nested loops. The **inner loop** is `fitNB` at a fixed penalty:
+the penalised estimate of every gene at once, BLUPs included. The **outer
+loop** re-estimates each component by a method-of-moments update and refits:
 
 $$
-\big\lVert z - \tilde W\theta \big\rVert^2_{D_g} \;+\; \theta^\top \Lambda\, \theta,
-\qquad \lVert a \rVert^2_D := a^\top D\, a,
+\hat\tau^2_k = \frac{\sum_g \lVert \hat b_{g,k}\rVert^2}
+                    {G\,\big(q_k - \lambda_k\,\mathrm{tr}\,C_{kk}\big)},
 \qquad
-\Lambda = \mathrm{blockdiag}\!\left(0_{\text{fixed}},\; \lambda_{\text{int}} I,\; \lambda_{\text{slope}} I\right),
+C = \big(\tilde W^\top \bar D\,\tilde W + \Lambda\big)^{-1},
 $$
 
-gives the closed-form estimate
+where $\hat b_{g,k}$ are gene $g$'s BLUPs in block $k$, $q_k$ the block's
+number of columns, $\bar D$ a gene-averaged working-weight matrix (one
+representative information matrix, since $\tau^2$ is shared), $C_{kk}$ the
+block's penalised covariance, and $q_k - \lambda_k\,\mathrm{tr}\,C_{kk}$ its
+**effective degrees of freedom** — less than $q_k$ because shrunken BLUPs use
+up less than a parameter each. That denominator is what makes $\hat\tau^2$ an
+estimate of the *true* between-patient variance rather than the variance of
+the shrunken BLUPs. The loop stops when $\log\hat\tau^2$ moves by less than
+`re.tol`, or after `re.maxit` iterations (default 2: for the intercept model
+one iteration is indistinguishable from ten, and a small cap avoids a
+two-cycle the estimate can fall into; pass `re.maxit = 10` for
+`random = "slope"`, whose slope component converges slowly). `re.prop < 1`
+runs the inner fits on a stratified cell subsample; the coefficients inference
+uses always come from a final fit on all cells, but the shared $\tau^2$ is
+biased downward by subsampling, so the default is `re.prop = 1`.
 
-$$
-\hat\theta = \big(\tilde W^\top D_g \tilde W + \Lambda\big)^{-1}\tilde W^\top D_g\, z,
-\qquad\text{with}\qquad
-\boxed{\ \lambda_k \;=\; 1/\tau^2_k\ }.
-$$
+## Watching it work
 
-Two equivalent ways to see *why* this identity holds, whichever you find more
-natural:
-
--   **Bayesian / MAP view.** A ridge penalty $\lambda\lVert b\rVert^2$ is
-    exactly the log-density (up to a constant) of a Gaussian prior
-    $b \sim \mathcal N(0, 1/\lambda)$. Maximising the penalised likelihood is
-    maximising a *posterior* under that prior — i.e. assuming $b_s$ are drawn
-    from a shared Gaussian, which is the literal definition of a random
-    effect. $\lambda = 1/\tau^2$ then just says: a *tighter* prior (small
-    $\tau^2$, large $\lambda$) pulls estimates harder toward zero.
--   **Shrinkage view.** Without the penalty, $\hat\theta$ solves ordinary
-    weighted least squares and each $\hat u_s$ is a free, unpooled estimate
-    (the fixed-factor case that failed above). The penalty term pulls every
-    $\hat u_s$ toward $0$ by an amount that grows with $\lambda$ — this pull
-    is exactly what "borrowing strength across patients" means numerically,
-    and $\hat\theta$ restricted to the random columns is called the model's
-    **BLUP** (Best Linear Unbiased Predictor): "unbiased" in the sense of
-    minimising mean-squared error *given* $\tau^2$, "predictor" because,
-    unlike a fixed effect, $u_s$ is treated as a random draw being predicted,
-    not a fixed unknown being estimated.
-
-This is the standard penalised quasi-likelihood (PQL) construction (Breslow &
-Clayton, 1993; Schall, 1991) — the same idea `lme4`, `mgcv` and
-`MASS::glmmPQL()` all build on. It fits `spiDE` perfectly with **no change to
-the fitting engine**: `SpaNorm::fitNB` already accepts a per-column ridge
-penalty `lambda.a`, so we set it to $0$ on the fixed columns and $1/\tau^2_k$
-on the random ones.
-
-## The fitting procedure: a nested loop
-
-The one piece the ridge equivalence does not hand us for free is $\tau^2$
-itself — it is not data, it is exactly what we are trying to learn. `spiDE`
-gets it with **two nested loops**, implemented in `.fitNBmixed()`
-(`R/fitSpiDE.R`):
-
--   **Inner loop (existing machinery, unchanged).** For a *fixed* candidate
-    $\tau^2$ (hence $\Lambda$), call `SpaNorm::fitNB(Y, W, lambda.a = ...)` —
-    the package's ordinary IRLS engine, which already knows how to fit a
-    penalised NB-GLM to the whole gene set at once. From `spiDE`'s point of
-    view this is a black box: "give me the penalised MLE (the BLUPs
-    $\hat u_{g,s}$ included) for this penalty."
--   **Outer loop (the new part).** Given those BLUPs, re-estimate $\tau^2$
-    with a **method-of-moments** update, then re-penalise and re-fit. Repeat
-    until $\tau^2$ stops moving.
-
-The moment update, for random-effect group $k$ (e.g. `"SampleInt"`) of size
-$q_k$ (its number of columns, i.e. the number of samples for a random
-intercept):
-
-$$
-\hat\tau^2_k \;=\; \frac{\sum_g \lVert \hat b_{g,k}\rVert^2}{G\,\big(q_k - \lambda_k\,\mathrm{tr}\, C_{kk}\big)},
-\qquad C = \big(\tilde W^\top \bar D\, \tilde W + \Lambda\big)^{-1}.
-$$
-
-New symbols here, defined:
-
-| symbol | meaning |
-|---|---|
-| $\hat b_{g,k}$ | the fitted BLUPs of block $k$ for gene $g$ (e.g. $\hat u_{g,\cdot}$, the $S$ per-sample intercepts) |
-| $G$ | number of genes — **every gene contributes to the same $\hat\tau^2_k$** |
-| $\bar D = \mathrm{diag}(\bar w_c)$ | a single, **gene-averaged** working-weight matrix, $\bar w_c = \frac1G\sum_g w_{c,g}$, standing in for each gene's own (slightly different) $D_g$ |
-| $C_{kk}$ | the block-$k$ diagonal sub-block of $C$ — the *penalised* covariance of $\hat\theta$ |
-| $q_k - \lambda_k\,\mathrm{tr}\,C_{kk}$ | the block's **effective degrees of freedom** — less than $q_k$ because shrinkage means the BLUPs use up less than one full parameter each |
-
-The numerator sums squared BLUPs **over every gene** — this is why the
-earlier demo simulates 300 genes rather than a handful: $\tau^2$ is a single
-number pooling information across the whole gene set, and pooling over more
-genes is what makes that number stable (a single gene's own $\hat\tau^2$ would
-be about as noisy as any variance estimated from a small sample — you'll see
-this directly below). $\bar D$ exists for the same reason: since $\tau^2$
-is shared, the outer loop needs *one* representative information matrix, not
-$G$ separate ones.
-
-Two implementation details worth knowing, because they affect what you should
-expect to see:
-
--   **A convergence criterion on $\log\tau^2$.** The loop stops once
-    $|\log\hat\tau^2_{\text{new}} - \log\hat\tau^2_{\text{old}}| < \texttt{re.tol}$
-    — log scale because $\tau^2$ is a variance (strictly positive, and
-    naturally multiplicative in how far off a bad starting guess is).
--   **Iteration cap (`re.maxit`, default `2`).** Lowered from 10 on
-    measurement. For `random = "intercept"` a single iteration is
-    indistinguishable from ten on null type-I error (to three decimal places)
-    and on $\hat\tau^2$ (to two), because the loop converges in a couple of
-    steps; the second iteration is kept as cheap insurance. The smaller cap also
-    largely dissolves a hazard of the larger one: $\hat\tau^2$ can enter a
-    **2-cycle** rather than converging, in which case the value returned depends
-    on the *parity* of `re.maxit` — an unpleasant property for a default.
-
-    **This evidence covers the intercept model only.** Under
-    `random = "slope"` the slope variance component decays *monotonically*
-    across all ten iterations without ever meeting `re.tol`, so a cap of 2
-    leaves it orders of magnitude from where 10 leaves it. Pass
-    `re.maxit = 10` for slope fits.
-
--   **Cell subsampling for speed (`re.prop`, default `1`, i.e. off).** The
-    *inner* loop's fits can optionally run on a stratified subsample of cells
-    (every sample $\times$ cell type stays represented) with a single
-    dispersion iteration instead of every cell, trading speed for accuracy in
-    the shared scalar $\tau^2$ — never the reported coefficients, since one
-    **final fit on all cells with full dispersion** always supplies the
-    $\hat\alpha_g$ / $\hat\phi_g$ that inference uses, regardless of
-    `re.prop`. That trade is worse than it looks, though: a real-cohort
-    replicate study found `tau2` systematically biased *downward* at every
-    `re.prop < 1` tested, not just noisier, and averaging replicates does not
-    fix it. `re.prop = 1` (no subsampling) is therefore the default; see the
-    *Speeding up the mixed-effects fit* report on the benchmark site for
-    the full speed/accuracy trade-off.
-
-### Watching it work: a worked example
-
-To make this concrete rather than abstract, we fit the *same* algorithm by
-hand on one gene's worth of the toy data above, using `MASS::glmmPQL()` — a
-well-tested, textbook implementation of exactly this PQL/Schall construction
-(it is not `spiDE`'s own code, but the same algorithm family; think of it as
-a second, independent implementation you can cross-check against).
+The same construction, on one gene of the toy data, with an independent
+implementation — `MASS::glmmPQL()`:
 
 ```{r pql_demo, message = FALSE}
 library(MASS)
@@ -567,17 +442,12 @@ fit_pql <- glmmPQL(y ~ resp, random = ~ 1 | sample_id, family = poisson,
 summary(fit_pql)$tTable
 ```
 
-Compare `resp`'s row to the collinear, undefined coefficient a few paragraphs
-back: with the response now a random-intercept counterpart rather than a
-free-for-all sample factor, it is perfectly estimable, and its reference `DF`
-is $S - 2 = 10$ — the between-patient degrees of freedom formula used
-throughout this vignette (below).
+`resp` is now estimable, and its reference `DF` is $S - 2 = 10$, the
+between-patient degrees of freedom. `glmmPQL()` exposes its outer-iteration
+cap as `niter`, so refitting with `niter = 1, 2, …` replays the trajectory
+`.fitNBmixed()`'s loop takes:
 
-**The outer loop converging.** `glmmPQL()` exposes its outer-iteration cap as
-`niter`; refitting with `niter` $= 1, 2, \dots$ replays the same trajectory
-`.fitNBmixed()`'s own loop takes internally.
-
-```{r tau2_trace, fig.small = TRUE, fig.cap = "The outer Schall/PQL loop converging on the patient-level variance component, for one gene. The dashed line is the true simulated value."}
+```{r tau2_trace, fig.small = TRUE, fig.cap = "The outer loop converging on the patient-level variance component for one gene. The dashed line is the simulated value."}
 tau2_trace <- vapply(1:8, function(k) {
   f <- suppressWarnings(glmmPQL(y ~ resp, random = ~ 1 | sample_id,
                                 family = poisson, data = toy, niter = k,
@@ -588,105 +458,27 @@ ggplot(data.frame(iteration = seq_along(tau2_trace), tau2 = tau2_trace),
       aes(iteration, tau2)) +
   geom_hline(yintercept = true_tau2, linetype = 2, colour = spide_pal$ref) +
   geom_line(colour = spide_pal$accent) + geom_point(colour = spide_pal$accent) +
-  labs(x = "outer (Schall/PQL) iteration",
-       y = expression(hat(tau)^2), title = "One gene's variance-component estimate")
+  labs(x = "outer iteration", y = expression(hat(tau)^2),
+       title = "One gene's variance-component estimate")
 ```
 
-It converges within a handful of iterations (`.fitNBmixed()`'s default cap is
-`re.maxit = 10`) — but notice it does **not** land exactly on the dashed true
-value. With only $S = 12$ patients contributing to a single gene's estimate,
-$\hat\tau^2$ has real sampling noise, the same way any variance estimated from
-12 numbers does. This is precisely why `spiDE` never estimates a per-gene
-$\tau^2$: it pools the numerator ($\sum_g\lVert\hat b_{g,k}\rVert^2$) across
-every gene being fit. Rerunning the *real* `fitSpiDE()` on the 300-gene `spe`
-object from earlier makes the difference concrete:
+It converges in a handful of iterations and does not land on the true value:
+with $S = 12$ patients, one gene's $\hat\tau^2$ has real sampling noise. That
+is why `spiDE` pools the numerator across every gene; on the 300-gene null
+from earlier the pooled estimate sits close to the simulated $0.49$:
 
 ```{r tau2_pooled}
 mixed <- fit_mode("intercept")
-mixed$fit$tau2   # pooled across 300 genes -- compare to true_tau2 = 0.49
+mixed$fit$tau2[["SampleInt"]]
 ```
 
-**Do the random intercepts actually look Gaussian?** $\hat\tau^2$ being close
-to $0.49$ confirms the model recovers the right *scale* of between-patient
-variation, but not that the underlying assumption — $u_{g,s} \sim \mathcal
-N(0, \tau^2)$ — genuinely holds. With only $S=12$ or $S=10$ patients, a
-histogram of one gene's random intercepts would be far too few points to say
-anything about a distribution's shape. What we *can* look at is every
-$u_{g,s}$ the simulator actually drew: 300 genes $\times$ 10 samples $=$
-3,000 independent draws, kept from `sim_clustered()` (`sim_null$u`) precisely
-for this. Alongside them, the *fitted* BLUPs (extracted the same way as the
-toy example, but now for all 300 genes and all `SampleInt` columns at once):
+**Shrinkage** is the other signature of a random effect. Compare each
+sample's BLUP with the fully unpooled per-sample estimate from the saturated
+model `y ~ sample_id - 1`:
 
-```{r gauss_check, fig.small = TRUE, fig.cap = "Empirical density of the true simulated random intercepts and the fitted BLUPs (pooled across all 300 genes and 10 samples), against the theoretical N(0, 0.49) the simulator drew from."}
-blup_cols <- which(mixed$fit$re_group == "SampleInt")
-blups <- mixed$fit$alpha[, blup_cols, drop = FALSE]
-u_df <- data.frame(
-  value = c(as.vector(sim_null$u), as.vector(blups)),
-  source = rep(c("true simulated u (n = 3,000)", "fitted BLUPs (n = 3,000)"),
-              c(length(sim_null$u), length(blups))))
-theory <- data.frame(x = seq(-3, 3, length.out = 200))
-theory$density <- dnorm(theory$x, 0, sqrt(true_tau2))
-
-ggplot(u_df, aes(value, colour = source)) +
-  geom_density(linewidth = 0.9) +
-  geom_line(data = theory, aes(x, density), inherit.aes = FALSE,
-           linetype = 2, colour = spide_pal$ref, linewidth = 0.8) +
-  scale_colour_manual(
-    values = c("true simulated u (n = 3,000)" = unname(spide_pal$method[["fixed"]]),
-              "fitted BLUPs (n = 3,000)" = unname(spide_pal$method[["intercept"]])),
-    name = NULL) +
-  labs(x = "per-(gene, sample) random intercept", y = "density",
-       title = "The dashed line is the theoretical N(0, 0.49) density")
-```
-
-The **true simulated values** (orange) track the dashed theoretical $\mathcal
-N(0, 0.49)$ curve closely — unsurprising, since that is literally the
-distribution `rnorm(n_genes * n_samples, 0, sd_patient)` draws from, but
-useful to see directly rather than take on faith. The **fitted BLUPs**
-(green) are visibly *narrower* than both — their empirical variance is
-`r round(var(as.vector(blups)), 3)`, below the true $0.49$. This is
-shrinkage again, now visible in aggregate
-rather than one sample at a time: every individual BLUP is pulled toward
-zero, so the *population* of fitted BLUPs is always somewhat narrower than
-the population of true effects they estimate. `@tau2` is **not** simply the
-variance of the BLUPs — the moment estimator's denominator
-($q_k - \lambda_k\,\mathrm{tr}\,C_{kk}$, "The fitting procedure" above)
-exists specifically to correct for this narrowing, which is why `@tau2`
-lands close to $0.49$ even though `var(BLUPs)` does not.
-
-**Shrinkage.** The other signature behaviour of a random effect is that its
-BLUPs are pulled toward zero relative to what each patient's data would say
-on its own. We can see this directly by comparing `glmmPQL()`'s BLUPs to the
-*fully unpooled* per-sample estimate — the fixed, saturated model
-`y ~ sample_id - 1` (one free parameter per sample, no response term, so no
-collinearity issue this time).
-
-**How much shrinkage to expect.** Shrinkage is not a fixed amount — it is
-strongest exactly when a single patient's own data is *unreliable* relative to
-$\tau^2$, and weak when it is not. Concretely, the naive per-sample estimate
-has its own sampling variance shrinking like $1/(n_{\text{per}}\cdot\bar\mu)$
-(more cells, or a higher mean count, means a more precise per-sample estimate
-on its own); the smaller that is *relative to* $\tau^2$, the less the model
-needs to borrow strength, and naive and BLUP converge to looking almost
-identical. This is why the toy dataset above deliberately uses a modest
-`n_per = 12` and a low baseline mean (about 2 counts/cell) rather than, say,
-the 90 cells/sample used in `sim_clustered()` — with abundant, high-count
-data per sample, shrinkage here would be barely visible at all, which is
-itself worth knowing: **a housekeeping-like gene, well measured in every
-sample, gets little help from the random effect and only a modest SE
-correction from points 1–3 below; a sparse marker or background gene, where
-each sample's own count is noisy, is exactly where shrinkage — and the
-random-effect correction generally — does the most work.**
-
-A scatter of naive against BLUP would put almost every point close to a
-diagonal line no matter how much shrinkage is happening (12 numbers spanning
-a wide range makes small, uniform pulls hard to see by eye), so instead we
-plot each sample **twice** — its naive value and its BLUP — connected by an
-arrow, samples ordered by their naive deviation:
-
-```{r shrinkage, fig.width = 6.5, fig.height = 4, fig.cap = "Each sample's naive (unpooled) deviation and its BLUP from the mixed model, connected by an arrow. Every arrow points toward zero; the sample with the most extreme (least reliable) naive estimate is pulled in the most."}
-naive_sat <- glm(y ~ sample_id - 1, family = poisson, data = toy)
-naive_u <- coef(naive_sat) - mean(coef(naive_sat))
+```{r shrinkage, fig.width = 6.5, fig.height = 4, fig.cap = "Each sample's unpooled deviation and its BLUP, connected by an arrow. Every arrow points toward zero, and the least reliable estimate is pulled in the most."}
+naive_u <- coef(glm(y ~ sample_id - 1, family = poisson, data = toy))
+naive_u <- naive_u - mean(naive_u)
 blup_u <- nlme::ranef(fit_pql)[[1]]
 ord <- order(naive_u)
 shrink_df <- data.frame(sample = factor(seq_len(S)[ord], levels = seq_len(S)[ord]),
@@ -695,134 +487,214 @@ ggplot(shrink_df) +
   geom_segment(aes(x = sample, xend = sample, y = naive, yend = blup),
               arrow = arrow(length = unit(0.12, "cm")), colour = "grey55") +
   geom_hline(yintercept = 0, linetype = 2, colour = spide_pal$ref) +
-  geom_point(aes(sample, naive, colour = "naive (unpooled)"), size = 2.2) +
-  geom_point(aes(sample, blup, colour = "BLUP (mixed model)"), size = 2.2) +
+  geom_point(aes(sample, naive, colour = "unpooled"), size = 2.2) +
+  geom_point(aes(sample, blup, colour = "BLUP"), size = 2.2) +
   scale_colour_manual(
-    values = c("naive (unpooled)" = unname(spide_pal$method[["fixed"]]),
-              "BLUP (mixed model)" = unname(spide_pal$method[["intercept"]])),
-    name = NULL) +
-  labs(x = "sample (sorted by naive deviation)",
+    values = c("unpooled" = unname(spide_pal$method[["fixed"]]),
+              "BLUP" = unname(spide_pal$method[["intercept"]])), name = NULL) +
+  labs(x = "sample (sorted by unpooled deviation)",
        y = "deviation from population mean",
-       title = sprintf("var(naive) = %.2f, var(BLUP) = %.2f (%.0f%% reduction)",
-                       var(naive_u), var(blup_u),
-                       100 * (1 - var(blup_u) / var(naive_u)))) +
+       title = sprintf("var(unpooled) = %.2f, var(BLUP) = %.2f",
+                       var(naive_u), var(blup_u))) +
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
 ```
 
-Every arrow points toward the dashed zero line — no sample's BLUP moves
-*away* from the population mean. The pull is not uniform: the sample with the
-largest naive deviation (far left) is pulled in substantially, while samples
-already close to zero barely move, because they have little to correct. **How
-to read it**: an arrow of length zero would mean the random effect is doing
-nothing for that sample (its own data is already fully informative,
-effectively $\tau^2 \to \infty$ in relative terms); if every BLUP collapsed
-to exactly $0$, the model would be concluding patients don't really differ at
-all ($\hat\tau^2 \to 0$). Real data sits in between, and, as the "how much
-shrinkage to expect" note above explains, exactly where depends on how
-reliable each sample's own naive estimate is relative to $\tau^2$. This is
-the concrete, numerical form of "borrowing strength" — and it is what a
-per-sample *fixed* effect, by construction, could never do.
+Shrinkage is strongest where a sample's own data is least reliable relative
+to $\tau^2$ — the toy uses few cells and a low mean so that it is visible. A
+well-measured gene gets little help from the random effect and only a modest
+standard-error correction; a sparse gene, whose per-sample counts are noisy,
+is where the correction does most of its work.
 
-## Corrected inference
+# Converging each gene
 
-With the random effects in place, three things change relative to the fixed-effects Wald test — each is a direct consequence of what fitting just did:
+## Why the shared fit is not at every gene's optimum
 
-1.  **Covariance** uses the full penalised information and extracts the fixed response block, $\widehat{\mathrm{Var}}(\hat\theta_\text{resp}) = \varphi_g \big[(\tilde
-    W^\top D_g \tilde W + \Lambda)^{-1}\big]_\text{resp}$. Because $Z$ absorbs the within-patient correlation, this block is inflated to a between-patient scale — the SEs get *larger*, which is the whole point: the fixed-effects fit's SEs were too small.
-2.  **Dispersion.** $\varphi_g$ replaces the raw NB dispersion $\phi_g$ with an empirical, *post-fit* working (Pearson) dispersion,
-    $$
-    \varphi_g = \frac{1}{C - p}\sum_c \frac{(Y_{c,g} - \mu_{c,g})^2}{\mu_{c,g} + \phi_g\mu_{c,g}^2},
-    \qquad p = \#\{\text{fixed (non-random) columns}\},
-    $$
-    i.e. a Pearson-residual-based scale factor, exactly analogous to the
-    dispersion `summary(glm(..., family = quasipoisson))` reports — a
-    familiar GLM device for saying "trust the assumed variance function, but
-    rescale it by how much residual scatter this particular fit actually
-    shows," now applied on top of the random-effects model rather than a
-    plain GLM.
-3.  **Reference distribution** is a $t$, not a normal. The default df
-    (`df.method = "between"`) is a **between-patient** $S - 2$ — the same
-    bookkeeping as an ordinary two-sample $t$-test (Responder vs. non-Responder)
-    at the *patient* level: two group means estimated from the between-patient
-    information leave $S-2$ residual df. This is exactly right for the response
-    **main** effect $\eta_g$, a pure between-patient contrast. It is *too*
-    conservative for the response–niche coefficients $\beta_{g,t,t'}$, which also
-    draw on *within*-patient variation in the niche covariate and so carry a
-    larger effective sample size — one $S-2$ cannot be right for both.
-    `df.method = "satterthwaite"` replaces it with a **per-coefficient** df that
-    adapts to each contrast (see *Per-coefficient degrees of freedom* below).
+`SpaNorm::fitNB` fits every gene in one IRLS loop. To make a
+whole-transcriptome fit affordable it shares one gene-averaged cell-weight
+vector across genes, judges step-halving and convergence on the *aggregate*
+log-likelihood, and clamps coefficients across genes. For most genes that is
+indistinguishable from the gene's own optimum. For a bright,
+cell-type-restricted gene, whose working weights look nothing like the
+average, the aggregate criterion is met before that gene's own score reaches
+zero, and the dispersion estimated at that point is off. `converge = TRUE`
+(the default) finishes the job per gene, and `polishSpiDE()` applies the same
+stage to an existing fit — made with `converge = FALSE`, or saved by an older
+version — without refitting. The two routes share one implementation.
 
-Together these test each response contrast against patient-level variability,
-not cell-level variability. Compare the null calibration of the two fits (the
-`fit_mode()` helper from earlier already fit both):
+## Damped Newton on the gene's own likelihood
 
-```{r mixed}
-c(fixed = mean(fixed$p < 0.05), mixed = mean(mixed$p < 0.05))
-```
+For gene $g$, with the design $\tilde W$ and penalty $\Lambda$ fixed, the
+objective is its own penalised negative binomial log-likelihood,
 
-```{r qq, fig.small = TRUE, fig.cap = "Null response-effect p-values. The fixed-effects fit is grossly anti-conservative; the mixed-effects fit is close to the uniform (dashed) reference."}
-qq_points <- function(p, mode) {
-  data.frame(mode = mode, expected = sort(-log10(ppoints(length(p)))),
-             observed = sort(-log10(p)))
-}
-qq_df <- rbind(qq_points(fixed$p, "fixed"), qq_points(mixed$p, "intercept"))
-qq_df$mode <- factor(qq_df$mode, levels = c("fixed", "intercept"),
-                     labels = c("fixed", "mixed"))
-ggplot(qq_df, aes(expected, observed, colour = mode)) +
-  geom_abline(slope = 1, intercept = 0, linetype = 2, colour = spide_pal$ref) +
-  geom_point(size = 1.5) +
-  scale_colour_manual(values = unname(spide_pal$method[c("fixed",
-                                                         "intercept")]),
-                      name = NULL) +
-  labs(x = expression(-log[10]("expected p")),
-       y = expression(-log[10]("observed p")))
-```
+$$
+\ell_g(\theta;\psi_g) \;=\; \sum_c \log \mathrm{NB}\!\left(Y_{c,g};\
+\mu_{c,g} = e^{\tilde w_c^\top\theta},\ \psi_g\right)
+\;-\; \tfrac12\,\theta^\top\Lambda\,\theta ,
+$$
 
-## Per-coefficient degrees of freedom (Satterthwaite)
+whose score and (expected) information are
 
-The single $S-2$ reference df is right for the response *main* effect but wrong
-for the response–niche interactions, and it cannot be right for both. $\eta_g$
-is a pure between-patient contrast (the condition is a patient-level label), so
-its effective df genuinely is $\approx S-2$. Each $\beta_{g,t,t'}$, by contrast,
-multiplies a niche covariate that varies *within* a patient, so it is informed
-by far more than $S$ independent pieces of information — on real data the
-per-coefficient effective sample size can span three orders of magnitude across
-the tested columns. Referencing all of them against $S-2$ leaves the interaction
-tests badly over-conservative.
+$$
+s(\theta) = \tilde W^\top \frac{Y_g - \mu_g}{1 + \psi_g\mu_g} - \Lambda\theta,
+\qquad
+I(\theta) = \tilde W^\top \mathrm{diag}\!\left(\frac{\mu_g}{1+\psi_g\mu_g}\right)\tilde W + \Lambda .
+$$
 
-`df.method = "satterthwaite"` (on `fitSpiDE()` / `spiDE()`) gives each tested
-coefficient $j$ its own **Satterthwaite** degrees of freedom,
+Each Newton step solves $I(\theta)\,\delta = s(\theta)$ and halves the step
+until $\ell_g$ increases; the iteration stops when the gain falls below `tol`
+relative to $|\ell_g|$. A gene whose starting fit is degenerate — a fitted
+mean below $e^{-10}$ somewhere — restarts from the per-cell-type log means,
+because Newton *from* a degenerate point diverges. Each polished gene depends
+only on its own counts, so the stage is blocked over genes and parallelised
+(`block.size`, `BPPARAM`), exactly as inference is.
+
+## Profile maximum likelihood for the dispersion
+
+`fitNB` estimates $\psi_g$ with `edgeR`'s empirical-Bayes moderation, which
+shrinks each gene's dispersion toward a cross-gene trend. The polish replaces
+it with the gene's own **profile maximum-likelihood** value. "Profile" means:
+hold the coefficients at their converged value $\hat\theta$, so that
+$\hat\mu_{c,g}$ is fixed, and view the log-likelihood as a function of the
+dispersion alone,
+
+$$
+\ell_g(\psi \mid \hat\mu) \;=\; \sum_c \Big[
+  \log\Gamma\!\big(Y_{c,g} + \tfrac1\psi\big) - \log\Gamma\!\big(\tfrac1\psi\big)
+  - \log\Gamma(Y_{c,g}+1)
+  + Y_{c,g}\log\frac{\psi\hat\mu_{c,g}}{1+\psi\hat\mu_{c,g}}
+  - \frac1\psi\log\big(1+\psi\hat\mu_{c,g}\big)\Big] ,
+$$
+
+then maximise it over $\log\psi$ on a bounded interval (`psi.range`, by
+default $[10^{-3}, 10^{3}]$) with a one-dimensional search
+(`stats::optimize`). The coefficients are then re-polished at the new
+$\psi_g$, and the pair of steps is repeated once, so the returned
+$(\hat\theta, \hat\psi_g)$ is a joint optimum to the stated tolerance.
+
+Three consequences follow from giving up moderation.
+
+- A gene that carries no information about overdispersion — all zero, or
+  effectively Poisson — has a profile likelihood that is monotone in $\psi$,
+  so the search returns a *bound*, not an estimate. Such a gene keeps
+  `fitNB`'s moderated value and is flagged `psi_bound` in `@polish`.
+- An unmoderated $\psi_g$ is no longer a safe scale for the standard error,
+  so inference uses the **Pearson working dispersion** (next section) on
+  every path.
+- With few samples the loss of shrinkage is measurable as a mild
+  anti-conservatism that fades as samples accrue (calibration vignette). A
+  moderated dispersion evaluated at the converged mean is the indicated
+  refinement.
+
+The polish also converges on the **unclamped** likelihood: `fitNB`'s
+winsorisation is a robustness device for a fit that shares one weight vector
+across genes; a per-gene converged fit does not need it, and inference
+evaluates the same unclamped mean the polish converged on. With
+`converge = TRUE` the `winsor` argument therefore only sets the Newton
+starting point. The negative binomial likelihood is undefined off the
+integers, so the stage **requires integer counts** and refuses a
+back-transformed assay rather than silently collapsing every dispersion to a
+bound.
+
+## Absorbing the nested block: the Schur complement
+
+The nested block adds one column per non-empty (sample, cell type) group —
+several hundred on a cohort — and a naive Newton step would factor an
+information matrix of that size for every gene at every iteration. It does
+not have to. Partition the design into the dense columns $X$ and the group
+indicators $Z$, so that the information is
+
+$$
+I(\theta) \;=\;
+\begin{pmatrix} A & B \\ B^\top & C \end{pmatrix},
+\qquad
+A = X^\top D X + \Lambda_X,\quad
+B = X^\top D Z,\quad
+C = Z^\top D Z + \Lambda_Z ,
+$$
+
+with $D$ the working weights. Because **every cell belongs to exactly one
+group**, $Z^\top D Z$ is diagonal — entry $k$ is the total working weight of
+group $k$ — and so is $C$ once the penalty is added. The Newton step for the
+dense columns is then the $p \times p$ system
+
+$$
+S\,\delta_X = s_X - B\,C^{-1} s_Z,
+\qquad
+S = A - B\,C^{-1}B^\top ,
+$$
+
+and the group steps follow by back-substitution,
+$\delta_Z = C^{-1}\big(s_Z - B^\top\delta_X\big)$. $S$ is the **Schur
+complement** of $C$. Forming it costs one dense gram $X^\top D X$ plus group
+sums of the weighted columns, whatever the number of groups, which is what
+makes the per-gene polish affordable on a cohort.
+
+The Schur complement is the Frisch–Waugh–Lovell theorem in matrix form:
+$S$ is precisely the information of the dense columns *after the group
+indicators have been partialled out* — the centring described earlier, done
+by algebra rather than by subtracting means. `.newtonSolver()` verifies the
+partition (each row of $Z$ sums to one) before relying on it, and
+`.blockedInference()` uses the same absorption to form each gene's covariance.
+
+## What the stage reports
+
+`@polish` is a per-gene table: `iterations`, `psi_fitnb` (the dispersion
+before polishing), `restarted`, `capped`, `singular`, `psi_bound` and
+`polished`. `polished = FALSE` marks a gene the Newton could not run on at
+all, which keeps the multi-gene fit's estimate rather than substituting a
+worse one. Both flags are expected in small numbers; a large count is worth
+investigating before trusting that bandwidth. On bright genes the converged
+standard errors are *larger* than the unconverged ones — the unconverged
+dispersion, estimated off the optimum, was hiding inflation behind deflation
+— and the larger number is the honest one.
+
+# Inference
+
+## Covariance and dispersion
+
+With the random effects and the converged fit in place, the Wald statistic
+for a tested coefficient uses three things.
+
+1. **The full penalised covariance,**
+   $\widehat{\mathrm{Var}}(\hat\theta) = \varphi_g\,[(\tilde W^\top D_g \tilde W + \Lambda)^{-1}]$,
+   with the tested block extracted. Because $Z$ absorbs the within-patient
+   correlation, this block is on a between-patient scale — larger than the
+   fixed-effects standard error, which is the point.
+2. **The Pearson working dispersion,**
+   $$
+   \varphi_g = \frac{1}{C - p}\sum_c \frac{(Y_{c,g} - \mu_{c,g})^2}{\mu_{c,g} + \psi_g\mu_{c,g}^2},
+   $$
+   the same quasi-likelihood device `summary(glm(..., family = quasipoisson))`
+   reports: trust the variance function, rescale it by the residual scatter
+   this fit shows.
+3. **A $t$ reference distribution** with a per-coefficient degrees of
+   freedom, next.
+
+Every per-gene matrix inversion is guarded: a gene whose information matrix
+is singular drops out as `NA` rather than aborting the run.
+
+## Reference degrees of freedom
+
+The flat response $\eta_{g,t}$ is a pure between-patient contrast, so its
+reference df is close to $S - 2$, the bookkeeping of a two-sample $t$-test on
+patients. The niche slopes $\beta_{g,t,t'}$ also draw on *within*-patient
+variation in the niche covariate, so they carry a larger effective sample
+size, and one $S - 2$ cannot be right for both. `df.method = "satterthwaite"`
+(the default) gives each tested coefficient its own df,
+
 $$
 \nu_j \;=\; \frac{2\,\big(\widehat{\mathrm{Var}}\,\hat\theta_j\big)^2}
                  {\mathrm{Var}\!\big(\widehat{\mathrm{Var}}\,\hat\theta_j\big)},
 $$
-the classical "how many independent variances is this SE really worth" ratio —
-the same device `lmerTest` / `pbkrtest` use for small-sample linear mixed
-models, here applied to the PQL working model. The denominator propagates (by
-the delta method) the uncertainty in the *variance parameters* $\theta =
-(\varphi,\ \tau^2_\text{int},\ \tau^2_\text{slope})$ through the SE, using their
-covariance $\widehat{\mathrm{Cov}}(\hat\theta)$ — a small
-$(1+\#\text{groups})$-square matrix from the reduced-form REML information of the
-working model, built entirely from the $p\times p$ penalised inverse $M^{-1} =
-(\tilde W^\top \bar D\,\tilde W + \Lambda)^{-1}$ (never an $n\times n$ matrix).
 
-Two facts make this both cheap and safe:
-
--   **It is invariant to the per-gene dispersion $\varphi_g$.** The SE and every
-    term of its variance scale identically in $\varphi$, so $\varphi$ cancels in
-    the ratio $\nu_j$. What remains depends only on the *shared* working weights
-    and variance components, so a single per-coefficient df vector — computed
-    once per bandwidth from the representative penalised inverse — serves every
-    gene, exactly as one shared $\tau^2$ does. Nothing is added to the per-gene
-    inference loop.
--   **The main effect is preserved, by construction.** For the between-patient
-    contrast $\eta_g$, $\widehat{\mathrm{Var}}\,\hat\eta_g$ is dominated by the
-    $\tau^2_\text{int}$ direction, whose uncertainty is governed by the $\approx
-    S$ patients — so $\nu$ returns to $\approx S-2$. The $S-2$ df is thus the
-    *special case for the main effect*, not a global constant; the niche
-    interactions move toward the (much larger) residual df.
-
-Both are visible on the toy fit ($S=10$ patients, so $S-2=8$):
+with the denominator propagating the uncertainty of the variance parameters
+$(\varphi, \tau^2_{\text{sample}}, \tau^2_{\text{sample}\times\text{type}},
+\tau^2_{\text{slope}})$ through the standard error, from the reduced-form
+REML information of the working model — a small matrix built from the
+$p \times p$ penalised inverse, never an $n \times n$ one. The ratio is
+invariant to $\varphi_g$, so one df vector per bandwidth serves every gene.
+`df.method = "between"` uses the scalar $S - 2$ for every coefficient and is
+severely conservative for the slopes when patients are few.
 
 ```{r satterthwaite, message = FALSE}
 fs <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
@@ -835,695 +707,145 @@ c(ResponseCellType.median = round(median(ff$df[resp]), 1),
   ResponseNiche.median = round(median(ff$df[niche]), 1))
 ```
 
-The `CellType:condition` df sits at $\approx S-2 = 8$ — these are
-between-patient contrasts, so they are left alone — while the niche-interaction
-df is much larger, being the coefficients the flat $S-2$ was over-penalising.
-Under the default `df.method = "satterthwaite"`, `@df` is therefore a **named
-vector**, one entry per tested (`ResponseCellType` / `ResponseNiche`) column,
-aligned to the columns of `@t_stat` / `@se`; passing `df.method = "between"`
-restores the scalar $S-2$.
+The flat-response df sits near $S - 2 = 8$ and the slope df is much larger.
+`@df` is therefore a **named vector** aligned to the columns of `@t_stat`;
+index the column you are testing rather than passing the vector to `pt()`.
 
-**If you consume `@df` directly**, note it is a *vector* by default. Index the
-column you are testing — `fit@df[["<covariate>"]]` — rather than passing the
-whole vector to `stats::pt()`, which would silently recycle it against your
-per-gene statistics rather than erroring.
+The null calibration of the corrected fit, against the fixed-effects one from
+earlier:
 
-## The testing framework
+```{r mixed}
+c(fixed = mean(fixed$p < 0.05), mixed = mean(mixed$p < 0.05))
+```
 
-How do we know the per-coefficient df is *calibrated* rather than merely
-plausible? The check is a **null-simulation type-I study**: simulate data with
-genuine between-patient clustering but *no* response effect ($\beta = 0$), fit
-each `random =` / `df.method` combination, and record the fraction of response
-tests significant at $\alpha = 0.05$, which should be $\approx 0.05$ for an
-honest test. Two properties matter, and they pull in opposite directions:
+```{r qq, fig.small = TRUE, fig.cap = "Null response-effect p-values: the fixed-effects fit against the mixed fit."}
+qq_points <- function(p, mode) {
+  data.frame(mode = mode, expected = sort(-log10(ppoints(length(p)))),
+             observed = sort(-log10(p)))
+}
+qq_df <- rbind(qq_points(fixed$p, "fixed"), qq_points(mixed$p, "mixed"))
+ggplot(qq_df, aes(expected, observed, colour = mode)) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2, colour = spide_pal$ref) +
+  geom_point(size = 1.5) +
+  scale_colour_manual(values = unname(spide_pal$method[c("fixed", "intercept")]),
+                      name = NULL) +
+  labs(x = expression(-log[10]("expected p")), y = expression(-log[10]("observed p")))
+```
 
--   **The main effect must stay $\approx$ nominal.** It calibrates close to
-    nominal under `"between"`, and — since $\nu \approx S-2$ there by
-    construction — `"satterthwaite"` must *not* move it. This is the
-    load-bearing regression: whatever the df change does to the niche
-    coefficients, it must leave the main effect where it was.
--   **The response–niche tests should approach nominal from below.** Under
-    `"between"` they are over-conservative (type-I well under $0.05$); the
-    larger `"satterthwaite"` df should raise them *toward* $0.05$. Were they to
-    overshoot, the residual miscalibration would live in the covariance itself,
-    and the principled next step would be a Kenward–Roger bias-correction of
-    $\widehat{\mathrm{Cov}}(\hat\theta_\text{resp})$ — a heavier, second-order
-    correction not enabled here.
+## From coefficients to results
 
-### What the study found
+A gene has one tested slope per (index type, niche type), and a gene's niche
+columns are correlated because niche densities are spatially smooth. Three
+steps turn the per-coefficient statistics into the `results()` table.
 
-The study has since been run at realistic scale (thousands of cells over tens of
-patients, 40 replicates per design point) in the package's benchmark harness
-(`research/`), sweeping both `df.method` arms on identically seeded data. The
-full figures are in the *Simulating realistic spatial data and benchmarking
-spiDE* report on the spiDE-research benchmark site
-(https://bhuvalab.github.io/spiDE-research/); the result matters enough to
-state here.
+**Within a gene, across niches.** The two-sided p-values of a gene's slopes
+are combined by the **Cauchy combination** (`combine = "cauchy"`, the
+default): $T = \sum_j w_j \tan\{(\tfrac12 - p_j)\pi\}$, whose null
+distribution is Cauchy whatever the correlation between the $p_j$, so no
+correlation matrix has to be estimated. It is computed for the gene as a whole
+and per index cell type. `combine = "brown"` is the alternative: Brown's
+extension of Fisher's method, which consumes the coefficient correlation
+matrix and combines *one-sided* p-values, separately for the up and down
+directions. The sidedness differs by necessity — the tangent transform
+diverges as a one-sided $p \to 1$, so under Cauchy a gene up in one niche and
+down in another would cancel, whereas Brown's $-2\log p$ is bounded and safe
+one-sided. Both populate the same slots, so everything downstream is
+combiner-agnostic.
 
-The first criterion is met and the second is met **only partially**, which is
-worth being explicit about rather than glossing:
+**Across bandwidths.** The gene-level and per-index combined p-values from
+each bandwidth are combined by a second Cauchy combination, weighted by the
+gene's relative log-likelihood across bandwidths, $w_\sigma \propto
+\exp(\ell_{g,\sigma} - \max_\sigma \ell_{g,\sigma})$ with small weights
+thresholded, so the bandwidth that fits a gene best carries the most weight.
 
--   `"between"` is not merely conservative, it is *severely* so when patients
-    are few: response-niche type-I error is $\approx 0.001$ at $S=4$ against a
-    nominal $0.05$ — a 50-fold undershoot — climbing to only $\approx
-    0.046$–$0.055$ by $S=30$. Power tracks it: recall is essentially zero at
-    $S \le 10$ because nothing survives genome-wide correction.
--   `"satterthwaite"` holds type-I error in $0.042$–$0.065$ across the *whole*
-    sampled range, and buys real power for it: a mean paired gain of
-    $\approx +0.10$ TPR at 5% FDR, with observed FDP no worse.
--   But it does **mildly overshoot** at larger $S$ — worst measured
-    $\approx 0.065$ against nominal $0.05$, a $\approx 30\%$ relative
-    inflation. By the criterion set out above, that residual bias is located in
-    the covariance, and **Kenward–Roger is therefore the indicated next step**,
-    not merely a hypothetical one.
+**The hierarchical FDR.** A three-level nested Benjamini–Hochberg cascade:
+gene level; then index cell type within gene; then (index, niche) within
+those — the outer levels gated at half the nominal rate per direction and
+merged, the innermost at the nominal rate. What survives is a row keyed by
+(gene, index type, niche type) with the best bandwidth, its direction and its
+three FDR values.
 
-The trade is strongly favourable — a bounded $\approx 30\%$ liberal drift in
-exchange for removing a 50-fold conservative one, plus the power that comes with
-it — which is why `"satterthwaite"` is now the default. `"between"` remains
-available for back-compatibility, or where strict conservatism is worth more
-than power. On a small toy fixture the response–niche null is too noisy to read
-as a calibration; the main-effect preservation shown above is the part that is
-robust at toy scale.
+## Niche-only mode
 
-## Interpreting a mixed `SpiDEFit`
+With `condition = NULL` the design drops the condition terms *and* the bare
+niche main effects,
 
-A fit made with `random != "none"` populates three extra slots on each
-`SpiDEFit` (`fits(res)[[1]]`, or `$` directly), all `NULL` for a plain
-fixed-effects fit:
+```
+~ 0 + <covariates> + CellType + CellType:(niches)
+```
+
+and the `CellType:niche` slopes — nuisance in the conditioned model — become
+the tested quantity, cell-means coded. The main effects must go: a niche's
+main effect equals the sum of its per-type interactions, so keeping it would
+alias one interaction per niche away and leave that cell type untestable.
+Everything downstream is shared. The random effects apply as before; note
+that the tested slope is now a within-sample contrast on a spatially
+autocorrelated covariate, which spiDE does not model, so this mode is mildly
+anti-conservative and borderline calls deserve corresponding caution.
+
+# Reading a fit
+
+A fit with `random != "none"` carries these slots on each `SpiDEFit`
+(`fits(res)[[1]]`, or `$`):
 
 | slot | what it holds | how to read it |
 |---|---|---|
-| `@tau2` | the fitted variance component(s), named `SampleInt`, `SampleCellTypeInt` (the nested block, under the default `re.celltype = TRUE`) and `SampleSlope` (under `random = "slope"`) | on the **log-mean scale**: a patient with $u_s = +\hat\tau$ has roughly $e^{\hat\tau}$-fold higher baseline expression than average. If `@tau2` is tiny, patients barely differ beyond sampling noise (the mixed fit will look similar to, but always slightly more conservative than, the fixed fit); if it is large relative to the within-patient (Poisson/NB) noise, a sizeable share of what a fixed-effects fit reported as "response signal" was actually between-patient noise leaking through |
-| `@df` | the Wald reference degrees of freedom: a **named per-coefficient vector** under `df.method = "satterthwaite"` (the default; `ResponseCellType` $\approx S-2$, niche interactions larger), or a scalar between-patient $S - 2$ under `df.method = "between"` | small df (few patients) means a wide-tailed $t$ and hence conservative p-values *even for a real effect* — expected, not a bug; the default `"satterthwaite"` relieves this for the within-patient-informed niche coefficients while leaving the between-patient main effect untouched. Index it (`@df[[col]]`) rather than passing the vector to `pt()` |
-| `@penalty` | the per-column ridge penalty actually used ($0$ on fixed columns, $1/\hat\tau^2_k$ on random ones) | mostly a diagnostic: a very small penalty on a random block means that group's $\hat\tau^2$ converged large, i.e. that source of between-patient variation is real and substantial |
-| `@polish` | per-gene diagnostics of the convergence stage (`converge = TRUE`, the default): `iterations`, `psi_fitnb` (the dispersion before polishing), `restarted`, `capped`, `singular`, `psi_bound`, `polished` | keyed by gene. `polished = FALSE` marks a gene whose Newton could not run at all, which keeps `fitNB`'s estimate; `psi_bound = TRUE` marks one whose profile-ML dispersion sat on its search bound (an all-zero or perfectly Poisson gene carries no information about overdispersion), which also keeps `fitNB`'s moderated value. A large count of either is worth investigating before trusting that bandwidth |
+| `@tau2` | the variance components, named `SampleInt`, `SampleCellTypeInt` (default `re.celltype = TRUE`) and `SampleSlope` (`random = "slope"`) | on the log-mean scale; index by name, never by position |
+| `@df` | the reference df: a named per-coefficient vector (`satterthwaite`) or a scalar $S-2$ (`between`) | index the column you test; small values mean few patients and a wide-tailed $t$, which is expected |
+| `@penalty` | the per-column ridge penalty used, $0$ on fixed columns and $1/\hat\tau^2_k$ on random ones | a very small penalty on a block means that source of between-patient variation converged large |
+| `@polish` | the per-gene convergence diagnostics | see *What the stage reports* |
 
-For the toy fit above, `mixed$fit$tau2` pooled across 300 genes should sit
-close to the simulated $0.49$ in its `SampleInt` entry. Note that `@tau2` is a
-*named vector*, not a scalar: under the default `re.celltype = TRUE` it also
-carries `SampleCellTypeInt`, and under `random = "slope"` a third component.
-Index it by name (`fit@tau2[["SampleInt"]]`), never by position. `mixed` pins `df.method = "between"` (see the
-`fit_mode()` chunk), so `mixed$fit$df` is the flat scalar $S-2 = 8$ ($S=10$
-patients). Under the package default `"satterthwaite"` it would instead be a
-per-coefficient vector — as `fs` in the previous section shows — whose
-`ResponseCellType` entries sit at $\approx 8$ while the niche interactions
-carry more.
-
-## Usage and caveats
-
-```{r usage, eval = FALSE, echo = TRUE}
-# random intercept + random niche slopes (fullest correction; use with an
-# adequate number of samples). For few samples, random = "intercept" is safer.
-res <- spiDE(spe, condition = "condition", sigma = c(10, 30, 50),
-             random = "slope")
+```{r diagnostics}
+f <- fits(fs)[[1]]
+f$tau2
+colSums(f$polish[, c("restarted", "capped", "singular", "psi_bound")])
 ```
 
--   **Sample-level covariates.** A per-sample random intercept already adjusts for *all* between-sample nuisance variation, so it is confounded with measured sample-level covariates (Age, Sex, Stage) — exactly the collinearity demonstrated at the top of this section. `spiDE` therefore errors if such a covariate is passed together with `random != "none"` — drop it; the random intercept subsumes it.
--   **Number of samples.** The correction is only as good as the between-sample information: with very few samples the variance components (and the $S-2$ reference df) are unstable, and a warning is issued.
--   **Correct, not merely "fixed with extras".** The mixed fit does more than add a between-patient variance component: it also replaces `random = "none"`'s NB dispersion scaling and sub-design covariance with the correct **working (quasi-NB) dispersion** and **full penalised covariance**. So even when $\tau^2 \to 0$ (no genuine clustering) the mixed fit does *not* reproduce the `"none"` fit — it gives the correctly-scaled, and hence more conservative, standard errors. This is deliberate: `"none"` is known to be anti-conservative, so its larger apparent "power" is partly spurious. It is for this reason that `"intercept"` is now the default.
--   **Power needs samples and effect size.** Because the test is now honest, a real response-niche effect must be visible *between patients* to be declared. With few patients, or an effect seen in only a handful of responders, the between-patient df and the inflated SEs will (correctly) leave it non-significant. `df.method = "satterthwaite"` recovers legitimate power for niche coefficients that carry within-patient information — giving them their larger effective df instead of the flat $S-2$ — without touching the honest between-patient df of the main effect; larger sample sizes restore power further.
-
-## Why the design carries `CellType:condition`
-
-The three-way `CellType:condition:niche` coefficient is meant to estimate how a
-gene's response to the condition changes *along the niche gradient within an
-index cell type*. A flat response — the gene up in every A cell of every
-Responder, regardless of neighbourhood — is a different quantity, and the
-design gives it its own column, `CellType:condition`, cell-means coded. The
-design spiDE shipped before 0.99.7 did not: its only condition column was a
-global main effect, so a cell-type-specific flat shift had nowhere to go but
-the uncentred niche slope.
-
-That earlier design looks *more* powerful on the simulation benchmark, and it
-is worth being precise about why, because the effect is large (recall 0.36
-against 0.17 at FDR 0.05 on the same dataset, concentrated in marker genes)
-and looks like a free lunch. One power dataset ($S = 24$, 300 cells per sample,
-$\beta = 2$) was fit under four package builds, including one that differs from
-the niche-only build *only* by the added term. The build makes no difference
-(the two A:B slope estimates correlate at 1.000 between that build and 0.99.17);
-the term is the whole gap. Without it the niche-only slope exceeds the
-term-restored one by $0.25\times$ the `CellType_A:condition` coefficient, gene
-by gene, on planted and null genes alike ($r = 0.88$ and $0.92$): the mean of
-the planted effect — $\beta$ times the mean niche potential, a flat
-A-in-Responders shift — is being counted as niche dependence. That inflates the
-estimate by only about 10%. The $t$ is $1.5$–$1.6\times$ larger because the
-standard error is $0.67$–$0.72\times$: with no intercept column in that
-subspace, the slope is a regression through the origin, whose precision is
-bought by assuming there is no flat shift to estimate. The `ctresp` benchmark
-family, which plants flat shifts with no niche effect, shows the same channel
-as fabricated niche calls; the effect-size sweep shows the niche-only recall
-saturating at about 0.5 from $\beta = 2$; and on the real cohort restoring the
-term recovered 41% *more* triplets. Two-sided Cauchy combination gave more
-discoveries than one-sided Brown in every build, so sidedness is not involved.
-
-The recall a design reports is only comparable across designs when they
-estimate the same quantity. The quantity spiDE estimates is the within-type
-gradient, and `results(type = "celltype")` reports the flat shift separately.
-
-## Why the niche slope must be a within-(sample, cell type) slope
-
-Under cell-means coding the tested `CellType:condition:niche` coefficient is
-estimated from the covariance of niche density and expression among the cells of
-one index type. That covariance has two parts. *Within* a sample, cells of the
-index type differ in how dense their surroundings are, and that is the effect
-spiDE exists to measure. *Between* samples, whole samples differ in how dense
-the surroundings of their index cells are on average, and they also differ in
-mean expression of the gene in that cell type. The second part is a
-patient-level association with $S$ units. It is not neighbourhood-dependent
-differential expression, and with a single random intercept per sample — shared
-across cell types — nothing in the design absorbs it.
-
-A permutation null does not detect it. Permuting niche rows within (sample, cell
-type) preserves every group's mean niche density, so it preserves the
-association exactly. Measured on the real YTMA cohort with a gene's converged
-fit held completely fixed, the permutation distribution of each tested $t$ had
-the expected spread (the HC0 value, 0.8–1.0) but a per-column **mean** running
-to $\pm 3$ that equalled the real-data $t$ column by column, $r = 0.61$ over
-eight genes and 132 columns. The null and the data were indistinguishable
-because both carried the same confound.
-
-`re.celltype = TRUE` (the default) adds a ridge-penalised intercept per
-non-empty (sample, cell type):
-
-$$
-\log \mu_{gi} \;=\; \dots \;+\; b_{s(i)} \;+\; c_{s(i),k(i)},
-\qquad
-b_s \sim N(0, \tau^2_{\text{sample}}), \quad
-c_{sk} \sim N(0, \tau^2_{\text{sample}\times\text{type}}).
-$$
-
-By Frisch–Waugh this makes every niche slope a within-group slope, and the
-between-sample part is absorbed into the new intercepts, where it belongs. The
-block carries its own variance component, so the Satterthwaite degrees of
-freedom account for it (checked against `lmerTest` on a nested Gaussian model).
-`random = "slope"` does *not* do this: per-sample slopes on the
-`CellType:niche` bases leave the group means untouched.
-
-On the twelve raw shuffle grids of the real cohort, adding the block takes the
-per-gene $\mathrm{sd}(\text{null } t)$ of the brightest genes from 1.42 to 0.96,
-removes the expression gradient entirely (1.000 against 1.198), and removes
-every $|t| > 4.89$ exceedance where the uncorrected design produced 95.
-
-**What it costs where the confound is absent.** The simulation benchmark places
-niche cells by the same potential in every sample, so a sample's mean niche
-density varies only by sampling noise and is independent of its expression
-intercept: it plants no composition effect, and on it the nested block can
-only cost, never pay. Run as tokened arms (40 replicates, intercept mode,
-per-cell standard error about 0.0016), the 0.99.17 defaults are more liberal
-on the null than the design term alone: averaged over $S \ge 10$ and both
-layouts, 0.058 for the shipped design, 0.066 with convergence only, 0.068 with
-the nested block only, 0.071 with both; at $S = 4$ the pair reaches 0.085–0.096
-against 0.036–0.049. The two switches act at different sample sizes.
-Convergence costs at small $S$ and fades onto the shipped arm by $S = 24$. The
-nested block is harmless at $S = 4$ (0.037–0.043) and holds a constant $+0.010$
-from $S = 16$, which points at its Satterthwaite reference df or at the
-estimation of its variance component. The pair gains recall — 0.402 against
-0.361 at $S = 30$ — with slightly better FDP from $S = 10$ and a worse one at
-$S = 4$ (0.59 against 0.35). Both facts hold at once: the defaults were chosen
-for a confound that real cohorts carry, because patients differ in
-composition, and that this simulator does not contain. The synthetic null is
-not a reason to revert; it is the measurement the two candidate cures — a
-moderated dispersion at the converged mean, and the nested block's reference
-df — will be judged against.
-
-If the between-sample association is itself of interest — "do patients whose
-tumour compartment is B-cell-rich express this gene differently *in* tumour
-cells?" — test it at the patient level, on $S$ units, with patient-level
-covariates. It is a different question, and a legitimate one, and
-`compositionTest()` asks it: per (sample, index type) a pseudobulk log-CPM
-profile and the mean niche density around those cells, then a `limma`
-moderated $t$ across samples for the pooled association (`"niche"`) and for
-its difference between conditions (`"condition:niche"`, the patient-level
-counterpart of the three-way term above). Both tests now exist, and neither
-should be reported as the other.
-
-## Convergence of the per-gene fit
-
-`SpaNorm::fitNB` fits every gene in a single IRLS loop. To make a
-whole-transcriptome fit affordable it shares one gene-averaged cell weight
-vector across genes, decides step-halving and convergence on the *aggregate*
-log-likelihood, and clamps coefficient columns across genes. For most genes that
-is indistinguishable from the per-gene optimum. For a bright,
-cell-type-restricted gene, whose own working weights look nothing like the
-average, the aggregate criterion is met long before that gene's own score
-reaches zero: measured on the real cohort, every gene in the top 5% by
-expression sat one to four standard errors from its own optimum, with
-log-likelihood gaps of $10^4$–$10^6$, and the dispersion estimated at that point
-was about 1.6 times too large.
-
-`converge = TRUE` (the default) fixes this after the fact, and
-`polishSpiDE()` applies the same stage to an existing fit — one made with
-`converge = FALSE`, or serialised by an older version — without refitting;
-the two routes share one implementation and give the same fit. For each gene
-it maximises that gene's own penalised negative-binomial log-likelihood
-
-$$
-\ell_g(\alpha) \;=\; \sum_i \log \mathrm{NB}\!\left(y_{gi};\, \mu_{gi} = e^{w_i'\alpha},\, \psi_g\right) \;-\; \tfrac{1}{2}\sum_j \lambda_j \alpha_j^2
-$$
-
-by damped Newton, then re-estimates $\psi_g$ by profile maximum likelihood at
-the converged mean, then re-polishes. A gene whose starting fit is degenerate —
-a fitted mean below $e^{-10}$ somewhere — restarts from the per-cell-type log
-means, because Newton *from* a degenerate point diverges (fitted log-means
-reaching $+57$ to $+358$ in the measurements). Because a polished gene depends
-only on its own counts, the stage is blocked over genes and parallelised
-(`block.size`, `BPPARAM`), exactly as inference is. The nested indicator block
-is absorbed by a Schur complement, so the per-iteration cost is one
-dense-column gram regardless of how many (sample, cell type) groups exist.
-
-Four things to know.
-
-*It replaces edgeR's cross-gene moderated dispersion with a per-gene one.* With
-tens of thousands of cells per gene that is well determined, but it is a
-deliberate departure from `fitNB`'s moderation. Two consequences follow. A gene
-that carries no information about overdispersion — all-zero, or perfectly
-Poisson — has a profile likelihood that is monotone in $\psi$, so the optimiser
-returns a *bound* rather than an estimate; such a gene keeps `fitNB`'s moderated
-value and is flagged in `@polish$psi_bound`. And because $\psi$ is no longer
-moderated, it is no longer a safe scale for the standard error, so a polished
-fit takes the **Pearson working dispersion** instead — on both the mixed and the
-fixed-effects paths, where previously only the mixed path did.
-The cost of giving up moderation is measurable and confined to few-sample
-designs: on the synthetic null, convergence alone takes type-I error at
-$S = 4$ from 0.036–0.049 to 0.086–0.095, and the gap has closed by $S = 24$.
-A moderated dispersion at the converged mean would keep the converged
-coefficients and restore the shrinkage; it is the indicated next step.
-
-*It converges on the unclamped likelihood.* `fitNB` winsorises, which is a
-robustness device for a fit that shares one weight vector across genes. A
-per-gene converged fit does not need it, and evaluating that fit at a clamped
-mean would test a point where the score is not zero, so inference uses the same
-unclamped mean the polish converged on. A corollary: with `converge = TRUE` the
-`winsor` argument only sets the Newton starting point; it no longer determines
-the returned coefficients.
-
-*It needs integer counts.* The negative binomial likelihood is undefined off
-the integers, so a back-transformed assay (`2^logcounts - 1`, say) is refused
-with an error rather than silently collapsing every gene's dispersion to a
-bound. Supply raw counts, or pass `converge = FALSE`.
-
-*It raises the null variance of bright genes rather than lowering it.* Their
-previous, unconverged standard errors were inflated by a dispersion estimated
-off the optimum, which was hiding the inflation behind deflation. The higher
-number is the honest one.
-
-# The two-stage estimator: patient-level inference by construction
-
-Everything above *corrects* a cell-level fit: the design still has one row per
-cell, and the random effects and reference df repair the standard errors that
-pseudo-replication breaks. `twoStageSpiDE()` takes the other route: it never
-tests a cell-level coefficient at all. It first reduces each patient to a
-small set of **niche slopes** — one per (index cell type, niche cell type)
-pair — and then runs the condition contrast on those patient-level numbers,
-where the sample size *is* the number of patients and no correction is needed.
-
-This section documents the estimator end to end for a reader meeting it for
-the first time: what each stage computes, the exact equations with every term
-defined, why the design choices were made, and what the estimator does and
-does not fix.
-
-## Why a second estimator?
-
-`random = "none"`, `"intercept"` and `"slope"` all fit the *same* cell-level
-design and differ only in which columns are ridge-penalised. The two-stage
-route is **not a fourth `random` mode** — it never fits the niche design of
-Part 1. Instead it operationalises the observation that drives this whole
-vignette: `condition` is assigned per patient, so patients are the
-experimental units. If the quantity we ultimately compare between conditions
-is "how strongly this gene tracks this niche in this patient", we can
-estimate that quantity per patient *first* and compare afterwards.
-
-The division of labour between the stages is the estimator's key property:
-
--   **Stage 1 needs to be *reasonable*, not perfect.** Each per-patient slope
-    is an estimate with a variance attached, and stage 2 tests the condition
-    contrast against the *empirical* spread of the patient slopes. A
-    misspecified stage 1 inflates that spread and costs power — it does not
-    invalidate the test. Validity comes from contrasting patients.
--   **Stage 2 is an ordinary small-sample regression problem** — tens of
-    numbers per triplet, one per patient — which is exactly the setting
-    `limma`'s moderated $t$ machinery was built for.
-
-## The pipeline at a glance
-
-$$
-\underbrace{\text{SpaNorm-fitted SPE}}_{\text{input}}
-\;\longrightarrow\;
-\underbrace{\hat\beta^{(s,t)}_{g},\ v^{(s,t)}_{g}}_{\substack{\text{stage 1: joint WLS}\\ \text{per (sample, index type)}}}
-\;\longrightarrow\;
-\underbrace{\hat\beta_{g,p},\ v_{g,p}}_{\substack{\text{pool cores}\\ \text{within patient}}}
-\;\longrightarrow\;
-\underbrace{\hat\tau^2}_{\substack{\text{DerSimonian–Laird,}\\ \text{median over genes}}}
-\;\longrightarrow\;
-\underbrace{t_g,\ p_g}_{\substack{\text{stage 2: weighted}\\ \text{moderated limma}}}
-\;\longrightarrow\;
-\text{BH over triplets}
-$$
-
-Throughout, $g$ indexes genes, $c$ cells, $s$ samples (tissue cores), $p$
-patients (a patient may contribute several cores; with no `patient` column
-each sample is its own patient), $t$ the **index** cell type whose expression
-is modelled, and $t'$ the **niche** cell type whose local density is the
-predictor. A *triplet* is one $(g, t, t')$ hypothesis. The niche covariates
-$N_{c,t'}(\sigma)$ are exactly the effective-niche columns of Part 1, at one
-bandwidth $\sigma$.
-
-## Stage 1: one joint slope fit per (sample, index type)
-
-Stage 1 asks, within one sample $s$ and one index cell type $t$ at a time:
-*across the cells of this type in this core, how does this gene's expression
-co-vary with the local density of each surrounding cell type?* The answer is
-a vector of slopes with variances, obtained by a **joint regression on the
-niche columns**. The three `stage1` options share the design (below) and
-differ in the model fitted on it: a negative-binomial GLM with a fixed
-technical offset (`"spanorm"`), ordinary least squares on log-CPM (`"ols"`),
-or a negative-binomial GLM with a fitted depth covariate (`"nb"`).
-
-### The technical offset (`stage1 = "spanorm"`, the default)
-
-The default path is anchored on a stored [SpaNorm::SpaNorm()] fit — the same
-normalisation model the rest of the package relies on — read from
-`metadata(spe)$SpaNorm`. That fit provides, for every gene $g$ and cell $c$:
-
-$$
-\hat\eta_{c,g}
-  \;=\; \hat g_g \;+\; \sum_{k} \hat a_{g,k}\, W_{c,k}
-  \;=\; \underbrace{\hat\eta^{\text{bio}}_{c,g}}_{\text{biology columns}}
-  \;+\; \underbrace{\hat\eta^{\text{LS}}_{c,g}}_{\text{library-size / batch columns}},
-$$
-
-where $W$ is the SpaNorm design matrix, $\hat a_{g,k}$ its fitted per-gene
-coefficients, $\hat g_g$ the per-gene baseline, and the split follows
-SpaNorm's own labelling of its columns (`wtype`) into a smooth *biology*
-block and a *library-size / within-sample batch* block (field-of-view
-effects, when present, sit in the latter). Stage 1 uses **only the technical
-block**, and uses it as a fixed **offset**:
-
-$$
-O_{c,g} \;=\; \hat g_g + \hat\eta^{\text{LS}}_{c,g},
-\qquad
-\log \mu_{c,g} \;=\; a_{0,g} + \tilde N_c\,\beta_g + O_{c,g},
-$$
-
-a fresh negative-binomial GLM on the **raw counts** of each (sample, index)
-subset, with the dispersion taken from a per-sample pooled fit
-(`pool.psi = TRUE`: one dispersion estimation per sample on a cell-type-means
-design, shared by that sample's subsets — measurably better calibrated than
-per-subset estimation, and cheaper).
-
-Two deliberate choices are folded into that construction:
-
--   **The technical effect enters as an offset, not a covariate.** Its
-    coefficient is fixed at one by construction, so it *cannot* absorb
-    depth-correlated biology. The `"nb"` path below enters log library size
-    as a *fitted* covariate, and its free coefficient is exactly the leak
-    the offset closes (the benchmark's `depth` scenario measures it).
--   **The biology component is not used.** SpaNorm models biology only to
-    *anchor* the normalisation — library size confounds biology, so without
-    a biology term the LS spline would over-correct. The fitted biology
-    surface is therefore a very smooth catch-all, not successfully modelled
-    biology, and it must not be read back into a response. An earlier
-    construction that did exactly that (the `epsilon = "addback"` working
-    response) is **deprecated and ignored**; stage 1 now re-models all
-    biology from scratch and assumes *only* that the technical effects are
-    right. Slopes still live on the log-mean scale, so a flat condition
-    fold-change moves a gene's intercept, not its niche slope — condition
-    main effects do not leak into the slope contrast at any expression level
-    (the `ctresp` and `maineffect` scenarios measure this leak directly).
-
-### The joint fit
-
-Within the subset of cells of index type $t$ in sample $s$ (kept only if it
-has at least `min.cells` cells), let $\tilde N$ be the niche columns
-**centred within the subset** and with the index type's own column removed —
-the same symmetric self-interaction rule the Part 1 design applies ($A$'s
-local density of $A$ is not a meaningful niche predictor for $A$ cells). All
-three paths share the design $D = [\,\mathbf 1 \mid \tilde N\,]$ (the
-intercept absorbs each gene's level). For `"spanorm"` and `"nb"` the slopes
-are the NB maximum-likelihood estimates and their variances come from the
-per-gene Fisher information,
-$v^{(s,t)}_{g,t'} = \big[(D^\top W_g D)^{-1}\big]_{t't'}$ with
-$W_g = \mathrm{diag}\!\big(\hat\mu_{c,g}/(1+\hat\psi_g\hat\mu_{c,g})\big)$;
-a gene whose information matrix is singular in a thin subset drops out as
-`NA` rather than failing the run. For `"ols"`, with unit weights
-$\Omega_g = I$, they are the standard least-squares quantities:
-
-$$
-\hat\beta^{(s,t)}_{g}
-  = \big(D^\top \Omega_g D\big)^{-1} D^\top \Omega_g\, \varepsilon_g,
-\qquad
-v^{(s,t)}_{g,t'}
-  = \hat\varphi_g \Big[\big(D^\top \Omega_g D\big)^{-1}\Big]_{t't'},
-\qquad
-\hat\varphi_g
-  = \frac{\sum_c w_{c,g}\,r_{c,g}^2}{n_{s,t} - p},
-$$
-
-where $r_{c,g}$ are the weighted-fit residuals, $n_{s,t}$ is the subset's
-cell count, $p$ the number of design columns, and $\hat\varphi_g$ the
-per-gene working dispersion within the subset. Degenerate niche columns
-(no variance within the subset) are dropped and report `NA`.
-
-**Why joint, not one niche at a time?** Niche densities are spatially smooth
-and therefore correlated with each other. A *marginal* slope per niche lets
-one true association bleed into every correlated niche column — triplet
-attribution becomes unreliable. Estimated jointly, correlated columns must
-*compete* for the same variation, so a smooth trend loads onto the column
-that genuinely carries it. The `attribution` scenario in the benchmark
-report (a decoy cell type whose density correlates with the true niche's)
-measures the result. A practical
-consequence worth knowing: restricting `niche =` changes the *fit*, not just
-the report — every remaining slope is re-estimated in the smaller joint
-design.
-
-### The other stage-1 responses
-
--   **`"ols"`** regresses library-size-scaled log counts,
-    $\varepsilon_{c,g} = \log\!\big(1 + Y_{c,g}\,\bar L / L_c\big)$ with
-    $L_c$ cell $c$'s total count and $\bar L$ their mean, with **unit
-    weights**. It needs no stored SpaNorm fit and no dispersion, so it is
-    the dependency-free fallback (the toy examples use it). Its global
-    per-cell scaling cannot absorb *spatially structured* depth, a
-    vulnerability the benchmark's `depth` scenario quantifies.
--   **`"nb"`** fits a fresh negative binomial GLM per subset with design
-    $[\,\mathbf 1,\ \log L_c - \overline{\log L},\ \tilde N\,]$ —
-    structurally the `"spanorm"` fit with the fixed technical offset replaced
-    by a *fitted* log-library covariate, which is exactly the depth leak the
-    offset closes. Its cost is per-*gene* (dispersion estimation per subset),
-    so it suits small `index`/`niche` restrictions, not panel-wide runs.
-
-Which path to prefer is a measured question, and the answer changed when the
-measurement improved. On the final structured-LS sweep — run on a frozen
-package snapshot after an earlier sweep was found to have loaded a live,
-changing working tree mid-run — **`"ols"` is the strongest stage-1 arm**:
-null type-I 0.043–0.054 and *flat* in sample size, raw power 0.451 at
-$S = 30$ against 0.293 (`"nb"`) and 0.274 (`"spanorm"`). The default
-`"spanorm"` is the *most liberal* of the three (null 0.055–0.071) with the
-least raw power; `"nb"` is near-nominal (0.043–0.047) and the most
-conservative. Two earlier claims from the superseded sweep — that `ols`'s
-null rate inflates with sample size, and that `"spanorm"` scales its power
-at a nominal null — did not survive re-measurement and are withdrawn. One
-caveat survives from the published (i.i.d.-depth) simulator: on raw counts
-`nb`'s fitted depth covariate absorbs part of a planted effect that is the
-only structured depth contribution there, so its i.i.d.-simulator power
-understates it. The *Two-stage estimation* report carries the full tables,
-and the niche-shuffle null on the real cohort (see the same report) bounds
-what any stage-1 choice can deliver there.
-
-## Between the stages: pooling cores into patients
-
-When a patient $p$ contributed several cores, the per-core slopes are pooled
-by **inverse-variance (precision) weighting**:
-
-$$
-\hat\beta_{g,p}
- = \frac{\sum_{s \in p} \hat\beta^{(s)}_{g} \big/ v^{(s)}_{g}}
-        {\sum_{s \in p} 1 \big/ v^{(s)}_{g}},
-\qquad
-v_{g,p} = \Big(\sum_{s \in p} 1 \big/ v^{(s)}_{g}\Big)^{-1}.
-$$
-
-Fixed-effect pooling is the *correct* choice at this level — the cores share
-their patient's true slope, so their estimates differ only by sampling noise
-— while genuine patient-to-patient variation enters the model at the next
-step, through $\tau^2$. `condition` is checked to be constant within each
-patient, and so must any `patient.covariates`.
-
-## Stage 2: the patient-level contrast
-
-For each (index, niche) pair, stage 2 has a genes × patients matrix of
-pooled slopes $\hat\beta_{g,p}$ with per-entry variances $v_{g,p}$, and a
-patient-level design
-
-$$
-x_p = \big(1,\ r_p,\ \text{patient covariates}\dots\big)^\top,
-$$
-
-with $r_p$ the condition indicator. The working model is a random-effects
-meta-regression, familiar from meta-analysis:
-
-$$
-\hat\beta_{g,p} \;=\; x_p^\top \theta_g \;+\; b_{g,p} \;+\; e_{g,p},
-\qquad
-b_{g,p} \sim \mathcal N(0, \tau^2),
-\qquad
-e_{g,p} \sim \mathcal N(0, v_{g,p}),
-$$
-
-| symbol | meaning |
-|---|-----------------------------------------------|
-| $\theta_g$ | the patient-level regression coefficients; its condition entry is the **tested quantity** — the difference in mean niche slope between conditions |
-| $b_{g,p}$ | genuine patient-to-patient variation in the slope, with one variance $\tau^2$ per (index, niche) pair |
-| $e_{g,p}$ | stage-1 estimation noise, whose variance $v_{g,p}$ is *known* (carried up from stage 1) |
-
-### The between-patient variance $\tau^2$
-
-$\tau^2$ is estimated by the **DerSimonian–Laird** moment method, per gene,
-then pooled. For one gene, fit the weighted regression with weights
-$w_p = 1/v_{g,p}$, take residuals $r_p$, and form Cochran's heterogeneity
-statistic and the moment estimate:
-
-$$
-Q_g = \sum_p w_p\, r_p^2,
-\qquad
-\hat\tau^2_g
- = \max\!\Bigg(0,\;
-   \frac{Q_g - (S_g - q)}
-        {\sum_p w_p - \mathrm{tr}\!\big[(X^\top W X)^{-1} X^\top W^2 X\big]}
-   \Bigg),
-$$
-
-where $S_g$ is the number of patients with a finite slope for this gene, $q$
-the number of design columns, $X$ the stacked $x_p^\top$ and
-$W = \mathrm{diag}(w_p)$. The intuition: if the slopes scattered only by
-their known stage-1 noise, $Q_g$ would average $S_g - q$; any excess is
-between-patient variation, and the denominator converts that excess onto the
-variance scale. The per-gene estimates are noisy (they come from tens of
-numbers), so — exactly as the mixed model of Part 3 shares $\tau^2$ across
-genes — the reported $\hat\tau^2$ is the **median over genes**, one value per
-(index, niche) pair, floored at 0.
-
-### The weighted, moderated contrast
-
-Each triplet is then tested with `limma`: `lmFit()` on the slope matrix with
-observation weights
-
-$$
-u_{g,p} \;=\; \frac{1}{v_{g,p} + \hat\tau^2},
-$$
-
-followed by `eBayes(robust = TRUE)`, and the moderated $t$ and p-value of the
-condition column are reported. The weight formula is the estimator's second
-load-bearing choice:
-
--   When **$\tau^2$ dominates** (patients genuinely differ more than stage-1
-    noise), $u_{g,p} \to 1/\tau^2$ — near-equal weights, recovering the
-    validity of an unweighted patient-level test. This guards against the
-    classic pseudobulk pitfall of over-weighting cell-rich patients: a
-    patient with $10\times$ the cells has a smaller $v$, but *not* a more
-    informative draw of $b_{g,p}$.
--   When **$v$ dominates** (small or imbalanced subsets), the weights do
-    real work, down-weighting patients whose slopes are poorly estimated.
-
-`eBayes` moderation shrinks each gene's residual variance toward a
-gene-shared prior (borrowing strength across genes, the same instinct as the
-shared $\tau^2$), lifting the reference df of the $t$-statistic above the
-handful of patients a single gene alone would provide; `robust = TRUE`
-protects the prior from hypervariable outlier genes. Finally the p-values
-are corrected with a **flat Benjamini–Hochberg across all tested triplets**
-— deliberately *not* the hierarchical cascade of Part 1, because a gene's
-triplets here are mostly null and combining them dilutes a single true
-effect to no better than Bonferroni.
-
-## Diagnostics
-
-The returned `SpiDEResults` carries three diagnostic tables in
-`@diagnostics`, one per known failure mode:
-
-| table | what it reports | the failure mode it makes visible |
-|---|---------------------------|---------------------------|
-| `r2` | per (sample, index) subset and per basis (`basis` = `"ls"` / `"biology"`): the $R^2$ of each niche column on that block of the SpaNorm design (`stage1 = "spanorm"` only) | overlap with the **ls** basis warns that the fixed technical offset could remove niche-correlated variation; overlap with the unused **biology** basis is *expected* to be high for a real niche effect (both are smooth in space) and is reported for context, not as a warning |
-| `inclusion` | per index type: which patients passed `min.cells`, with their condition | **informative dropout** — cell-type abundance can correlate with condition, silently biasing the tested patient subset; a Fisher test warns at $p < 0.05$ |
-| `tau2` | the pooled $\hat\tau^2$ per (index, niche) | a large value flags triplets where patient heterogeneity, not stage-1 noise, limits power |
-
-## A worked example
-
-The toy data has no stored SpaNorm fit, so the example uses the
-dependency-free `stage1 = "ols"` path (each sample is its own patient here):
-
-```{r twostage_demo, echo = TRUE, message = FALSE}
-data(toySpiDE)
-spe2 <- buildNiches(toySpiDE, sigma = 30)
-ts <- twoStageSpiDE(spe2, condition = "condition", sigma = 30,
-                    min.cells = 10, stage1 = "ols", fdr = 0.3,
-                    verbose = FALSE)
-head(results(ts), 3)
-head(ts$diagnostics$tau2, 3)
-```
-
-The results table keeps the familiar schema — `gene`, `ct_index`,
-`ct_niche`, the slope contrast `coef`, its moderated `t`, `p.niche` and
-`fdr.niche` — so downstream code is agnostic to which estimator produced it.
-
-## What it fixes, what it does not, and how it measured
-
-**Fixed: the error structure — in simulation.** In the paired benchmark
-against the published simulation study (the *Two-stage estimation* report on
-the spiDE-research benchmark site, https://bhuvalab.github.io/spiDE-research/),
-the `ols` and `nb` stage-1 arms are the best-calibrated methods at every
-null design point — where the mixed GLM arms drift mildly anti-conservative
-and `fixed` is drastically conservative — and on the spatially random
-negative control the estimator makes essentially no false calls where the
-GLM arms accumulate them. On the **real cohort** that ordering reverses:
-under the niche-shuffle null (the same site's *niche-shuffle null* report)
-the mixed GLM is the better-calibrated estimator across all index types,
-because the two-stage fit's thin (patient, index) subsets — a dozen niche
-columns on a few dozen cells — inflate its statistics whether or not any
-real niche association is present.
-
-**The price: power.** On the same simulator it is uniformly less powerful
-than the mixed GLM arms at delivered FDR, and it is **cells-hungry**: each
-patient contributes exactly one slope per triplet, so per-patient precision —
-cells — is what sharpens the test, and below `min.cells` a patient
-contributes nothing at all.
-
-**Not fixed: multiplicity.** The estimator carries real signal, but a
-full-panel hypothesis space (order $10^6$ triplets on a large panel) buries
-it — BH needs the best p-value below $0.05/m$. Restrict `index`, `niche` and
-the gene set to a pre-specified hypothesis; roughly 4,000 tests is the order
-at which a $p \approx 10^{-5}$ effect survives.
-
-Two measurement notes, stated so they are not over-read. First, the
-widely-quoted real-cohort permutation pair (two-stage: zero false calls;
-mixed GLM: hundreds) was measured on this function's *predecessor* and is
-**withdrawn** — the re-measurement with the sharper niche-shuffle null
-points the other way (see above). Second, the benchmark's main sweep grid
-is `stage1 = "ols"` on raw counts, because the published simulator's i.i.d.
-library sizes make the default `"spanorm"` path unmeasurable there; the
-structured-library-size re-run measured all three arms on a frozen snapshot,
-and `"spanorm"`'s power does scale with sample size there — but it remains
-the weakest and most liberal of the three, which is why `"ols"` is the
-recommended stage-1 (the benchmark report's *Stage-1 pipelines* section has
-the full story).
-
-## Choosing between `fitSpiDE()` and `twoStageSpiDE()`
-
--   **Prefer `fitSpiDE(random = "intercept")`** (the package default) for
-    genome-wide discovery: it is more powerful, its mild anti-conservatism
-    is quantified (null type-I 0.058 for the design term alone and 0.071 with
-    the 0.99.17 defaults, averaged over $S \ge 10$ on the synthetic study;
-    worse at $S = 4$, see above), and the hierarchical FDR is designed for
-    the full hypothesis space.
--   **Prefer `twoStageSpiDE()`** when the conclusion must survive a
-    sceptical error audit on a *pre-specified* hypothesis — a restricted set
-    of index types, niches and genes — with enough patients ($S \gtrsim 16$
-    on the benchmark's operating characteristics) and enough cells per
-    patient. Its calibration is the best measured in the suite, and its
-    diagnostics (`inclusion` in particular) surface the cohort-level biases
-    a cell-level fit hides.
--   On real data, run it on a **SpaNorm-normalised object with
-    `stage1 = "spanorm"`** — the `depth` adversarial scenario shows exactly
-    what the unnormalised fallback is vulnerable to.
+Three caveats govern use.
+
+- **Sample-level covariates** (Age, Sex, Stage) are collinear with the
+  per-sample random intercept and are rejected under `random != "none"`; the
+  intercept subsumes them. Adjust for cell-level covariates only — and do
+  adjust for per-cell library size, which the cell-type intercepts cannot
+  carry.
+- **Few samples.** The variance components and the reference df are only as
+  good as the between-sample information; a warning is issued when samples
+  are very few, and the trade-offs by sample size are in the calibration
+  vignette.
+- **The mixed fit is not "fixed with extras".** Even when $\hat\tau^2 \to 0$ it
+  does not reproduce `random = "none"`: it also replaces the sub-design
+  covariance and the NB dispersion scaling with the full penalised covariance
+  and the Pearson dispersion, so its standard errors are the correctly scaled
+  ones and `"none"`'s apparent extra power is partly spurious.
+
+# The patient-level question
+
+What the nested intercept removes from the niche slope is a real association
+in the data. "Do patients whose tumour compartment is fibroblast-rich express
+this gene differently *in* tumour cells?" is a legitimate question with one
+observation per patient, and `compositionTest()` asks it there: per (sample,
+index type), a pseudobulk log-CPM profile of the index cells and the mean
+niche density around them; then, per (index, niche) pair, a `limma` moderated
+$t$ across samples for the pooled association (`"niche"`) and for its
+difference between conditions (`"condition:niche"`, the patient-level
+counterpart of $\beta$), with patient-level covariates allowed — exactly the
+ones `fitSpiDE()` rejects. On a cohort it typically reports that neighbour
+types' own markers rise in the index cells' pseudobulk with the neighbours'
+density, uniformly across conditions: composition, plausibly with a
+segmentation-spillover component, and the reason the niche test keeps it out.
+Report the two results side by side, and never one as the other.
+
+# Choosing the estimator
+
+`fitSpiDE(random = "intercept")` with the defaults is the estimator for
+discovery: it fits all cells jointly, so thin cell types borrow strength, and
+its hierarchical FDR is built for the full hypothesis space. `random = "none"`
+is kept for reproducing older results only. `twoStageSpiDE()` estimates each
+patient's niche slopes first and contrasts them across patients, removing
+pseudo-replication by construction; it is the estimator for a pre-specified
+hypothesis on well-populated index types, and it is documented in
+`vignette("spiDE-twostage")`. The measured operating characteristics of every
+choice named in this vignette are collected in `vignette("spiDE-calibration")`.
 
 # Session info
 

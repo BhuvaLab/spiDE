@@ -71,11 +71,16 @@
 
 ## Documentation
 
-* The three vignettes carry the 2026-09-07 measurements: the synthetic null
-  cost of the 0.99.17 defaults decomposed by switch, the finding that the
-  legacy niche-only design's higher recall is a different estimand with a
-  smaller standard error rather than a better test, and what that means for
-  reading the niche and cell-type result layers and the calibration statistic.
+* The vignettes are reorganised into four, written top-down rather than in
+  the order the work happened: the quickstart (calls and result layers, no
+  justification), *The spiDE model* (the model stated once, organised around
+  the Frisch–Waugh–Lovell theorem, with the per-gene convergence — damped
+  Newton, profile-ML dispersion, the Schur-complement absorption of the
+  nested block — and the combination and FDR steps explained for the first
+  time), *The two-stage estimator* (split out), and *Calibration: reading
+  lambda, and what the benchmarks measured*, now the only place in the
+  package that quotes benchmark numbers. Research history has been removed
+  from all four.
 
 ## Bug Fixes
 

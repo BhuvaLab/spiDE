@@ -16,6 +16,10 @@ navbar:
         href: articles/spiDE.html
       - text: The spiDE model
         href: articles/spiDE-model.html
+      - text: The two-stage estimator
+        href: articles/spiDE-twostage.html
+      - text: Calibration — reading lambda, and what the benchmarks measured
+        href: articles/spiDE-calibration.html
     validation:
       text: Statistical validation
       menu:

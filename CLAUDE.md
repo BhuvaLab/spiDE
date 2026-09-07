@@ -676,13 +676,14 @@ Raising it makes the planted effect *harder* to recover, not easier.
 Most non-obvious defaults in this package were chosen on measurement, and the measurement is written
 down. Before changing one, read the corresponding record:
 
-- `vignettes/spiDE-model.Rmd` — the model, the pseudo-replication problem, the random-effects and df
-  machinery.
+- `vignettes/spiDE-model.Rmd` — the model stated once, top-down, organised around Frisch–Waugh–Lovell;
+  `vignettes/spiDE-twostage.Rmd` the two-stage estimator; `vignettes/spiDE-calibration.Rmd` reads
+  lambda and is the **only** place in the package that quotes benchmark numbers — keep it that way.
 - `research/reports/benchmarks/` — the five validation reports (simulation study, combiner,
   mixed-fit speedups, two-stage arm, spiGSEA calibration), rendered to a static site at
   `research/docs/` by `build_site.R` (https://bhuvalab.github.io/spiDE-research/). They moved out of
   `vignettes/` because the eight built vignettes alone exceeded Bioconductor's 10 MB tarball cap;
-  the package keeps only the quickstart, model, and calibration vignettes.
+  the package keeps the quickstart, model, two-stage and calibration vignettes.
 - `research/reports/benchmarks/tables/*.rds` — the canonical benchmark tables the reports read
   (they render without the HPC runs; refreshed by `research/R/install_results.R` and
   `research/plasmode/install_twostage.R`). **One canonical table per scenario**: a new method arm is
