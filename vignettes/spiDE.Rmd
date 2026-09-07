@@ -229,6 +229,34 @@ investigating before trusting that bandwidth.
 
 An alternative, structurally different route to the same question is `twoStageSpiDE()`, which estimates each patient's niche slope first and then contrasts the patient slopes with a moderated *t*-test — removing the pseudo-replication by construction rather than by correction. It removes the pseudo-replication by construction rather than by correction, at a substantial cost in power (roughly 0.45 vs 0.66 raw power at 30 samples for its best stage-1 arm, `"ols"`), and its calibration degrades in thin (patient, index) subsets where the mixed-effects model's joint fit borrows strength — so it is intended for pre-specified (restricted) hypotheses over well-populated index types, not as a default. The model vignette documents it in full, and the *Two-stage estimation* benchmark report on the spiDE-research site (https://bhuvalab.github.io/spiDE-research/) reports its operating characteristics, including a niche-shuffle null on the real cohort that bounds what either estimator detects there.
 
+# The between-sample composition association, on its own terms
+
+`fitSpiDE()`'s nested (sample × cell type) intercept — `re.celltype = TRUE`,
+the default — makes every niche slope a *within*-sample slope. What that
+intercept absorbs is a real association in the data: samples whose index cells
+sit, on average, in a denser niche of some type also differ in their mean
+expression in that index type. It was found because it leaked into the niche
+slopes and inflated the triplet FDR on a real cohort (see the model vignette),
+and it is not neighbourhood-dependent DE. But "do patients whose tumour
+compartment is fibroblast-rich express this gene differently *in* tumour
+cells?" is a legitimate question with one observation per patient, and
+`compositionTest()` asks it there: a pseudobulk profile per (sample, index
+type), the sample's mean niche density around those cells, and a `limma`
+moderated *t*-test across samples.
+
+```{r composition}
+ct <- compositionTest(spe, condition = "condition", sigma = 30,
+                      verbose = FALSE)
+head(ct[order(ct$p), c("gene", "ct_index", "ct_niche", "term", "t", "fdr")])
+```
+
+Two terms are reported per (gene, index, niche): `"niche"`, the association
+pooled across conditions, and `"condition:niche"`, its difference between
+conditions — the patient-level counterpart of the three-way term
+`fitSpiDE()` tests within samples. On a fixture this small nothing is
+expected to pass; the point is that the two questions now have two tests, and
+neither is reported as the other.
+
 # Session info
 
 ```{r sessioninfo}

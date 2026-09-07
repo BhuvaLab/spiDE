@@ -45,3 +45,6 @@ setGeneric("bandwidths", function(object) standardGeneric("bandwidths"))
 # matter what the method signature says.
 setGeneric("spiGSEA", function(object, spe = NULL, genesets, ...)
   standardGeneric("spiGSEA"))
+#' @rdname compositionTest
+#' @export
+setGeneric("compositionTest", function(spe, ...) standardGeneric("compositionTest"))

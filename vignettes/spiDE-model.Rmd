@@ -990,7 +990,13 @@ every $|t| > 4.89$ exceedance where the uncorrected design produced 95.
 If the between-sample association is itself of interest — "do patients whose
 tumour compartment is B-cell-rich express this gene differently *in* tumour
 cells?" — test it at the patient level, on $S$ units, with patient-level
-covariates. It is a different question, and a legitimate one.
+covariates. It is a different question, and a legitimate one, and
+`compositionTest()` asks it: per (sample, index type) a pseudobulk log-CPM
+profile and the mean niche density around those cells, then a `limma`
+moderated $t$ across samples for the pooled association (`"niche"`) and for
+its difference between conditions (`"condition:niche"`, the patient-level
+counterpart of the three-way term above). Both tests now exist, and neither
+should be reported as the other.
 
 ## Convergence of the per-gene fit
 

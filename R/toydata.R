@@ -192,12 +192,16 @@
 #' @param n_genes number of genes.
 #' @param field the side length of the (square) spatial field.
 #' @param composition size of a planted BETWEEN-sample composition confound on
-#'   G2 in index type A: each sample's B-cell prevalence is tied to its
-#'   condition, and G2's baseline in that sample's A cells shifts in proportion
-#'   to it, constant within (sample, A). The true within-sample niche slope is
-#'   zero, so a design without a nested (sample x cell type) intercept reports a
-#'   false A x B effect and one with it does not. \code{0} (the default) draws
-#'   no extra random numbers, leaving the fixture unchanged.
+#'   G2 in index type A. Each sample's A cells are shifted toward or away from
+#'   the B-rich region (a per-sample draw on \code{[0, 0.85]} of the field), so
+#'   samples differ in the MEAN B-niche density around their A cells the way
+#'   tissue does, and G2's baseline in Responders' A cells shifts in proportion
+#'   to that draw, constant within (sample, A). The true within-sample niche
+#'   slope is zero. The between-sample variance of the niche covariate is small
+#'   next to its within-sample variance at low cell density -- use
+#'   \code{n_per >= 200} and a bandwidth of 50 for the confound to reach the
+#'   tested slope. \code{0} (the default) draws no extra random numbers, leaving
+#'   the fixture unchanged.
 #' @param beta effect size of the planted B-niche x Responder interaction on G1.
 #'   This is the MAXIMUM log-fold-change across the field, since the effect is
 #'   planted as \code{beta * (x / field)} -- so \code{beta = 2} is a 7-fold
@@ -228,12 +232,26 @@
   # every test that depends on it -- is bit-identical.
   p_B <- stats::setNames(rep(0.7, n_samples), sample_ids)
   if (composition != 0) {
-    # tie prevalence to condition, so the between-sample composition effect
-    # lands on the three-way CellType:condition:niche term that spiDE tests
-    is_r <- cond_levels == "Responder"
-    p_B[is_r] <- runif(sum(is_r), 0.75, 0.95)
-    p_B[!is_r] <- runif(sum(!is_r), 0.35, 0.55)
+    # A WIDE spread of prevalence across samples, in both conditions. The
+    # confound is planted below in Responders only, so the tested three-way
+    # slope (slope_R - slope_NR) carries the between-sample term on one side
+    # and not the other. An earlier version tied prevalence to condition
+    # (0.75-0.95 vs 0.35-0.55): the within-condition spread was then only 0.2,
+    # the between-sample covariance the confound rides on was tiny, and it was
+    # present in BOTH conditions, so the difference cancelled -- the effect
+    # never reached the tested slope under either design.
+    p_B[] <- runif(n_samples, 0.3, 0.9)
   }
+  # Where a sample's A cells sit relative to the B-rich region. This is the
+  # lever the confound actually rides on: B cells occupy the right 40% of the
+  # field, so an A cell's B-niche density varies enormously WITHIN a sample,
+  # and prevalence alone barely moves the between-sample variance of the MEAN
+  # density. Shifting each sample's A cells toward (or away from) the B region
+  # makes samples differ in mean niche density the way real tissue does, while
+  # leaving within-sample variation for the genuine G1 effect. Drawn only when
+  # a composition effect is requested, so the default fixture is unchanged.
+  a_shift <- stats::setNames(rep(0, n_samples), sample_ids)
+  if (composition != 0) a_shift[] <- runif(n_samples, 0, 0.85)
 
   cells <- lapply(sample_ids, function(sid) {
     # coordinates on a micron-scale field so bandwidths of 10-70 are meaningful
@@ -244,6 +262,10 @@
       x > 0.6 * field & runif(n_per) < p_B[[sid]], "B",
       sample(c("A", "C"), n_per, replace = TRUE)
     )
+    if (a_shift[[sid]] > 0) {
+      isA <- ct == "A"
+      x[isA] <- runif(sum(isA), a_shift[[sid]] * field, field)
+    }
     data.frame(
       sample_id = sid,
       condition = cond_levels[[sid]],
@@ -279,8 +301,8 @@
   # exactly. A shuffle that permutes within (sample, cell type) preserves it,
   # which is why it cannot be detected by permutation alone.
   if (composition != 0 && n_genes >= 2) {
-    log_effect["G2", ] <- composition * is_A *
-      (p_B[cd$sample_id] - mean(p_B))
+    log_effect["G2", ] <- composition * is_A * is_resp *
+      (a_shift[cd$sample_id] - 0.3)
   }
 
   lib.size <- .simLibSize(cd$sample_id, cd$cell_type,

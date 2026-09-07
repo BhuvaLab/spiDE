@@ -48,6 +48,20 @@
 * `.toySPE()` gains `composition`, which plants a between-sample composition
   confound with zero within-sample niche slope.
 
+* `compositionTest()`: the between-sample composition association that the
+  nested intercept absorbs, tested on its own terms at the patient level —
+  pseudobulk per (sample, index type), the sample's mean niche density around
+  those cells, a `limma` moderated *t* across samples, with `"niche"` (pooled)
+  and `"condition:niche"` (the patient-level counterpart of the three-way
+  term) reported per (gene, index, niche). It is real signal, and it is not
+  neighbourhood-dependent DE; the two now have two tests.
+* `.toySPE(composition = )` now plants a confound that reaches the tested
+  slope: each sample's A cells are shifted toward or away from the B-rich
+  region, so samples differ in *mean* niche density the way tissue does, and
+  G2's baseline in Responders' A cells shifts with that mean. The earlier
+  version tied B-cell prevalence to condition, which moved the between-sample
+  mean too little to matter next to the within-sample spread.
+
 ## Bug Fixes
 
 * **Non-integer counts are refused when `converge = TRUE`.** `dnbinom()` is

@@ -59,18 +59,25 @@ test_that(".toySPE(composition = 0) is unchanged and composition plants a betwee
   expect_identical(SummarizedExperiment::assay(a, "counts"),
                    SummarizedExperiment::assay(b, "counts"))
 
-  cs <- spiDE:::.toySPE(composition = 2.5)
+  cs <- spiDE:::.toySPE(n_samples = 12, composition = 3)
   cd <- SummarizedExperiment::colData(cs)
   y <- SummarizedExperiment::assay(cs, "counts")["G2", ]
   isA <- cd$cell_type == "A"
+  resp <- cd$condition == "Responder"
 
-  # G2 in A cells differs BETWEEN samples ...
-  m <- tapply(y[isA], droplevels(factor(cd$sample_id[isA])), mean)
+  # G2 in Responders' A cells differs BETWEEN samples ...
+  m <- tapply(y[isA & resp], droplevels(factor(cd$sample_id[isA & resp])), mean)
   expect_gt(max(m) / min(m), 1.5)
-  # ... and B-cell prevalence differs between samples too, in the same order
-  pb <- tapply(cd$cell_type == "B", factor(cd$sample_id), mean)
-  expect_gt(abs(cor(as.numeric(m), as.numeric(pb[names(m)]),
-                    method = "spearman")), 0.6)
+  # ... in the same order as how close the sample's A cells sit to the B-rich
+  # region (the per-sample shift the confound is planted on), so the sample's
+  # MEAN B-niche density around its A cells is what G2 tracks
+  mx <- tapply(cd$x[isA & resp], droplevels(factor(cd$sample_id[isA & resp])), mean)
+  expect_gt(cor(as.numeric(m), as.numeric(mx[names(m)]), method = "spearman"), 0.5)
+  # ... and the DEFAULT fixture draws none of this: no sample's A cells are
+  # shifted away from the left edge of the field
+  cd0 <- SummarizedExperiment::colData(a)
+  isA0 <- cd0$cell_type == "A"
+  expect_true(all(tapply(cd0$x[isA0], cd0$sample_id[isA0], min) < 0.3 * 500))
 })
 
 test_that("a covariate with non-finite values is refused by name", {
