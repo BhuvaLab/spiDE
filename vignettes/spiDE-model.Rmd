@@ -831,6 +831,7 @@ A fit with `random != "none"` carries these slots on each `SpiDEFit`
 | `@polish` | the per-gene convergence diagnostics | see *What the stage reports* |
 
 ```{r diagnostics}
+fs <- polishSpiDE(fs, spe, verbose = FALSE)   # the stage populates @polish, @tau2, @df
 f <- fits(fs)[[1]]
 f$tau2
 colSums(f$polish[, c("restarted", "capped", "singular", "psi_bound")])
