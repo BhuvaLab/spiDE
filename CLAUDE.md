@@ -51,12 +51,16 @@ so they can be forwarded via `...` without renaming.
 
 ## Architecture
 
-**Entry points.** `spiDE()` chains the three stages below; `buildNiches()` → `fitSpiDE()` →
-`testSpiDE()` is the same pipeline unrolled. `twoStageSpiDE()` is a *separate estimator* over the
-same niche `reducedDims` (see "The two-stage estimator"), and `spiGSEA()` runs on an already-fitted
-object. `polishSpiDE()` (`R/polish.R`) is the per-gene convergence stage as a post-hoc adjustment on an
-existing fit; it shares one implementation and one penalty rule (`.polishPenalty()`) with
-`fitSpiDE(converge = TRUE)`, so the two routes give the same fit, and it clears the inference slots.
+**Entry points.** The pipeline is **fit → polish → test → gsea**: `buildNiches()` →
+`fitSpiDE()` → `polishSpiDE()` → `testSpiDE()` → `spiGSEA()`; `spiDE()` chains the first four
+(`polish = TRUE` by default). `polishSpiDE()` (`R/polish.R`) is a *stage*, not an option of the
+fit: it converges each gene, sets its dispersion (`psi = "profile"` by default) and, for a mixed
+fit, re-estimates the variance components from the converged coefficients (`tau2 = TRUE`),
+refreshing `@tau2`, `@penalty` and the Satterthwaite `@df`; it clears the inference slots. The
+user runs it or skips it according to their data (it needs integer counts). The former two-stage
+estimator (`twoStageSpiDE()`) left the package in 0.99.19 and is archived as the standalone
+research package `spiDEtwostage` (`research/twostage/`); the mixed-effects model is the
+recommended approach.
 `compositionTest()` (`R/composition.R`) is a *different question*: the between-sample
 composition association that `fitSpiDE()`'s nested intercept deliberately absorbs, tested at the
 patient level — pseudobulk per (sample, index type), the sample's mean niche density around those
@@ -64,7 +68,7 @@ cells, `limma` across samples, with `"niche"` (pooled) and `"condition:niche"` (
 counterpart of the three-way term). It is real signal and it is not niche-dependent DE; never
 report one as the other.
 
-### Pipeline (three stages, chained by `spiDE()`)
+### Pipeline (four stages; `spiDE()` chains fit, polish and test)
 
 1. **Niche construction** — `buildNiches()` (`R/buildNiches.R`). Per sample and per bandwidth `sigma`,
    a Gaussian KDE of every cell type is evaluated at each cell's location (`.effectiveNiche`, via
@@ -108,7 +112,23 @@ report one as the other.
    `SpaNorm::fitNB(Y, W, ...)` call per bandwidth — **never slice genes before fitting**, because
    `fitNB` moderates dispersion across the full gene set via `edgeR::estimateDisp(robust=TRUE,
    tagwise=TRUE)`; blocking genes at this stage would change the fit. Produces one `SpiDEFit` per
-   bandwidth (S4 class in `R/AllClasses.R`), collected into a `SpiDEResults`.
+   bandwidth (S4 class in `R/AllClasses.R`), collected into a `SpiDEResults`. The fit converges
+   nothing per gene: that is the next stage.
+
+2b. **Polish** — `polishSpiDE()` (`R/polish.R`). Per gene, damped Newton on the gene's own
+   penalised NB log-likelihood from a sane start (blocked and dispatched like inference), the
+   dispersion by profile ML at the converged mean (or `psi = "moderated"` to keep `fitNB`'s), then
+   for a mixed fit the variance components re-estimated from the converged fit: one Schall step
+   (`.schallStep()`, shared with the fit's loop) with the polished coefficients and the
+   gene-averaged weights at the polished mean and dispersion, a re-polish at the new penalty,
+   iterated to `tau2.tol`, and `.satterthwaiteDF()` recomputed. **Why the re-estimate exists**
+   (`research/fdr-ordering/FINDINGS.md`, 2026-09-08): the fit's loop reads the shared fit's own
+   unconverged coefficients, and on `.toyClustered()` that reported a between-sample variance of
+   10 against a planted 0.49 (sample intercepts three times too wide, dispersion fifteen times too
+   large) under every release since 2026-08-08, while calibration survived because the QL scale is
+   robust to the dispersion and an inflated component only weakens the ridge. The long test
+   `longtests/testthat/test-mixed-numerics.R` and `tests/testthat/test-polish-stage.R` hold the
+   stage to the planted window.
 
 3. **Inference + combination + FDR** — `testSpiDE()` (`R/testSpiDE.R`), which chains three internal
    stages:
@@ -166,10 +186,9 @@ block, `.covBatchSize()` for the covariance sub-batch — the latter applies on 
   `genes × (1 + n_index)` matrix, column `"Gene"` then one per index cell type).
 - `SpiDEResults` (`R/AllClasses.R`) — container for a list of `SpiDEFit` (one per bandwidth) plus
   cross-bandwidth combined p-values and the final tidy `results` data.frame (with
-  `results.celltype`/`results.patient` behind `results(type = )`, and `diagnostics` for the two-stage
-  path). Both classes expose a `$` accessor (`slot(x, name)`) and a `show` method; validity is
-  enforced via `setValidity()` — note `validSpiDEResults()` requires `length(fits) == length(sigma)`
-  **only when `fits` is non-empty**, so `twoStageSpiDE()` can return a bandwidth with no GLM fit.
+  `results.celltype`/`results.patient` behind `results(type = )`). Both classes expose a `$`
+  accessor (`slot(x, name)`) and a `show` method; validity is enforced via `setValidity()`, one
+  `SpiDEFit` per bandwidth.
 - Generics live in `R/AllGenerics.R`; methods are implemented per-file (`buildNiches` in
   `buildNiches.R`, `fitSpiDE` in `fitSpiDE.R`, etc.) — when adding a new exported function, add the
   generic there, not inline in the implementation file.
@@ -283,61 +302,19 @@ stratum)`. Do not rebuild it without reading the *What was tried and rejected* r
 (`research/reports/benchmarks/spiDE-rejected.Rmd`), which records the measurements and the two
 intermediate findings that *were* correct.
 
-### The two-stage estimator (`twoStageSpiDE()`)
+### The two-stage estimator is archived (0.99.19)
 
-`twoStageSpiDE()` (`R/twostage.R`, stages in `R/twostage-stage1.R` / `R/twostage-stage2.R`) is a
-**different estimator**, not a fourth `random` mode — `random = "none"/"intercept"/"slope"` all fit
-the *same* design and differ only in which columns are ridge-penalised, whereas this never fits the
-niche design at all. `condition` is assigned per **patient**, so patients are the experimental units:
-stage 1 estimates a niche slope per (sample, index cell type), stage 2 pools those slopes by
-precision within each patient and contrasts the pooled patient slopes. None of `W`, `alpha`, `psi`,
-`penalty`, `tau2` or the Satterthwaite df machinery applies, which is why it is not slotted under
-`random`. Design spec: `design/specs/2026-08-11-twostage-fixes-design.md`.
-
-**Stage 1** (`.sampleSlopes()`) runs one *joint* weighted fit of the working response on **all** niche
-columns per (sample, index) subset — so restricting `niche` changes every remaining slope, not just
-which rows are reported — and drops the index type's own niche column, matching the GLM design's
-symmetric self-interaction rule. `stage1` selects the working response:
-- `"spanorm"` (the default, but **not the best** — see "Which method to use") reads the stored
-  `SpaNorm::SpaNorm()` fit from `metadata(spe)$SpaNorm` (`.spanormComponents()` errors clearly when
-  absent) and passes its **library-size/batch** components to `fitNB()` as a fixed **offset**
-  (`.stage1Offset()`), so spiDE re-models all biology itself and assumes only that the LS effects are
-  right. The former `epsilon` argument (`"addback"`/`"residual"`) is **deprecated and ignored**; it
-  warns if supplied. Any numbers quoted from an `epsilon`-era run are superseded.
-- `"ols"` regresses log-CPM with unit weights — no stored fit and no dispersion needed, so it is the
-  path the toy examples/tests use, **and it is the best-performing stage-1 path on measurement**.
-- `"nb"` fits a fresh `fitNB` per (sample, index) subset; cost is per-*gene*, so it is a
-  small-restriction reference path, not a default.
-
-**Stage 2** pools per-core slopes by `1/v` within patient (`.poolPatientSlopes()`), estimates one
-between-patient variance `tau2` per (index, niche) by DerSimonian–Laird pooled as the median over
-genes (`.tau2DL()`), and contrasts patients with `limma::lmFit(weights = 1/(v + tau2))` +
-`eBayes(robust = TRUE)` (`.limmaStage2()`). `patient.covariates` adjusts at the patient level —
-exactly the sample-constant covariates `fitSpiDE()` rejects under `random != "none"`. FDR here is a
-**plain BH over triplets**, not the hierarchical cascade.
-
-The returned `SpiDEResults` keeps the tidy `results` schema but has an **empty `@fits`** with `@sigma`
-still set; `validSpiDEResults()` was relaxed to key that on the empty list rather than on a third
-`mode` value, deliberately — a new `mode` would change what `.testedCols()`/`.nicheTestCols()` treat
-as tested. Diagnostics land in the new `@diagnostics` slot: `r2` (niche columns against the SpaNorm
-biology basis, `"spanorm"` only), `inclusion` (per-index patient inclusion under `min.cells`, which
-*warns* when dropout is associated with `condition`), and `tau2`.
-
-**Three caveats, all load-bearing.** (1) **The old permutation numbers are withdrawn.** The
-often-quoted pair (two-stage raw type-I 0.036 with zero false calls, against ~576 for
-`fitSpiDE(random = "intercept")`) was measured on this function's *predecessor* and has now been
-superseded by a direct measurement that points the **other way** — see "What the niche-shuffle null
-showed" below. Do not cite them. (2) **`stage1 = "spanorm"` is the weakest of the three stage-1
-paths**, and it is the default only for historical reasons; `"ols"` beats it on calibration, power
-and cost (see below). (3) It does **not** solve multiplicity: a full-panel space of ~1.8M triplets
-buries real signal, and ACAT over a gene's ~137 mostly-null triplets is no better than Bonferroni.
-Restrict `index`, `niche` and the gene set to a pre-specified hypothesis (~4,000 tests is the order
-at which a `p ≈ 1e-5` effect survives) — but restrict **genes**, not index types; see the next
-section for why restricting index types makes the null *worse*.
-Benchmarked against the published simulation study in
-`research/reports/benchmarks/spiDE-twostage-benchmark.Rmd`; its arm lives as extra **rows**
-(`method`/`df.method == "twostage"`, labelled by `stage1` and `ls.model`) in the one canonical table
-per scenario under `research/reports/benchmarks/tables/`, never a parallel file.
+`twoStageSpiDE()` and its stages (`R/twostage*.R`) left the package in 0.99.19 and live as the
+standalone research package `spiDEtwostage` (`research/twostage/`, imports spiDE for the niches and
+checkers, returns a `twoStageResults` list with a `results()` method on spiDE's generic). It was a
+*different estimator*, not a `random` mode: patients as units, a niche slope per (sample, index)
+in stage 1, precision-pooled and contrasted with `limma` in stage 2, plain BH over triplets. It is
+kept for reproducing the comparison on the research site (*The two-stage estimator* report and its
+rows in the canonical tables, `method == "twostage"`); the mixed-effects model is the recommended
+approach because it fits all cells jointly, so thin cell types borrow strength, where the two-stage
+estimator was calibrated only in the populous types. Its calibration findings (cells per subset at
+r = −0.84, dropout confounded with condition in B cell / DC / Monocyte, `stage1 = "ols"` best of
+its three stage-1 paths) are recorded in that report.
 
 ### What the niche-shuffle null showed (2026-08-21, real YTMA cohort)
 
@@ -456,11 +433,9 @@ biology independently, and check imaging artefacts beyond simple spillover. Scri
 (sample × cell type) intercept block in `.buildRandomEffects()`, tagged `Random` with
 `re_group = "SampleCellTypeInt"` and carrying its own `tau2` (the Schall loop and
 `.satterthwaiteDF()` pick it up unchanged; the nested df is checked against `lmerTest` in
-`tests/testthat/test-satterthwaite.R`). `fitSpiDE(converge = TRUE)` (also the default) then
-converges each gene per `R/polish.R` — damped Newton on the gene's own penalised NB
-log-likelihood from a sane start, under `fitNB`'s moderated `psi` (`polish.psi = "moderated"`,
-the 0.99.18 default; `"profile"` re-estimates it per gene) — recording diagnostics in
-`SpiDEFit@polish`. `random = "slope"` does **not** substitute for the nested
+`tests/testthat/test-satterthwaite.R`). The per-gene convergence was `fitSpiDE(converge = TRUE)`
+in 0.99.17–0.99.18 and is the `polishSpiDE()` stage from 0.99.19 (see "Pipeline"), recording
+diagnostics in `SpiDEFit@polish`. `random = "slope"` does **not** substitute for the nested
 block. Specs: `design/specs/2026-09-03-sample-celltype-intercept.md` (the defect and its
 validation) and `design/specs/2026-09-04-nested-intercept-and-convergence-design.md` (the
 implementation), plan in `design/plans/`.
@@ -478,10 +453,11 @@ combination). Two unit tests had encoded the 0.99.16 artefacts -- one asserting 
 coefficient, which a near-empty gene can win, the other asserting that the spurious call survives
 FDR -- and assert the statistic instead.
 
-Three things to know about the implementation. The polish stage keeps edgeR's cross-gene
-moderated dispersion by default and can replace it with a per-gene profile-ML one
-(`polish.psi = "profile"`); the two are indistinguishable on the null and in the cohort's calls,
-and the profile step is the expensive part of the stage. The nested indicator block
+Three things to know about the implementation. The polish stage re-estimates the dispersion per
+gene by profile ML (`psi = "profile"`, the default) and can keep edgeR's cross-gene moderated one
+(`psi = "moderated"`, a third cheaper); the two are indistinguishable on the null and in the
+cohort's calls, but the moderated value is whatever the shared fit left (fifteen times the
+converged value on `.toyClustered()`), and the variance-component step needs the converged one. The nested indicator block
 is absorbed by a Schur complement inside `.newtonSolver()`, so the per-gene Newton cost is one
 dense-column gram regardless of how many groups exist — but `.blockedInference()` still forms
 a **dense** per-gene gram over the full design, so with ~660 extra columns real-cohort
@@ -597,12 +573,13 @@ conservative on QL p-values, a separate lever. On the cohort the scale changes n
 calls shared, 81–83 of the base 84 kept; raw null `sd(t)` 1.058 vs 1.014, absorbed by the per-gene
 calibration). Cost: moderated `psi` runs the cohort's real grid in 178 min vs 266 (profile), and
 0.6× CPU at S ≥ 16; the QL pre-pass is free at cohort scale (3× at S = 4 only, where a task is 8
-CPU-min). **Defaults from 0.99.18: `polish.psi = "moderated"`, `dispersion = "ql"`.** The QL
+CPU-min). **Defaults from 0.99.18: `dispersion = "ql"`; the moderated `psi` was the 0.99.18 default and
+reverted to `"profile"` in 0.99.19** (see "Pipeline", stage 2b, for why). The QL
 machinery lives in SpaNorm (>= 1.7.10): `nbUnitDeviance()`, `nbDevianceMoments()`,
 `qlDispersion()` with CPU and torch backends (the moments are one shared (log mu, log phi) table
 per gene block; the rest is elementwise), oracle-tested there against `edgeR::glmQLFit()`; spiDE
-only wires the pre-pass over gene blocks and `limma::squeezeVar()`. A fixed-effects unconverged fit
-(`random = "none", converge = FALSE`) keeps its legacy `psi` scale with a message.
+only wires the pre-pass over gene blocks and `limma::squeezeVar()`. A fixed-effects unpolished fit
+(`random = "none"`, no `polishSpiDE()`) keeps its legacy `psi` scale with a message.
 
 **The legacy niche-only design's higher simulation recall is a different estimand, not a better
 test** (`research/notes/design_power_decomposition.R`: one power dataset under four libraries,
@@ -617,38 +594,16 @@ pinned; concentrated in marker genes) is bought by assuming the estimand, it sat
 β = 2, and the term-restored design recovered 41% more triplets on the real cohort. Sidedness is not
 the reason: two-sided Cauchy gives *more* discoveries than one-sided Brown in all four arms.
 
-**If using `twoStageSpiDE()`, prefer `stage1 = "ols"` over the `"spanorm"` default**: better
-calibrated (0.043–0.054 vs 0.058–0.071), **1.6× the raw power** (0.451 vs 0.274 at S = 30), much
-better precision (FDP 0.032 vs 0.173 at S = 16), and it needs no stored SpaNorm fit so it is the
-cheapest. `"nb"` is the most conservative and the least powerful of the three.
-
 **Keep `pool.psi = TRUE`.** A paired ablation on identical datasets
 (`research/plasmode/poolpsi_ablation.R`, 30 pairs) gives type-I 0.0673 pooled vs 0.0729 unpooled,
 consistently lower at every S, paired p < 0.0001. Small but unambiguous.
-
-### Two-stage calibration is governed by cells per subset
-
-Measured on the real cohort at bw 30: `sd(t)` per index type tracks **median cells per (patient,
-index) subset** at r = **−0.838**, against r = −0.659 for patient count. Tumor (388 cells/subset)
-is calibrated at sd(t) 1.05; Mast (38 cells) is inflated at 1.65. Ruled out as drivers: **bandwidth**
-(sd(t) 1.363 at σ = 30 vs 1.364 at σ = 70 — essentially identical) and **patient count** (restricting
-to ≥ 30 patients moved 1.363 only to 1.277). The mechanism is ~12 niche columns fit to as few as
-30–40 cells: a near-singular design whose Fisher variances understate uncertainty. The lever is
-therefore `min.cells` or niche resolution (p/n), not σ.
-
-A flat `min.cells` that reaches calibration is expensive on this cohort: 30 → 11 index types, 75 → 7,
-100 → 5, 150 → 4, 200 → 3. Reaching 100 deletes the entire T cell / DC / Monocyte / Mast compartment.
-
-**Separately, dropout can be confounded with condition.** `@diagnostics$inclusion` warns on this and
-it fires here: B cell (Fisher p = 0.027), DC (0.006), Monocyte (0.016) — which patients contribute
-depends on their outcome. No threshold or variance correction fixes informative missingness. Only
-Tumor and Fibroblast have complete inclusion (55/55) **and** calibrated variance.
 
 ### Supplying `psi` changes the objective (winsorisation), it does not just save time
 
 `fitNB()`'s `winsor` caps counts against the **current fitted mu**, so supplying `psi` changes the
 IRLS weights, hence mu, hence *which cells are capped* — the estimating and supplied-psi paths
-maximise **different** objectives. On spiDE's near-singular stage-1 subsets the gap reaches 64
+maximise **different** objectives. On the archived two-stage estimator's near-singular stage-1
+subsets the gap reaches 64
 log-likelihood units at `winsor = 4` and closes to a coin flip at `winsor = Inf` (median +0.04). On a
 well-conditioned synthetic design it does **not** close, so conditioning is also involved and the
 mechanism is not fully characterised. `research/notes/fitnb-offset-psi-disagreement.R` prints both
@@ -710,9 +665,10 @@ Raising it makes the planted effect *harder* to recover, not easier.
 Most non-obvious defaults in this package were chosen on measurement, and the measurement is written
 down. Before changing one, read the corresponding record:
 
-- `vignettes/spiDE-model.Rmd` — the model stated once, top-down, organised around Frisch–Waugh–Lovell;
-  `vignettes/spiDE-twostage.Rmd` the two-stage estimator; `vignettes/spiDE-calibration.Rmd` reads
-  lambda and is the **only** place in the package that quotes benchmark numbers — keep it that way.
+- `vignettes/spiDE-model.Rmd` — the model stated once, top-down, organised around Frisch–Waugh–Lovell,
+  with the polish stage as its own chapter; `vignettes/spiDE-calibration.Rmd` reads lambda and is
+  the **only** place in the package that quotes benchmark numbers — keep it that way.
+- `research/twostage/` — the archived two-stage estimator as the package `spiDEtwostage`.
 - `research/reports/benchmarks/` — the six reports in reading order (simulation study, the real
   cohort, two-stage estimator, combiner, spiGSEA calibration, what was tried and rejected), rendered to a static site at
   `research/docs/` by `build_site.R` (https://bhuvalab.github.io/spiDE-research/). They moved out of

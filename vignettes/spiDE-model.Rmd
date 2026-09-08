@@ -26,9 +26,7 @@ not replicates and what the random effects do about it, how each gene's fit is
 converged, and how a Wald statistic becomes a row of `results()`. It is the
 reference for the other vignettes. The quickstart (`vignette("spiDE")`) shows
 the calls; the calibration vignette (`vignette("spiDE-calibration")`) holds
-every benchmark number quoted in this package; the two-stage estimator, a
-different route to the same question, has its own vignette
-(`vignette("spiDE-twostage")`).
+every benchmark number quoted in this package.
 
 One idea organises the whole design and is used throughout: the
 **Frisch–Waugh–Lovell theorem**. Every nuisance block in the design removes one
@@ -505,7 +503,7 @@ well-measured gene gets little help from the random effect and only a modest
 standard-error correction; a sparse gene, whose per-sample counts are noisy,
 is where the correction does most of its work.
 
-# Converging each gene
+# The polish stage
 
 ## Why the shared fit is not at every gene's optimum
 
@@ -516,10 +514,13 @@ log-likelihood, and clamps coefficients across genes. For most genes that is
 indistinguishable from the gene's own optimum. For a bright,
 cell-type-restricted gene, whose working weights look nothing like the
 average, the aggregate criterion is met before that gene's own score reaches
-zero, and the dispersion estimated at that point is off. `converge = TRUE`
-(the default) finishes the job per gene, and `polishSpiDE()` applies the same
-stage to an existing fit — made with `converge = FALSE`, or saved by an older
-version — without refitting. The two routes share one implementation.
+zero, and the dispersion estimated at that point is off; on the clustered
+test fixture the shared fit leaves sample intercepts three times too wide
+and a dispersion fifteen times too large. `polishSpiDE()` is the stage that
+finishes the job, run between the fit and the test (`spiDE()` runs it by
+default, `polish = TRUE`) or skipped for a look at the shared fit. It does
+three things, below: converge each gene, set its dispersion, and for a mixed
+fit re-estimate the variance components from the converged coefficients.
 
 ## Damped Newton on the gene's own likelihood
 
@@ -551,12 +552,11 @@ only on its own counts, so the stage is blocked over genes and parallelised
 ## The dispersion at the converged mean
 
 `fitNB` estimates $\psi_g$ with `edgeR`'s empirical-Bayes moderation, which
-shrinks each gene's dispersion toward a cross-gene trend. The polish keeps
-that value (`polish.psi = "moderated"`, the default) and converges only the
-coefficients under it. The alternative, `polish.psi = "profile"`, replaces it
-with the gene's own **profile maximum-likelihood** value: hold the
-coefficients at their converged value $\hat\theta$, so that $\hat\mu_{c,g}$ is
-fixed, view the log-likelihood as a function of the dispersion alone,
+shrinks each gene's dispersion toward a cross-gene trend. The polish replaces
+it with the gene's own **profile maximum-likelihood** value
+(`psi = "profile"`, the default): hold the coefficients at their converged
+value $\hat\theta$, so that $\hat\mu_{c,g}$ is fixed, view the log-likelihood
+as a function of the dispersion alone,
 
 $$
 \ell_g(\psi \mid \hat\mu) \;=\; \sum_c \Big[
@@ -572,31 +572,17 @@ re-polish the coefficients at the new $\psi_g$, and repeat the pair once, so
 the returned $(\hat\theta, \hat\psi_g)$ is a joint optimum to the stated
 tolerance. A gene that carries no information about overdispersion — all
 zero, or effectively Poisson — has a profile likelihood that is monotone in
-$\psi$, so the search returns a *bound*, not an estimate; such a gene keeps the
-moderated value and is flagged `psi_bound` in `@polish`.
+$\psi$, so the search returns a *bound*, not an estimate; such a gene keeps
+the moderated value and is flagged `psi_bound` in `@polish`.
 
-Why the moderated value is the default is a measurement, not a preference.
-The profile step is the expensive part of the stage (a bounded search with
-two re-polishes per gene), and on both the synthetic null and the real
-cohort the two rules are indistinguishable: the same type-I error at every
-sample size to the third decimal, the same triplets called. What the profile
-value *did* do in an earlier release was sharpen a planted effect whose
-moderated dispersion was far from its own optimum — but that sharpening
-came through the standard error, and the standard error is now scaled by
-the quasi-likelihood dispersion (next section), which sees the residual
-scatter directly and does not depend on which $\psi_g$ the mean was
-converged under. Either way, $\psi_g$ is not itself the scale of the
-standard error.
-
-The polish also converges on the **unclamped** likelihood: `fitNB`'s
-winsorisation is a robustness device for a fit that shares one weight vector
-across genes; a per-gene converged fit does not need it, and inference
-evaluates the same unclamped mean the polish converged on. With
-`converge = TRUE` the `winsor` argument therefore only sets the Newton
-starting point. The negative binomial likelihood is undefined off the
-integers, so the stage **requires integer counts** and refuses a
-back-transformed assay rather than silently collapsing every dispersion to a
-bound.
+`psi = "moderated"` keeps `fitNB`'s value and converges only the
+coefficients. It is about a third cheaper, and on the null and in the real
+cohort's calls the two rules are indistinguishable, because the standard
+errors are scaled by the quasi-likelihood dispersion (next chapter), which
+sees the residual scatter directly. But the moderated value is whatever the
+shared fit left, fifteen times the converged value on the fixture above, and
+the variance-component step below needs a dispersion consistent with the
+converged mean, which is why the profile rule is the default.
 
 ## Absorbing the nested block: the Schur complement
 
@@ -639,11 +625,40 @@ by algebra rather than by subtracting means. `.newtonSolver()` verifies the
 partition (each row of $Z$ sums to one) before relying on it, and
 `.blockedInference()` uses the same absorption to form each gene's covariance.
 
+## The variance components from the converged fit
+
+The fit's Schall loop (previous chapter) estimates $\tau^2$ from the shared
+fit's own coefficients and dispersion:
+
+$$
+\tau^2_g \leftarrow \frac{\sum_{\text{genes}} \sum_{j \in g} \hat b_{j}^2}{n_{\text{genes}} \cdot \mathrm{edf}_g},
+\qquad
+\mathrm{edf}_g = |g| - \frac{\mathrm{tr}\,(M^{-1})_{gg}}{\tau^2_g},
+\qquad
+M = \tilde W^\top \bar D \tilde W + \Lambda ,
+$$
+
+with $\bar D$ the gene-averaged working weights $\mu/(1 + \psi\mu)$. Where
+that fit is off its optimum the numerator carries intercepts that are too
+wide and the weights a dispersion that is too large, and the component is
+wrong while the converged coefficients are right: on the clustered fixture
+the loop reports a between-sample variance of 10 against a planted 0.49. The
+polish therefore re-estimates the components (`tau2 = TRUE`, the default)
+from the converged fit — one Schall step with the polished $\hat b$ in the
+numerator and $\bar D$ at the polished mean and dispersion, then a re-polish
+of every gene at the new penalty $\Lambda = \mathrm{diag}(1/\tau^2)$,
+iterated until the relative change in $\log\tau^2$ is below `tau2.tol` — and
+recomputes the Satterthwaite reference df (next chapter) from the new
+components and penalty. On that fixture the component lands at the planted
+value. The re-polish starts from the current optimum, so the stage costs
+about one extra polish pass per iteration, and it converges in one or two.
+
 ## What the stage reports
 
 `@polish` is a per-gene table: `iterations`, `psi_fitnb` (the dispersion
 before polishing), `restarted`, `capped`, `singular`, `psi_bound` and
-`polished`. `polished = FALSE` marks a gene the Newton could not run on at
+`polished`; `@tau2`, `@penalty` and `@df` carry the re-estimated components,
+the penalty they imply and the refreshed reference df. `polished = FALSE` marks a gene the Newton could not run on at
 all, which keeps the multi-gene fit's estimate rather than substituting a
 worse one. Both flags are expected in small numbers; a large count is worth
 investigating before trusting that bandwidth. On bright genes the converged
@@ -857,15 +872,15 @@ Report the two results side by side, and never one as the other.
 
 # Choosing the estimator
 
-`fitSpiDE(random = "intercept")` with the defaults is the estimator for
-discovery: it fits all cells jointly, so thin cell types borrow strength, and
-its hierarchical FDR is built for the full hypothesis space. `random = "none"`
-is kept for reproducing older results only. `twoStageSpiDE()` estimates each
-patient's niche slopes first and contrasts them across patients, removing
-pseudo-replication by construction; it is the estimator for a pre-specified
-hypothesis on well-populated index types, and it is documented in
-`vignette("spiDE-twostage")`. The measured operating characteristics of every
-choice named in this vignette are collected in `vignette("spiDE-calibration")`.
+The mixed-effects GLM with the polish stage is the estimator: it fits all cells
+jointly, so thin cell types borrow strength, and on the real cohort it is the
+better-calibrated of the two estimators this package has carried (its
+predecessor, a two-stage patient-level estimator, fit each (patient, index
+type) subset independently and was calibrated only in the populous types; it
+is archived as a standalone research package, `spiDEtwostage`, with its
+benchmark on the research site). `random = "none"` reproduces the original
+scripts and is not an inference path. The measured operating characteristics
+of every default are in `vignette("spiDE-calibration")`.
 
 # Session info
 

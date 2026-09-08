@@ -61,7 +61,7 @@ spide_pal <- list(
              "converged-only" = "#66A61E",
              # the dispersion arms (prototype branch ql-dispersion)
              "psi-moderated" = "#E6AB02", "psi-moderated-ql" = "#A6761D",
-             "ql-only" = "#666666"),
+             "ql-only" = "#666666", "nested-polished-ql" = "#1B7837"),
   # one- vs two-sided input to a combiner. Brown keeps its `combine` colour;
   # the two Cauchy variants are split off it so the pair reads as one family.
   sided = c("Brown (1-sided)" = "#7570B3", "Cauchy (1-sided)" = "#D95F02",

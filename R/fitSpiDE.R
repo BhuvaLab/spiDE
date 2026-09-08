@@ -26,9 +26,7 @@
                              re.maxit = 2L, re.tol = 1e-3, tau2.init = 1,
                              re.prop = 1, re.maxit.psi = 1L,
                              re.min.cells = 100L, df.method = "satterthwaite",
-                             re.celltype = TRUE, converge = TRUE,
-                             converge.maxit = 50L, converge.tol = 1e-8,
-                             polish.psi = "moderated",
+                             re.celltype = TRUE,
                              block.size = NULL,
                              BPPARAM = BiocParallel::SerialParam(), ...) {
   des <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
@@ -63,35 +61,21 @@
     tau2 <- fit$tau2
     df <- fit$df
   }
-  # Converge each gene to its own optimum. fitNB's shared-weight, aggregate
-  # criterion leaves bright genes short of stationarity (see R/polish.R); this
-  # stage is per-gene and therefore blockable, unlike the fit itself.
-  polish <- NULL
-  if (converge) {
-    # the same penalty rule polishSpiDE() uses, so the two routes are one
-    pen_vec <- .polishPenalty(penalty, lambda.a, ncol(W))
-    pol <- .polishFit(Y, W, fit$alpha, fit$psi, pen_vec, des$re_group,
-                      covtype = des$covtype,
-                      maxit = converge.maxit, tol = converge.tol,
-                      block.size = block.size, BPPARAM = BPPARAM,
-                      verbose = verbose, psi.method = polish.psi)
-    fit$alpha <- pol$alpha
-    fit$psi <- pol$psi
-    polish <- pol$polish
-  }
-
+  # The per-gene convergence is a stage of its own, polishSpiDE(): fitNB's
+  # shared-weight, aggregate criterion leaves bright genes short of
+  # stationarity (see R/polish.R), and that stage is per-gene and blockable,
+  # unlike the fit itself. fitNB returns alpha unnamed; everything downstream
+  # keys on the gene names.
   alpha <- fit$alpha
   rownames(alpha) <- rownames(Y)
-  # fitNB returns alpha unnamed, so the polish diagnostics were keyed by
-  # position ("1", "2", ...) and fit@polish["G1", ] gave an all-NA row
-  if (!is.null(polish)) rownames(polish) <- rownames(Y)
   colnames(alpha) <- colnames(W)
+  polish <- NULL
 
   # per-gene log-likelihood for Cauchy weighting (recomputed from the fit; the
   # fitNB $loglik is per-iteration, not per-gene). Computed gene-block-wise so
   # the whole counts matrix is never densified (the invariant); .blockedInference
   # recomputes this too, so this value is only used if inference is skipped.
-  loglik <- .blockLoglik(Y, alpha, W, fit$psi, winsor = if (converge) Inf else 4)
+  loglik <- .blockLoglik(Y, alpha, W, fit$psi, winsor = 4)
 
   new(
     "SpiDEFit",
@@ -278,38 +262,9 @@
 #'   the block present every niche slope is a within-group slope and the shuffle
 #'   null is calibrated in every expression band. Set \code{FALSE} to reproduce
 #'   pre-correction fits. Ignored when \code{random = "none"}.
-#' @param converge logical; after \code{fitNB} returns, converge each gene to
-#'   its own penalised negative-binomial optimum and re-estimate its dispersion
-#'   there. \strong{Default \code{TRUE}.} \code{fitNB} fits every gene in one
-#'   IRLS loop with a single gene-averaged cell weight vector and an aggregate
-#'   convergence criterion, which is what makes a whole-transcriptome fit
-#'   affordable; for bright, cell-type-restricted genes it stops 1-4 standard
-#'   errors short of that gene's own optimum, with a dispersion about 1.6 times
-#'   too large. The stage is per-gene, so it is blocked and parallelised over
-#'   \code{block.size} / \code{BPPARAM} exactly as inference is. Note that it
-#'   replaces edgeR's cross-gene moderated dispersion with a per-gene profile
-#'   maximum-likelihood dispersion at the converged mean: with many cells per
-#'   gene that is well determined, but it is a deliberate departure from
-#'   \code{fitNB}'s moderation. Set \code{FALSE} to reproduce pre-correction
-#'   fits.
-#' @param polish.psi how the convergence stage sets each gene's dispersion:
-#'   \code{"moderated"} (default) keeps \code{fitNB}'s cross-gene moderated
-#'   value and converges only the coefficients; \code{"profile"} re-estimates
-#'   it by profile maximum likelihood at the converged mean. Measured on the
-#'   synthetic null and the real cohort, the two are indistinguishable in
-#'   type-I error and in the triplets called, and the moderated one is about a
-#'   third cheaper because the profile step is the expensive part of the
-#'   convergence stage. Only used with \code{converge = TRUE}.
-#' @param converge.maxit,converge.tol iteration cap and relative
-#'   log-likelihood tolerance for the per-gene convergence stage.
-#' @param block.size genes per block in the per-gene convergence stage (see
-#'   [testSpiDE()] for the same argument at inference time). NULL fits every
-#'   gene in one block.
-#' @param BPPARAM a BiocParallelParam. Used by the per-gene convergence
-#'   stage (\code{converge = TRUE}), which is blocked over genes and
-#'   dispatched with it; each worker densifies its own gene block, so
-#'   peak memory scales with the number of workers. Absent an explicit
-#'   \code{block.size}, one block per worker is used.
+#' @param block.size,BPPARAM gene blocking and dispatch for the blocked steps
+#'   of the mixed fit (see [testSpiDE()] for the same arguments at inference
+#'   time; [polishSpiDE()] takes its own).
 #' @param verbose a logical, whether to print fitting progress.
 #' @param ... further arguments forwarded to \code{\link[SpaNorm]{fitNB}}.
 #'
@@ -341,12 +296,8 @@ setMethod(
                         re.maxit = 2L, re.tol = 1e-3, tau2.init = 1,
                         re.prop = 1, re.maxit.psi = 1L, re.min.cells = 100L,
                         df.method = c("satterthwaite", "between"),
-                        re.celltype = TRUE, converge = TRUE,
-                        converge.maxit = 50L, converge.tol = 1e-8,
-                        polish.psi = c("moderated", "profile"),
-                        block.size = NULL,
+                        re.celltype = TRUE, block.size = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
-  polish.psi <- match.arg(polish.psi)
     backend <- match.arg(backend)
     random <- match.arg(random)
     df.method <- match.arg(df.method)
@@ -368,7 +319,7 @@ setMethod(
     checkNiche(spe, sigma, name = name)
 
     Y <- SummarizedExperiment::assay(spe, assay)
-    checkCounts(Y, integer.only = isTRUE(converge))
+    checkCounts(Y, integer.only = FALSE)
 
     fits <- lapply(sigma, function(sg) {
       if (verbose) message(sprintf("Fitting bandwidth sigma = %s", sg))
@@ -379,10 +330,7 @@ setMethod(
                        tau2.init = tau2.init, re.prop = re.prop,
                        re.maxit.psi = re.maxit.psi,
                        re.min.cells = re.min.cells, df.method = df.method,
-                       re.celltype = re.celltype, converge = converge,
-                       polish.psi = polish.psi,
-                       converge.maxit = converge.maxit,
-                       converge.tol = converge.tol, block.size = block.size,
+                       re.celltype = re.celltype, block.size = block.size,
                        BPPARAM = BPPARAM, ...)
     })
     names(fits) <- paste0(name, sigma)

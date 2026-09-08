@@ -215,7 +215,7 @@ test_that("batched Cauchy path matches the per-gene .waldBrownGene loop (CPU)", 
   alpha_sub <- tf$fit@alpha[, cols_gene, drop = FALSE]
   psi <- tf$fit@psi
   # Mirror .blockedInference()'s own choices, or this reference tests a
-  # different estimator: a POLISHED fit (converge = TRUE, the default) is
+  # different estimator: a POLISHED fit (after polishSpiDE(), the pipeline's default) is
   # evaluated at the unclamped mean, because the polish converged on the
   # unclamped likelihood, and its SE is scaled by the Pearson working
   # dispersion rather than the now-unmoderated per-gene psi.

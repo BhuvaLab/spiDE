@@ -46,14 +46,49 @@
 #' the representative penalised inverse for the Satterthwaite df. Blocked over
 #' genes so the genes x cells mean matrix is never fully materialised.
 #' @noRd
-.repWeights <- function(Y, alpha, W, psi, block.size = 2000L) {
+.repWeights <- function(Y, alpha, W, psi, block.size = 2000L, winsor = 4) {
   ng <- nrow(alpha)
   acc <- numeric(ncol(Y))
   for (gi in .chunkGenes(ng, block.size)) {
-    mub <- SpaNorm::calculateMu(rep(0, length(gi)), alpha[gi, , drop = FALSE], W)
+    mub <- SpaNorm::calculateMu(rep(0, length(gi)), alpha[gi, , drop = FALSE], W,
+                                winsor = winsor)
     acc <- acc + colSums(mub / (1 + psi[gi] * mub))
   }
   acc / ng
+}
+
+
+#' One Schall update of the variance components
+#'
+#' For each random-effect group, the mean squared coefficient over genes and
+#' columns divided by the group's effective degrees of freedom,
+#' \code{|g| - trace(M^-1_gg) / tau2_g}, with \code{M} the gene-averaged
+#' penalised information. Shared by the fit's loop, which calls it on the
+#' shared fit's coefficients, and by the polish stage, which calls it on the
+#' converged ones (research \code{fdr-ordering/FINDINGS.md}, 2026-09-08: on the
+#' clustered fixture the loop's coefficients report 10 against a planted 0.49
+#' and the converged ones recover it).
+#'
+#' @param alpha genes x columns coefficients.
+#' @param minv the inverse penalised information (columns x columns).
+#' @param re_group per-column group label (NA for fixed columns).
+#' @param tau2 named list or vector of the current components.
+#' @param tau2.range the clamp: the columns must stay at least weakly
+#'   penalised, since sample-level covariates and per-sample columns are
+#'   collinear in the tau2 -> Inf limit.
+#' @return the updated components, same shape as \code{tau2}.
+#' @noRd
+.schallStep <- function(alpha, minv, re_group, tau2, tau2.range = c(1e-8, 1e4)) {
+  tau2_new <- tau2
+  ng <- nrow(alpha)
+  for (g in unique(re_group[!is.na(re_group)])) {
+    gi <- which(re_group == g)
+    trc <- sum(diag(minv[gi, gi, drop = FALSE]))
+    edf <- max(length(gi) - (1 / tau2[[g]]) * trc, 1e-6)
+    b2 <- sum(alpha[, gi, drop = FALSE]^2)
+    tau2_new[[g]] <- min(max(b2 / (ng * edf), tau2.range[1]), tau2.range[2])
+  }
+  tau2_new
 }
 
 #' Estimate random-effect variance components (Schall / PQL, shared across genes)
@@ -154,17 +189,7 @@
            "perfectly collinear with the fixed effects. Check checkSample() ",
            "output and per-(sample, cell type) cell counts.", call. = FALSE)
 
-    tau2_new <- tau2
-    ng <- nrow(alpha)
-    for (g in groups) {
-      gi <- which(re_group == g)
-      trc <- sum(diag(minv[gi, gi, drop = FALSE]))
-      edf <- max(length(gi) - (1 / tau2[[g]]) * trc, 1e-6)
-      b2 <- sum(alpha[, gi, drop = FALSE]^2)
-      # keep the random-effect columns at least weakly penalised: sample-level
-      # covariates and per-sample columns are collinear in the tau2 -> Inf limit
-      tau2_new[[g]] <- min(max(b2 / (ng * edf), tau2.range[1]), tau2.range[2])
-    }
+    tau2_new <- .schallStep(alpha, minv, re_group, tau2, tau2.range)
     # relative change on log(tau2): natural for a scale parameter and robust to
     # the slow monotone decay of the slope variance
     converged <- max(abs(log(tau2_new) - log(tau2))) < re.tol

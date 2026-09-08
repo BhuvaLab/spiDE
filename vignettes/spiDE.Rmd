@@ -23,17 +23,21 @@ response to an experimental *condition* changes with the local density (the
 *niche*) of a surrounding cell type. One hypothesis is one (gene, index type,
 niche type) *triplet*.
 
-Three stages:
+Four stages:
 
 1. **Niches** — `buildNiches()`: per sample and per bandwidth, a Gaussian
    kernel density of every cell type evaluated at every cell.
 2. **Fit** — `fitSpiDE()`: one negative binomial GLM per gene over a design
-   with `cell type : condition : niche` interactions, patient-level random
-   effects, and a per-gene convergence step.
-3. **Test** — `testSpiDE()`: per-gene Wald statistics, combined across a
+   with `cell type : condition : niche` interactions and patient-level random
+   effects, all genes in one shared fit.
+3. **Polish** — `polishSpiDE()`: converge each gene to its own optimum, set
+   its dispersion there, and re-estimate the variance components from the
+   converged fit. A stage the user runs, or skips, according to their data.
+4. **Test** — `testSpiDE()`: per-gene Wald statistics, combined across a
    gene's correlated niches and across bandwidths, then a hierarchical FDR.
+   `spiGSEA()` then tests gene sets on the same statistics.
 
-`spiDE()` runs all three. The model is stated in full in
+`spiDE()` runs the first four (`polish = TRUE` by default). The model is stated in full in
 `vignette("spiDE-model")`; every benchmark number quoted about it is in
 `vignette("spiDE-calibration")`.
 
@@ -132,8 +136,7 @@ fit
 
 Each bandwidth's fit is a `SpiDEFit` with the coefficients `alpha`,
 dispersions `psi`, the design `W`, a tag per design column, and — for the
-default mixed, converged fit — the variance components `tau2` and per-gene
-convergence diagnostics `polish`:
+default mixed fit — the variance components `tau2`:
 
 ```{r fitobj}
 f1 <- fits(fit)[[1]]
@@ -141,15 +144,27 @@ table(f1$covtype)
 f1$tau2
 ```
 
-A fit made without the convergence step (`converge = FALSE`), or saved by an
-older version, can be converged afterwards with `polishSpiDE()`; it returns
-the object with converged coefficients and dispersions and inference cleared,
-so `testSpiDE()` runs again:
+## Polish
 
-```{r polish, eval = FALSE}
-fit0 <- fitSpiDE(spe, condition = "condition", converge = FALSE, verbose = FALSE)
-fit1 <- polishSpiDE(fit0, spe, verbose = FALSE)
+The shared fit is one IRLS loop over all genes with one gene-averaged cell
+weight vector, which is what makes a whole-transcriptome fit affordable; for
+bright, cell-type-restricted genes it can stop short of that gene's own
+optimum. `polishSpiDE()` converges each gene by damped Newton on its own
+penalised likelihood, re-estimates its dispersion there (`psi = "profile"`),
+and, for a mixed fit, re-estimates the variance components from the
+converged coefficients (`tau2 = TRUE`) and refreshes the reference df. It
+returns the object with inference cleared, so `testSpiDE()` runs on it:
+
+```{r polish}
+fit <- polishSpiDE(fit, spe, verbose = FALSE)
+f1 <- fits(fit)[[1]]
+head(f1$polish, 3)
+f1$tau2
 ```
+
+Skip the stage for a quick look at the shared fit, or when the counts are not
+integers (the negative binomial likelihood is undefined off the integers, so
+the stage refuses a back-transformed assay).
 
 ## Test
 
@@ -227,8 +242,7 @@ reasons are in `vignette("spiDE-model")` and the measurements in
 |---|---|---|
 | `random` | `"intercept"` | a random intercept per sample, so response effects are tested against patient-level variation |
 | `re.celltype` | `TRUE` | a random intercept per (sample, cell type), so the niche slope is a within-group slope and does not carry a patient's composition |
-| `converge` | `TRUE` | converge each gene's coefficients to its own optimum after the shared fit; needs integer counts |
-| `polish.psi` | `"moderated"` | keep the cross-gene moderated dispersion at the converged mean (`"profile"` re-estimates it per gene, at about 1.5× the cost) |
+| `polish` | `TRUE` | run `polishSpiDE()` between the fit and the test: converge each gene, set its dispersion by profile likelihood, and re-estimate the variance components from the converged fit; needs integer counts |
 | `dispersion` | `"ql"` | scale the standard errors by the gene's quasi-likelihood dispersion, moderated across genes; the only scale that holds the nominal level at four samples |
 | `df.method` | `"satterthwaite"` | a reference df per tested coefficient |
 | `combine` | `"cauchy"` | correlation-agnostic combination of a gene's niche p-values |

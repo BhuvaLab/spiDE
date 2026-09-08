@@ -16,6 +16,7 @@ test_that("df.method='satterthwaite' anchors the between-sample contrast at S-2"
                           sd_patient = 0.7), sigma = 30)
   fs <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
                  df.method = "satterthwaite", verbose = FALSE)
+  fs <- polishSpiDE(fs, spe, verbose = FALSE)
   ff <- fits(fs)[[1]]
   ds <- ff@df
   ct <- as.character(ff@covtype)
@@ -60,13 +61,18 @@ test_that("satterthwaite is the df.method default on an unqualified mixed fit", 
   expect_true(all(is.finite(ff@df)))
 })
 
-test_that("the mixed fit recovers the planted between-sample variance", {
+test_that("the polished fit recovers the planted between-sample variance", {
+  # the fit's own loop reads the shared fit's unconverged coefficients and
+  # reports ~10 here (research fdr-ordering/FINDINGS.md, 2026-09-08); the
+  # polish re-estimates the components from the converged fit
   spe <- buildNiches(spiDE:::.toyClustered(n_genes = 15, sd_patient = 0.7),
                      sigma = 30)
   fit <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
                   df.method = "between", verbose = FALSE)
-  tau2 <- fits(fit)[[1]]@tau2[["SampleInt"]]
-  # planted variance is 0.7^2 = 0.49; Schall/PQL should land close
+  before <- fits(fit)[[1]]@tau2[["SampleInt"]]
+  expect_gt(before, 1)
+  tau2 <- fits(polishSpiDE(fit, spe, verbose = FALSE))[[1]]@tau2[["SampleInt"]]
+  # planted variance is 0.7^2 = 0.49
   expect_gt(tau2, 0.3)
   expect_lt(tau2, 0.75)
 })

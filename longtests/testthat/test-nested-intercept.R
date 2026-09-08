@@ -60,9 +60,8 @@ test_that("the nested intercept removes a between-sample composition confound", 
 test_that("converging each gene raises every gene's penalised log-likelihood", {
   spe <- buildNiches(spiDE:::.toySPE(n_genes = 15), sigma = 30)
   f0 <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
-                 re.maxit = 2L, converge = FALSE, verbose = FALSE)
-  f1 <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
-                 re.maxit = 2L, converge = TRUE, verbose = FALSE)
+                 re.maxit = 2L, verbose = FALSE)
+  f1 <- polishSpiDE(f0, spe, tau2 = FALSE, verbose = FALSE)
   a0 <- fits(f0)[[1]]
   a1 <- fits(f1)[[1]]
   Y <- SummarizedExperiment::assay(spe, "counts")
@@ -81,15 +80,3 @@ test_that("converging each gene raises every gene's penalised log-likelihood", {
   expect_lt(median(a1@psi / a0@psi), 1.05)
 })
 
-test_that("polishSpiDE() on a converge = FALSE fit is the converge = TRUE fit", {
-  spe <- buildNiches(spiDE:::.toySPE(n_genes = 15), sigma = 30)
-  set.seed(7)
-  f1 <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
-                 re.maxit = 2L, converge = TRUE, verbose = FALSE)
-  set.seed(7)
-  f0 <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
-                 re.maxit = 2L, converge = FALSE, verbose = FALSE)
-  f0 <- polishSpiDE(f0, spe, verbose = FALSE)
-  expect_equal(fits(f0)[[1]]@alpha, fits(f1)[[1]]@alpha, tolerance = 1e-8)
-  expect_equal(fits(f0)[[1]]@psi, fits(f1)[[1]]@psi, tolerance = 1e-8)
-})

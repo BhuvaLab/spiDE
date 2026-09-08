@@ -19,12 +19,12 @@ toy_fit <- local({
   }
 })
 
-test_that("the default convergence step keeps fitNB's moderated dispersion at the converged mean", {
+test_that("the polish stage's moderated rule keeps fitNB's dispersion at the converged mean", {
   tf <- toy_fit()
-  fm <- fits(tf$fit)[[1]]
+  fm <- fits(polishSpiDE(tf$fit, tf$spe, psi = "moderated", verbose = FALSE))[[1]]
   expect_equal(unname(fm@psi), unname(fm@polish$psi_fitnb))
   expect_true(all(fm@polish$polished | fm@polish$iterations == 0L))
-  fp <- fits(fitSpiDE(tf$spe, "condition", sigma = 30, polish.psi = "profile", verbose = FALSE))[[1]]
+  fp <- fits(polishSpiDE(tf$fit, tf$spe, verbose = FALSE))[[1]]
   expect_false(isTRUE(all.equal(unname(fp@psi), unname(fm@psi))))
 })
 
@@ -39,9 +39,9 @@ test_that("the default inference scales the standard errors by the quasi-likelih
   ratio <- rq@t_stat / rp@t_stat
   expect_true(all(abs(log(ratio[is.finite(ratio) & rp@t_stat != 0])) < log(3)))
   # the wrapper is an S4 generic: its defaults live in the method definition
-  m <- paste(deparse(methods::selectMethod("spiDE", "SpatialExperiment")), collapse = " ")
+  m <- gsub("\\s+", " ", paste(deparse(methods::selectMethod("spiDE", "SpatialExperiment")), collapse = " "))
   expect_match(m, 'dispersion = c\\("ql", "pearson"\\)')
-  expect_match(m, 'polish.psi = c\\("moderated", "profile"\\)')
+  expect_match(m, 'polish = TRUE')
 })
 
 test_that("spiDE carries no private copy of the QL machinery", {
@@ -53,7 +53,7 @@ test_that("spiDE carries no private copy of the QL machinery", {
 
 test_that("a fixed-effects, unconverged fit keeps its legacy scale under the default, and says so", {
   tf <- toy_fit()
-  f0 <- fitSpiDE(tf$spe, "condition", sigma = 30, random = "none", converge = FALSE, verbose = FALSE)
+  f0 <- fitSpiDE(tf$spe, "condition", sigma = 30, random = "none", verbose = FALSE)
   expect_message(r0 <- testSpiDE(f0, spe = tf$spe, fdr = 1), "legacy")
   rl <- suppressMessages(testSpiDE(f0, spe = tf$spe, fdr = 1, dispersion = "pearson"))
   expect_equal(fits(r0)[[1]]@t_stat, fits(rl)[[1]]@t_stat)

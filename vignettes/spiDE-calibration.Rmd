@@ -227,10 +227,9 @@ refinement.
 
 ## The small-sample regime
 
-`fitSpiDE(random = "intercept")` is the most powerful calibrated estimator
-once samples are plentiful — recall **0.66** at $S = 30$ against 0.45 for the
-best two-stage arm — but it fails at small $S$ in a way the null table does
-not show: realised FDP **0.35** at $S = 4$ against a nominal 0.05, recovering
+`fitSpiDE(random = "intercept")` is a powerful estimator once samples are
+plentiful — raw power **0.66** at $S = 30$ — but it fails at small $S$ in a way
+the null table does not show: realised FDP **0.35** at $S = 4$ against a nominal 0.05, recovering
 to 0.04 by $S = 16$. Any sub-analysis that thins the patient count re-enters
 this regime.
 
@@ -319,22 +318,6 @@ designs only when they estimate the same quantity.
 Cauchy (two-sided) matches or beats Brown's method on power while holding
 type-I error under correlation without estimating the correlation matrix;
 report: *Combining niche p-values*.
-
-## The two-stage estimator
-
-On the simulation study its `"ols"` stage-1 path is the best-calibrated arm
-(null type-I **0.043–0.054**, flat in $S$), with raw power **0.451** at
-$S = 30$ against 0.293 (`"nb"`) and 0.274 (`"spanorm"`, the most liberal at
-0.055–0.071 and the least powerful); FDP 0.032 against 0.173 for `"spanorm"`
-at $S = 16$. Pooling the dispersion per sample (`pool.psi = TRUE`) is
-consistently better calibrated (0.067 against 0.073 paired over 30 datasets).
-On the real cohort the picture reverses for thin index types: its
-$\mathrm{sd}(t)$ tracks cells per (patient, index) subset at $r = -0.84$ —
-Tumor at 388 cells per subset is calibrated (1.05), Mast at 38 cells is not
-(1.65) — and the mixed GLM, which fits all cells jointly, is the better
-calibrated estimator across all index types (1.04 against 1.36). Dropout
-confounded with condition also fires there in B cell, DC and Monocyte.
-Report: *Two-stage estimation*.
 
 ## The gene-set layer
 

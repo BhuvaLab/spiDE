@@ -1,3 +1,44 @@
+# spiDE 0.99.19
+
+## Changes
+
+* **The pipeline is fit -> polish -> test -> gsea, and the polish is a stage.**
+  `fitSpiDE()` fits the shared model and nothing more: `converge`,
+  `converge.maxit`, `converge.tol` and `polish.psi` are gone from it.
+  `polishSpiDE()` is the stage the user runs, or skips, according to their
+  data; `spiDE()` runs it by default (`polish = TRUE`) and `polish = FALSE`
+  tests the shared fit as `fitNB` returned it.
+* **The variance components are re-estimated from the converged fit.** The
+  fit's Schall loop reads the shared fit's own coefficients and dispersion,
+  which can sit far from every gene's optimum: on the clustered test fixture
+  it reported a between-sample variance of 10 against a planted 0.49 (from
+  sample intercepts three times too wide), under every release since
+  2026-08-08. `polishSpiDE(tau2 = TRUE)` (the default) takes one Schall step
+  on the polished coefficients with the gene-averaged weights at the
+  polished mean and dispersion, re-polishes at the new penalty, iterates to
+  `tau2.tol`, and refreshes the Satterthwaite reference df. The fixture's
+  component lands in the planted window. Calibration had survived the old
+  value because the QL scale is robust to the dispersion and an inflated
+  component only weakens the ridge, but the reference df, the shrinkage and
+  the Newton weights all read it.
+* **The polish's dispersion rule is the profile value again**
+  (`polishSpiDE(psi = "profile")`). The moderated rule, made the default in
+  0.99.18 for a third of the cost, keeps whatever the shared fit left, which
+  on the same fixture is fifteen times the converged value; the
+  variance-component step needs a dispersion consistent with the converged
+  mean. The two rules remain indistinguishable on the null and in the real
+  cohort's calls, and the cost argument has weakened now that the GPU
+  carries the cohort's real grid in a third of the CPU time.
+* **The two-stage estimator has left the package.** `twoStageSpiDE()` and its
+  stages are archived as a standalone research package, `spiDEtwostage`
+  (`research/twostage/` in the research repository), which returns its own
+  result object; `SpiDEResults` loses the `diagnostics` slot and the validity
+  relaxation that allowed an empty `fits`. The mixed-effects estimator is the
+  recommended approach: it fits all cells jointly, so thin cell types borrow
+  strength, and on the real cohort it was the better-calibrated of the two.
+  The two-stage benchmark stays on the research site as the record of that
+  comparison.
+
 # spiDE 0.99.18
 
 ## Changes

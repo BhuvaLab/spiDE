@@ -102,7 +102,7 @@ test_that("re.prop is validated", {
 test_that("re.celltype yields its own variance component and keeps per-column df", {
   spe <- buildNiches(.toySPE(n_genes = 8, n_per = 40), sigma = 30)
   f <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
-                re.maxit = 1L, converge = FALSE, verbose = FALSE)
+                re.maxit = 1L, verbose = FALSE)
   fit <- fits(f)[[1]]
   expect_setequal(names(fit@tau2), c("SampleInt", "SampleCellTypeInt"))
   expect_true(all(is.finite(unlist(fit@tau2))))
@@ -119,7 +119,6 @@ test_that("re.celltype yields its own variance component and keeps per-column df
 test_that("re.celltype = FALSE keeps the single variance component", {
   spe <- buildNiches(.toySPE(n_genes = 8, n_per = 40), sigma = 30)
   f <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
-                re.celltype = FALSE, re.maxit = 1L, converge = FALSE,
-                verbose = FALSE)
+                re.celltype = FALSE, re.maxit = 1L, verbose = FALSE)
   expect_setequal(names(fits(f)[[1]]@tau2), "SampleInt")
 })

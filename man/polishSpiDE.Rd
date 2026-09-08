@@ -3,7 +3,8 @@
 \name{polishSpiDE}
 \alias{polishSpiDE}
 \alias{polishSpiDE,SpiDEResults-method}
-\title{Converge an existing fit, gene by gene}
+\title{The polish stage: converge each gene, set its dispersion, re-estimate the
+variance components}
 \usage{
 polishSpiDE(object, spe, ...)
 
@@ -11,24 +12,46 @@ polishSpiDE(object, spe, ...)
   object,
   spe,
   assay = "counts",
+  psi = c("profile", "moderated"),
+  tau2 = TRUE,
+  tau2.maxit = 3L,
+  tau2.tol = 0.001,
   lambda.a = 0,
   maxit = 50L,
   tol = 1e-08,
   block.size = NULL,
   BPPARAM = BiocParallel::SerialParam(),
-  verbose = TRUE,
-  polish.psi = c("moderated", "profile")
+  verbose = TRUE
 )
 }
 \arguments{
 \item{object}{a SpiDEResults from \code{\link[=fitSpiDE]{fitSpiDE()}} (one GLM fit per bandwidth).
-A \code{\link[=twoStageSpiDE]{twoStageSpiDE()}} result has no per-gene GLM fit and is refused.}
+An object without per-gene GLM fits is refused.}
 
 \item{spe}{the SpatialExperiment the fit was made from (for the counts).}
 
 \item{...}{further arguments passed to the method.}
 
 \item{assay}{a character, the counts assay.}
+
+\item{psi}{how the dispersion is set at the converged mean:
+\code{"profile"} (the default) re-estimates each gene's dispersion by
+profile maximum likelihood at the converged mean; \code{"moderated"}
+keeps \code{fitNB}'s cross-gene moderated value and converges only the
+coefficients under it. The moderated value is whatever the shared fit
+left, which can be far from the gene's own (fifteen times, on the
+clustered fixture), and the variance-component step below needs a
+dispersion consistent with the converged mean.}
+
+\item{tau2}{logical; for a mixed fit, re-estimate the variance components
+from the converged fit (one Schall step on the polished coefficients,
+then a re-polish at the new penalty, iterated), and refresh the
+Satterthwaite reference df. The fit's own loop reads the shared fit's
+unconverged coefficients, which over-estimates the between-sample
+variance badly where that fit is off its optimum.}
+
+\item{tau2.maxit, tau2.tol}{iteration cap and relative tolerance on
+\code{log(tau2)} for that re-estimate.}
 
 \item{lambda.a}{the ridge the fit was made with, for a fixed-effects fit
 (\code{random = "none"}), which does not record it; ignored for a mixed
@@ -43,52 +66,43 @@ gene (the \code{converge.maxit} / \code{converge.tol} of \code{\link[=fitSpiDE]{
 \item{BPPARAM}{a BiocParallelParam; the stage is blocked over genes.}
 
 \item{verbose}{report progress.}
-
-\item{polish.psi}{how the dispersion is set at the converged mean:
-\code{"moderated"} (the default) keeps \code{fitNB}'s cross-gene
-moderated value and converges only the coefficients under it;
-\code{"profile"} re-estimates each gene's dispersion by profile maximum
-likelihood. See \code{\link{fitSpiDE}}.}
 }
 \value{
 the object with converged \code{alpha} and \code{psi}, per-gene
 diagnostics in \code{@polish}, and inference cleared.
 }
 \description{
-A post-hoc adjustment: takes a fitted \code{\link[=fitSpiDE]{fitSpiDE()}} object and converges
-every gene to its own penalised negative-binomial optimum, re-estimating
-the dispersion at the converged mean. This is exactly the stage that
-\code{fitSpiDE(converge = TRUE)} (the default) runs after
-\code{SpaNorm::fitNB} returns; as a separate function it can be applied to a
-fit made with \code{converge = FALSE}, to a fit serialised by an older
-version of the package, or re-applied with different iteration settings,
-without refitting. The two routes share one implementation and one penalty
-vector, so \code{polishSpiDE(fitSpiDE(..., converge = FALSE))} and
-\code{fitSpiDE(..., converge = TRUE)} give the same fit.
+The stage between \code{\link[=fitSpiDE]{fitSpiDE()}} and \code{\link[=testSpiDE]{testSpiDE()}} (the pipeline is fit ->
+polish -> test -> gsea; \code{\link[=spiDE]{spiDE()}} runs it by default). It converges every
+gene to its own penalised negative-binomial optimum by damped Newton,
+re-estimates its dispersion at the converged mean (\code{psi}), and for a
+mixed fit re-estimates the variance components from the converged
+coefficients and refreshes the Satterthwaite reference df (\code{tau2}).
+Run it, or skip it, according to the data: it needs integer counts.
 }
 \details{
 Why it exists: \code{fitNB} fits all genes in one IRLS loop with a shared
 cell-weight vector and an aggregate convergence criterion, and for bright,
 cell-type-restricted genes it stops one to four standard errors short of
 the gene's own optimum, with a dispersion estimated off the optimum that is
-too large. Converging each gene calibrates the null and, on the toy fixture,
-sharpens the planted signal (see the model vignette).
+too large. The fit's Schall loop reads those same unconverged coefficients
+and dispersion, so its variance components inherit the error: on the
+clustered test fixture it reports a between-sample variance of 10 against
+a planted 0.49, which this stage brings back to the planted value.
 
 Every inference slot derived from the old coefficients (\code{t_stat},
 \code{se}, the combined p-values, the results table and the cross-bandwidth
-weights) is cleared; call \code{\link[=testSpiDE]{testSpiDE()}} again afterwards. The reference
-degrees of freedom (\code{@df}) and the variance components are kept, as
-they are under \code{fitSpiDE(converge = TRUE)}.
+weights) is cleared; call \code{\link[=testSpiDE]{testSpiDE()}} again afterwards.
 }
 \examples{
 data(toySpiDE)
 spe <- buildNiches(toySpiDE, sigma = 20)
 fit0 <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none",
-                 converge = FALSE, verbose = FALSE)
+                 verbose = FALSE)
 fit1 <- polishSpiDE(fit0, spe, verbose = FALSE)
 head(fits(fit1)[[1]]@polish)
 }
 \seealso{
-\code{\link[=fitSpiDE]{fitSpiDE()}} for the same stage as a default, \code{\link[=testSpiDE]{testSpiDE()}} to
-recompute inference afterwards.
+\code{\link[=fitSpiDE]{fitSpiDE()}} for the stage before, \code{\link[=testSpiDE]{testSpiDE()}} for the stage
+after.
 }

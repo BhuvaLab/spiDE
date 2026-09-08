@@ -16,8 +16,6 @@ navbar:
         href: articles/spiDE.html
       - text: The spiDE model
         href: articles/spiDE-model.html
-      - text: The two-stage estimator
-        href: articles/spiDE-twostage.html
       - text: Calibration — reading lambda, and what the benchmarks measured
         href: articles/spiDE-calibration.html
     validation:
@@ -25,8 +23,6 @@ navbar:
       menu:
       - text: Simulation study — calibration, power, FDR
         href: articles/spiDE-simulation.html
-      - text: Two-stage estimation — benchmark
-        href: articles/spiDE-twostage-benchmark.html
       - text: The real cohort — the null tail, its cause, the fix
         href: articles/spiDE-cohort.html
       - text: Combining niche p-values — Brown vs Cauchy
@@ -57,7 +53,6 @@ articles:
   contents:
   - spiDE
   - spiDE-model
-  - spiDE-twostage
   - spiDE-calibration
 - title: Statistical validation
   desc: >
@@ -65,7 +60,6 @@ articles:
     tables live in the research submodule; these pages are rendered from them.
   contents:
   - articles/spiDE-simulation
-  - articles/spiDE-twostage-benchmark
   - articles/spiDE-cohort
   - articles/spiDE-rejected
   - articles/spiDE-cauchy-vs-brown

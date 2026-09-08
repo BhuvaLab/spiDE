@@ -21,15 +21,15 @@
 #' @param re.celltype logical; add a nested (sample x cell type) random
 #'   intercept so the tested niche slopes are within-group. Default
 #'   \code{TRUE}. See [fitSpiDE()].
-#' @param converge logical; converge each gene to its own penalised NB optimum
-#'   after the shared fit. Default \code{TRUE}. See [fitSpiDE()].
-#' @param converge.maxit,converge.tol iteration cap and relative
-#'   log-likelihood tolerance for the per-gene convergence stage.
+#' @param polish logical; run the polish stage ([polishSpiDE()]) between the
+#'   fit and the test: converge each gene, set its dispersion and re-estimate
+#'   the variance components from the converged fit. Default \code{TRUE};
+#'   \code{FALSE} tests the shared fit as \code{fitNB} returned it. Run the
+#'   stages by hand to control the polish's own settings.
 #' @param fdr a numeric, the target false discovery rate.
 #' @param combine one of "cauchy" (default) or "brown", the within-gene combiner
 #'   for the correlated niche p-values (passed to [testSpiDE()]).
-#' @param polish.psi,dispersion the convergence stage's dispersion rule and
-#'   the standard-error scale; see [fitSpiDE()] and [testSpiDE()].
+#' @param dispersion the standard-error scale; see [testSpiDE()].
 #' @param block.size a numeric, genes per inference block (NULL = a single
 #'   block on the CPU backend, or a memory-bounded auto-selected size on the
 #'   GPU backend).
@@ -63,16 +63,13 @@ setMethod(
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         fdr = 0.05, combine = c("cauchy", "brown"),
                         df.method = c("satterthwaite", "between"),
-                        re.celltype = TRUE, converge = TRUE,
-                        converge.maxit = 50L, converge.tol = 1e-8,
-                        polish.psi = c("moderated", "profile"),
+                        re.celltype = TRUE, polish = TRUE,
                         dispersion = c("ql", "pearson"),
                         block.size = NULL, gpu.mem.budget = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
     random <- match.arg(random)
     combine <- match.arg(combine)
-    polish.psi <- match.arg(polish.psi)
     dispersion <- match.arg(dispersion)
     df.method <- match.arg(df.method)
 
@@ -90,11 +87,12 @@ setMethod(
                     cell_type = cell_type, sample_id = sample_id,
                     random = random, winsor = winsor, lambda.a = lambda.a,
                     backend = backend, name = name, df.method = df.method,
-                    re.celltype = re.celltype, converge = converge,
-                    converge.maxit = converge.maxit,
-                    converge.tol = converge.tol, block.size = block.size,
-                    BPPARAM = BPPARAM, verbose = verbose, ...,
-                    polish.psi = polish.psi)
+                    re.celltype = re.celltype, block.size = block.size,
+                    BPPARAM = BPPARAM, verbose = verbose, ...)
+    if (polish) {
+      res <- polishSpiDE(res, spe, assay = assay, block.size = block.size,
+                         BPPARAM = BPPARAM, verbose = verbose)
+    }
 
     testSpiDE(res, spe = spe, assay = assay, fdr = fdr, combine = combine,
               block.size = block.size, backend = backend,

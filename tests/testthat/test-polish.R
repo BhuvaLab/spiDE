@@ -141,12 +141,10 @@ test_that(".polishFit flags a degenerate gene and keeps finite values", {
   expect_true(is.finite(out$psi))
 })
 
-test_that("converge populates @polish and raises the per-gene log-likelihood", {
+test_that("the polish stage populates @polish and raises the per-gene log-likelihood", {
   spe <- buildNiches(spiDE:::.toySPE(n_genes = 10, n_per = 50), sigma = 30)
-  f0 <- fitSpiDE(spe, "condition", sigma = 30, random = "none",
-                 converge = FALSE, verbose = FALSE)
-  f1 <- fitSpiDE(spe, "condition", sigma = 30, random = "none",
-                 converge = TRUE, verbose = FALSE)
+  f0 <- fitSpiDE(spe, "condition", sigma = 30, random = "none", verbose = FALSE)
+  f1 <- polishSpiDE(f0, spe, verbose = FALSE)
   a0 <- fits(f0)[[1]]
   a1 <- fits(f1)[[1]]
 
@@ -169,20 +167,18 @@ test_that("converge populates @polish and raises the per-gene log-likelihood", {
   expect_gt(median(gains), 0)
 })
 
-test_that("converge = FALSE leaves the fit as fitNB returned it", {
+test_that("the fit leaves the coefficients as fitNB returned them", {
   spe <- buildNiches(spiDE:::.toySPE(n_genes = 10, n_per = 50), sigma = 30)
-  a <- fitSpiDE(spe, "condition", sigma = 30, random = "none",
-                converge = FALSE, verbose = FALSE)
-  b <- fitSpiDE(spe, "condition", sigma = 30, random = "none",
-                converge = FALSE, verbose = FALSE)
+  a <- fitSpiDE(spe, "condition", sigma = 30, random = "none", verbose = FALSE)
+  b <- fitSpiDE(spe, "condition", sigma = 30, random = "none", verbose = FALSE)
   expect_identical(fits(a)[[1]]@alpha, fits(b)[[1]]@alpha)
   expect_identical(fits(a)[[1]]@psi, fits(b)[[1]]@psi)
 })
 
 test_that("a polished fit still passes validity and testSpiDE runs on it", {
   spe <- buildNiches(spiDE:::.toySPE(n_genes = 10, n_per = 50), sigma = 30)
-  f <- fitSpiDE(spe, "condition", sigma = 30, random = "none",
-                converge = TRUE, verbose = FALSE)
+  f <- polishSpiDE(fitSpiDE(spe, "condition", sigma = 30, random = "none", verbose = FALSE),
+                   spe, verbose = FALSE)
   expect_true(validObject(fits(f)[[1]]))
   r <- testSpiDE(f, spe = spe, fdr = 1)
   expect_true(nrow(results(r)) > 0)
@@ -290,15 +286,13 @@ test_that("non-integer counts are refused before the fit, not after it", {
   # step, leave alpha at fitNB's value and return the dispersion optimiser's
   # UPPER BOUND for every gene -- measured psi 999.96 -- while reporting success.
   spe <- buildNiches(.toySPE(), sigma = 20)
+  f <- fitSpiDE(spe, "condition", sigma = 20, random = "none", verbose = FALSE)
   Y <- as.matrix(SummarizedExperiment::assay(spe, "counts"))
   SummarizedExperiment::assay(spe, "counts") <- Y + 0.5
-  expect_error(
-    fitSpiDE(spe, "condition", sigma = 20, random = "none", verbose = FALSE),
-    "integer counts")
+  expect_error(polishSpiDE(f, spe, verbose = FALSE), "integer counts")
   # and the message must name the way out
-  err <- tryCatch(fitSpiDE(spe, "condition", sigma = 20, random = "none",
-                           verbose = FALSE), error = conditionMessage)
-  expect_match(err, "converge = FALSE")
+  err <- tryCatch(polishSpiDE(f, spe, verbose = FALSE), error = conditionMessage)
+  expect_match(err, "polish")
 })
 
 test_that("a dispersion optimum on its search bound keeps fitNB's estimate", {
@@ -344,17 +338,17 @@ test_that("a polished fixed-effects fit is scaled by the Pearson dispersion", {
   # rescaled every gene by the sqrt of a noisy estimate: measured sd(t)
   # 2.11 -> 2.45 on this fixture before the fix.
   spe <- buildNiches(.toySPE(), sigma = 30)
-  a <- spiDE(spe, "condition", sigma = 30, random = "none", converge = FALSE,
+  a <- spiDE(spe, "condition", sigma = 30, random = "none", polish = FALSE,
              fdr = 1, verbose = FALSE)
-  b <- spiDE(spe, "condition", sigma = 30, random = "none", converge = TRUE,
+  b <- spiDE(spe, "condition", sigma = 30, random = "none", polish = TRUE,
              fdr = 1, verbose = FALSE)
   expect_lt(sd(fits(b)[[1]]@t_stat), sd(fits(a)[[1]]@t_stat))
 })
 
 test_that("the per-gene diagnostics are keyed by gene, not by position", {
   spe <- buildNiches(.toySPE(), sigma = 20)
-  f <- fits(fitSpiDE(spe, "condition", sigma = 20, random = "none",
-                     verbose = FALSE))[[1]]
+  f <- fits(polishSpiDE(fitSpiDE(spe, "condition", sigma = 20, random = "none",
+                     verbose = FALSE), spe, verbose = FALSE))[[1]]
   expect_identical(rownames(f@polish), rownames(f@alpha))
   expect_false(anyNA(f@polish["G1", ]))
 })
