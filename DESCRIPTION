@@ -45,7 +45,6 @@ Imports:
     BiocParallel,
     limma,
     matrixStats,
-    Matrix,
     methods,
     stats,
     utils
