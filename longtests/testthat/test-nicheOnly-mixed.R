@@ -101,7 +101,11 @@ test_that("random effects sharply reduce false calls on null clustered data", {
 
   n_fixed <- nrow(results(fixed))
   n_mixed <- nrow(results(mixed))
-  expect_gt(n_fixed, 20L)          # the uncorrected fit is badly inflated
+  # the uncorrected fit is inflated (14 false calls under the pre-0.99.17
+  # flags, 7-8 under the converged fit with the QL scale, on 30 null genes);
+  # the correction removes nearly all of them (0 under every pipeline
+  # measured 2026-09-08)
+  expect_gt(n_fixed, 5L)           # the uncorrected fit is inflated
   expect_lt(n_mixed, n_fixed / 3)  # the correction removes most of it
   expect_lt(n_mixed, 10L)          # and what remains is a handful, not a flood
 })
