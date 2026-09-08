@@ -40,7 +40,8 @@ test_that("fitSpiDE recovers the planted B-niche effect on G1 in A cells", {
   # QL scale) the planted effect is the largest statistic at this bandwidth
   # at about 3.7, with the runner-up near 1.8; the 0.99.17 profile-psi figure
   # of 10.19 came through a Pearson-scaled SE that the QL scale replaces.
-  tab <- results(testSpiDE(res, spe = spe, fdr = 1))
+  # the pipeline recovers the effect: fit -> polish -> test
+  tab <- results(testSpiDE(polishSpiDE(res, spe, verbose = FALSE), spe = spe, fdr = 1))
   ab <- tab[tab$ct_index == "A" & tab$ct_niche == "B", ]
   expect_equal(ab$gene[which.max(abs(ab$t))], "G1")
   expect_gt(abs(ab$t[ab$gene == "G1"]), 3)
