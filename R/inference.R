@@ -455,7 +455,7 @@
                               backend = c("cpu", "auto", "gpu"),
                               gpu.mem.budget = NULL,
                               BPPARAM = BiocParallel::SerialParam(),
-                              dispersion = c("pearson", "ql")) {
+                              dispersion = c("ql", "pearson")) {
   combine <- match.arg(combine)
   dispersion <- match.arg(dispersion)
   backend <- match.arg(backend)
@@ -581,26 +581,46 @@
     }
   }
 
-  # The quasi-likelihood scale (edgeR v4 form): per gene, the adjusted NB
-  # deviance over its effective df, moderated ACROSS genes by squeezeVar. It
-  # replaces the Pearson scale for the standard errors. Its cross-gene
-  # moderation has to see every gene before any block is scored, so it is a
-  # pre-pass over the same blocks; the reference df is unchanged.
+  # The quasi-likelihood scale (edgeR v4 form, SpaNorm::qlDispersion): per
+  # gene, the adjusted NB deviance over its effective df, moderated ACROSS
+  # genes by squeezeVar. It replaces the Pearson scale for the standard
+  # errors; the reference df is unchanged. Its cross-gene moderation has to
+  # see every gene before any block is scored, so it is a pre-pass over the
+  # same blocks, on the same backend as the inference: the deviance moments
+  # are one shared (log mu, log phi) table per block and the rest is
+  # elementwise over genes x cells, which is what the device does.
   use_ql <- dispersion == "ql"
   ql_scale <- NULL
+  if (use_ql && !use_pearson) {
+    message("dispersion = \"ql\" needs a mixed or converged fit; this ",
+            "fixed-effects, unconverged fit keeps its legacy NB-dispersion scale")
+    use_ql <- FALSE
+  }
   if (use_ql) {
-    if (gpu_active) stop("dispersion = \"ql\" is implemented on the CPU backend only",
-                         call. = FALSE)
-    if (!use_pearson) stop("dispersion = \"ql\" needs a mixed or converged fit",
-                           call. = FALSE)
-    fixed_cols <- !grepl("Random", covtype)
+    p_fixed <- sum(!grepl("Random", covtype))
+    # ONE moments table for the whole call, over a range that does not depend
+    # on how the genes are blocked: the floor the means are clamped to, the
+    # largest count (a fitted mean beyond it sits on the table's edge, where
+    # the moments are asymptotically flat), and the genes' dispersion range.
+    # Results are then exactly invariant to block.size and workers, and the
+    # same table serves both backends.
+    ql_table <- SpaNorm::qlMomentTable(
+      lmu_range = c(log(.MU_FLOOR), log(2 * max(Y) + 2)),
+      lphi_range = log(range(psi[is.finite(psi) & psi > 0])))
     ql_parts <- BiocParallel::bplapply(blocks, function(gi) {
       Yb <- as.matrix(Y[gi, , drop = FALSE])
-      mub <- SpaNorm::calculateMu(rep(0, length(gi)), alpha_full[gi, , drop = FALSE],
-                                  W_full, winsor = winsor_use)
-      mub <- pmax(mub, .MU_FLOOR)
-      q <- .qlDispersion(Yb, mub, psi[gi], W_full[, fixed_cols, drop = FALSE],
-                         leverage = "trace")
+      if (gpu_active) {
+        Yb_q <- SpaNorm::toGPUMatrix(Yb, backend = backend)
+        mub <- SpaNorm::calculateMu(rep(0, length(gi)), alpha_full[gi, , drop = FALSE],
+                                    W_full_dev, winsor = winsor_use, backend = backend)
+        mub <- torch::torch_clamp(mub, min = .MU_FLOOR)
+      } else {
+        Yb_q <- Yb
+        mub <- SpaNorm::calculateMu(rep(0, length(gi)), alpha_full[gi, , drop = FALSE],
+                                    W_full, winsor = winsor_use)
+        mub <- pmax(mub, .MU_FLOOR)
+      }
+      q <- SpaNorm::qlDispersion(Yb_q, mub, psi[gi], p = p_fixed, table = ql_table)
       list(s2 = q$s2, df = q$df, ave = log2(rowMeans(Yb) + 0.5))
     }, BPPARAM = BPPARAM)
     s2 <- unlist(lapply(ql_parts, `[[`, "s2")); dfq <- unlist(lapply(ql_parts, `[[`, "df"))

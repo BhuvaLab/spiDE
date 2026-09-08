@@ -28,7 +28,7 @@
                              re.min.cells = 100L, df.method = "satterthwaite",
                              re.celltype = TRUE, converge = TRUE,
                              converge.maxit = 50L, converge.tol = 1e-8,
-                             polish.psi = "profile",
+                             polish.psi = "moderated",
                              block.size = NULL,
                              BPPARAM = BiocParallel::SerialParam(), ...) {
   des <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
@@ -293,10 +293,13 @@
 #'   \code{fitNB}'s moderation. Set \code{FALSE} to reproduce pre-correction
 #'   fits.
 #' @param polish.psi how the convergence stage sets each gene's dispersion:
-#'   \code{"profile"} (default) re-estimates it by profile maximum likelihood
-#'   at the converged mean; \code{"moderated"} keeps \code{fitNB}'s cross-gene
-#'   moderated value and converges only the coefficients. Only used with
-#'   \code{converge = TRUE}.
+#'   \code{"moderated"} (default) keeps \code{fitNB}'s cross-gene moderated
+#'   value and converges only the coefficients; \code{"profile"} re-estimates
+#'   it by profile maximum likelihood at the converged mean. Measured on the
+#'   synthetic null and the real cohort, the two are indistinguishable in
+#'   type-I error and in the triplets called, and the moderated one is about a
+#'   third cheaper because the profile step is the expensive part of the
+#'   convergence stage. Only used with \code{converge = TRUE}.
 #' @param converge.maxit,converge.tol iteration cap and relative
 #'   log-likelihood tolerance for the per-gene convergence stage.
 #' @param block.size genes per block in the per-gene convergence stage (see
@@ -340,7 +343,7 @@ setMethod(
                         df.method = c("satterthwaite", "between"),
                         re.celltype = TRUE, converge = TRUE,
                         converge.maxit = 50L, converge.tol = 1e-8,
-                        polish.psi = c("profile", "moderated"),
+                        polish.psi = c("moderated", "profile"),
                         block.size = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
   polish.psi <- match.arg(polish.psi)

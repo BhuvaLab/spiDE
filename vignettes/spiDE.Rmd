@@ -227,7 +227,9 @@ reasons are in `vignette("spiDE-model")` and the measurements in
 |---|---|---|
 | `random` | `"intercept"` | a random intercept per sample, so response effects are tested against patient-level variation |
 | `re.celltype` | `TRUE` | a random intercept per (sample, cell type), so the niche slope is a within-group slope and does not carry a patient's composition |
-| `converge` | `TRUE` | converge each gene to its own optimum after the shared fit, and re-estimate its dispersion there; needs integer counts |
+| `converge` | `TRUE` | converge each gene's coefficients to its own optimum after the shared fit; needs integer counts |
+| `polish.psi` | `"moderated"` | keep the cross-gene moderated dispersion at the converged mean (`"profile"` re-estimates it per gene, at about 1.5× the cost) |
+| `dispersion` | `"ql"` | scale the standard errors by the gene's quasi-likelihood dispersion, moderated across genes; the only scale that holds the nominal level at four samples |
 | `df.method` | `"satterthwaite"` | a reference df per tested coefficient |
 | `combine` | `"cauchy"` | correlation-agnostic combination of a gene's niche p-values |
 

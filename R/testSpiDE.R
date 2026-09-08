@@ -28,11 +28,17 @@
 #'   controls type-I error under correlation without estimating a correlation
 #'   matrix; "brown" is the correlation-aware Brown's method. Used only if the
 #'   Wald inference is not already present on the fits.
-#' @param dispersion the scale of the standard errors: \code{"pearson"}
-#'   (default), the working Pearson dispersion of the fit, or \code{"ql"}, the
-#'   edgeR-v4-style quasi-likelihood dispersion (adjusted deviance over its
-#'   effective df) moderated across genes with \code{limma::squeezeVar()}.
-#'   CPU backend only; needs a mixed or converged fit.
+#' @param dispersion the scale of the standard errors: \code{"ql"} (default),
+#'   the edgeR-v4 quasi-likelihood dispersion of each gene (its adjusted
+#'   deviance over its effective residual df, \code{SpaNorm::qlDispersion()})
+#'   moderated across genes with \code{limma::squeezeVar()}; or
+#'   \code{"pearson"}, the working Pearson dispersion of the fit. The QL
+#'   scale is the only one measured to hold the nominal type-I error at every
+#'   sample size, including four samples, where the Pearson scale rejects at
+#'   0.09 against a nominal 0.05 (see \code{vignette("spiDE-calibration")}).
+#'   It runs on either backend. A fixed-effects, unconverged fit
+#'   (\code{random = "none", converge = FALSE}) has neither scale and keeps its
+#'   legacy NB-dispersion scale with a message.
 #' @param block.size a numeric, genes per inference block (NULL = a single
 #'   block on the CPU backend, or a memory-bounded auto-selected size on the
 #'   GPU backend).
@@ -74,7 +80,7 @@ setMethod(
                         backend = c("auto", "cpu", "gpu"),
                         gpu.mem.budget = NULL,
                         BPPARAM = BiocParallel::SerialParam(), ...,
-                        dispersion = c("pearson", "ql")) {
+                        dispersion = c("ql", "pearson")) {
     dispersion <- match.arg(dispersion)
     checkFdr(fdr)
     combine <- match.arg(combine)

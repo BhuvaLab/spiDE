@@ -165,7 +165,7 @@
 #' @noRd
 .polishGene <- function(y, W, a0, psi0, pen, solver, maxit = 50L, tol = 1e-8,
                         ct_cols = NULL, psi.range = c(1e-3, 1e3),
-                        psi.method = c("profile", "moderated")) {
+                        psi.method = c("moderated", "profile")) {
   psi.method <- match.arg(psi.method)
   restarted <- FALSE
   singular <- FALSE
@@ -340,7 +340,7 @@
 .polishFit <- function(Y, W, alpha, psi, pen, re_group = NULL, covtype = NULL,
                        maxit = 50L, tol = 1e-8, block.size = NULL,
                        BPPARAM = BiocParallel::SerialParam(), verbose = FALSE,
-                       psi.method = "profile") {
+                       psi.method = "moderated") {
   ng <- nrow(alpha)
   if (!length(pen) %in% c(1L, ncol(W))) {
     stop("'lambda.a' must be a single value or one per design column (",
@@ -474,7 +474,7 @@
 .polishSpiDEFit <- function(f, Y, lambda.a = 0, maxit = 50L, tol = 1e-8,
                             block.size = NULL,
                             BPPARAM = BiocParallel::SerialParam(),
-                            verbose = TRUE, psi.method = "profile") {
+                            verbose = TRUE, psi.method = "moderated") {
   f <- updateObject(f)
   Yf <- Y[rownames(f@alpha), , drop = FALSE]
   pen <- .polishPenalty(f@penalty, lambda.a, ncol(f@W))
@@ -543,9 +543,10 @@
 #' @param verbose report progress.
 #' @param ... further arguments passed to the method.
 #' @param polish.psi how the dispersion is set at the converged mean:
-#'   \code{"profile"} (the default) re-estimates each gene's dispersion by
-#'   profile maximum likelihood; \code{"moderated"} keeps \code{fitNB}'s
-#'   cross-gene moderated value and converges only the coefficients under it.
+#'   \code{"moderated"} (the default) keeps \code{fitNB}'s cross-gene
+#'   moderated value and converges only the coefficients under it;
+#'   \code{"profile"} re-estimates each gene's dispersion by profile maximum
+#'   likelihood. See \code{\link{fitSpiDE}}.
 #' @return the object with converged \code{alpha} and \code{psi}, per-gene
 #'   diagnostics in \code{@polish}, and inference cleared.
 #' @examples
@@ -565,7 +566,7 @@ setMethod(
   definition = function(object, spe, assay = "counts", lambda.a = 0,
                         maxit = 50L, tol = 1e-8, block.size = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE,
-                        polish.psi = c("profile", "moderated")) {
+                        polish.psi = c("moderated", "profile")) {
     object <- updateObject(object)
     polish.psi <- match.arg(polish.psi)
     if (!length(object@fits)) {

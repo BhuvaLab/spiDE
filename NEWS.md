@@ -1,3 +1,42 @@
+# spiDE 0.99.18
+
+## Changes
+
+* **The standard errors are scaled by the quasi-likelihood dispersion.**
+  `testSpiDE(dispersion = "ql")` is the default: each gene's edgeR-v4
+  quasi-likelihood dispersion (its adjusted NB deviance over its effective
+  residual df, `SpaNorm::qlDispersion()`) moderated across genes with
+  `limma::squeezeVar()`, in place of the working Pearson dispersion, which
+  remains available as `dispersion = "pearson"`. Measured on the synthetic
+  benchmark (40 replicates, intercept mode, Satterthwaite df) it is the only
+  configuration that holds the nominal type-I error at every sample size:
+  0.050–0.055 at S = 4, 10, 16 and 30 against 0.091, 0.076, 0.071 and 0.068
+  for the Pearson scale. Its recall at FDR 0.05 is that of the design with
+  neither 0.99.17 switch (0.360 against 0.361 at S = 30, and 0.402 for the
+  Pearson scale, whose extra recall is bought with its inflated null) and its
+  realised FDP sits far below nominal (0.014 at S = 30, 0.000 at S = 4 where
+  the Pearson scale reaches 0.59). On the real cohort it calls the same
+  triplets as before (111 of 114 shared) at no extra cost. It runs on either
+  backend: the deviance moments are one shared (log mu, log phi) table per
+  gene block and the rest is elementwise over genes x cells on the device.
+  A fixed-effects, unconverged fit (`random = "none", converge = FALSE`)
+  has no such scale and keeps its legacy NB-dispersion scale with a message.
+* **The convergence stage keeps the moderated dispersion.**
+  `fitSpiDE(polish.psi = "moderated")` is the default: the coefficients are
+  converged per gene under `fitNB`'s cross-gene moderated dispersion, and the
+  per-gene profile-ML re-estimate is available as `polish.psi = "profile"`.
+  The two are indistinguishable on the null at every sample size (to the
+  third decimal) and call the same triplets on the real cohort, and the
+  moderated one runs the cohort's real grid in two thirds of the wall time
+  (178 against 266 minutes), because the profile step was the expensive part
+  of the stage. `polishSpiDE()` takes the same argument with the same default.
+* The quasi-likelihood machinery now lives in SpaNorm (>= 1.7.10) as
+  `nbUnitDeviance()`, `nbDevianceMoments()` and `qlDispersion()`, with both
+  backends and the oracle tests against `edgeR::glmQLFit()`; spiDE carries
+  only the wiring. The 2026-08-31 refutation of the QL dispersion is
+  withdrawn: it was scored on the composition bias that the nested intercept
+  removes, which no per-gene scale could fix.
+
 # spiDE 0.99.17
 
 ## New Features
@@ -68,22 +107,6 @@
   G2's baseline in Responders' A cells shifts with that mean. The earlier
   version tied B-cell prevalence to condition, which moved the between-sample
   mean too little to matter next to the within-sample spread.
-
-## Prototype (branch `ql-dispersion`, not on main)
-
-* `fitSpiDE(polish.psi = "moderated")` keeps `fitNB`'s cross-gene moderated
-  dispersion at the converged mean instead of the per-gene profile-ML value;
-  `testSpiDE(dispersion = "ql")` replaces the Pearson scale with the
-  edgeR-v4-style quasi-likelihood dispersion (`.qlDispersion()`, adjusted
-  deviance over effective df) moderated across genes with `squeezeVar()`.
-  Both are measured, not adopted (research `fdr-ordering/FINDINGS.md`,
-  2026-09-08). On the synthetic null the psi rule changes nothing, while the
-  QL scale is the only configuration that holds the nominal level at every
-  sample size (0.050–0.055 against 0.068–0.091 shipped), at the no-switch
-  design's power and a realised FDP far below nominal; on the real cohort
-  both variants call the same triplets as the shipped fit, the moderated psi
-  at two thirds of the wall time and the QL pre-pass at no extra cost. CPU
-  only; the QL scale needs a mixed or converged fit.
 
 ## Documentation
 

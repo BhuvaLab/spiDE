@@ -231,9 +231,11 @@ CPU while keeping the response-niche t-stats highly correlated with the full fit
 (see the *What was tried and rejected* report, `research/reports/benchmarks/spiDE-rejected.Rmd`); `re.prop=1` restores the
 reproducible, all-cell path. No seed is set internally (set one externally).
 `.blockedInference()` (`R/inference.R`) then uses
-the **full** penalised covariance `(X'WX + Λ)⁻¹`, the working **Pearson** dispersion (not the NB
-`psi`), and a reference df from `SpiDEFit@df` (see `df.method` below) — the three together
-are what restore calibration (see `tests/testthat/test-mixedEffects.R`). New `SpiDEFit` slots:
+the **full** penalised covariance `(X'WX + Λ)⁻¹`, a per-gene **dispersion scale** (the
+quasi-likelihood dispersion by default from 0.99.18, `dispersion = "ql"`; the working Pearson
+dispersion as `"pearson"`; never the NB `psi`), and a reference df from `SpiDEFit@df` (see
+`df.method` below) — the three together are what restore calibration (see
+`tests/testthat/test-mixedEffects.R`). New `SpiDEFit` slots:
 `re_group`, `tau2`, `penalty`, `df` (all `NULL` for a fixed-effects fit). Because a per-sample random
 intercept absorbs all between-sample effects, `checkSample()` rejects sample-constant covariates when
 `random != "none"`.
@@ -385,9 +387,10 @@ HLA-DPA1 2.29, CDV3, AEBP1, CST3, LAPTM5). This survives `free` shuffles, so it 
 spatial regression, and it survives the per-gene **Pearson working dispersion already applied** at
 `R/inference.R:539` — so "add a per-gene dispersion" is not by itself the fix. Twelve candidate
 cures have been measured and refuted (ledger in `research/fdr-ordering/REPORT.md` §4): the
-`calculateMu()` winsorisation clamp, a patient-clustered sandwich, an edgeR-v4 QL dispersion (built
-and oracle-tested; it *steepens* the gradient — `design/specs/2026-08-31-quasi-likelihood-dispersion.md`,
-status: refuted, do not build), cascade ordering, within-gene variance misspecification (it makes the
+`calculateMu()` winsorisation clamp, a patient-clustered sandwich, an edgeR-v4 QL dispersion (which
+*steepened* the gradient at the time — that refutation was scored on the composition bias below and
+is withdrawn; the QL scale is the 0.99.18 default, see "The dispersion rule and the SE scale"),
+cascade ordering, within-gene variance misspecification (it makes the
 coefficient *conservative*), spatial autocorrelation, shared-weight IRLS inefficiency, the extreme
 fits themselves, a cell-type-level dispersion and a cell-level HC0 sandwich at the converged fit.
 
@@ -455,22 +458,30 @@ biology independently, and check imaging artefacts beyond simple spillover. Scri
 `.satterthwaiteDF()` pick it up unchanged; the nested df is checked against `lmerTest` in
 `tests/testthat/test-satterthwaite.R`). `fitSpiDE(converge = TRUE)` (also the default) then
 converges each gene per `R/polish.R` — damped Newton on the gene's own penalised NB
-log-likelihood from a sane start, profile-ML `psi` at the converged mean — recording
-diagnostics in `SpiDEFit@polish`. `random = "slope"` does **not** substitute for the nested
+log-likelihood from a sane start, under `fitNB`'s moderated `psi` (`polish.psi = "moderated"`,
+the 0.99.18 default; `"profile"` re-estimates it per gene) — recording diagnostics in
+`SpiDEFit@polish`. `random = "slope"` does **not** substitute for the nested
 block. Specs: `design/specs/2026-09-03-sample-celltype-intercept.md` (the defect and its
 validation) and `design/specs/2026-09-04-nested-intercept-and-convergence-design.md` (the
 implementation), plan in `design/plans/`.
 
 Converging also **sharpens real signal**, which was not why it was built: on the toy fixture the
-planted effect's `t` goes 1.68 -> 10.19 in condition mode (the unconverged fit put G1's `psi` at 3.09
-against its own optimum of 0.28, and the inflated SE buried it), and in niche mode a spurious
-competing niche that *outranked* the true one (|t| 7.82 vs 5.63) disappears while the true one
-reaches 14.27. Two unit tests had encoded those artefacts -- one asserting the argmax of a raw
+unconverged 0.99.16 fit put the planted effect at `t` 1.68 in condition mode, and in niche mode a
+spurious competing niche *outranked* the true one (|t| 7.82 vs 5.63). Under the 0.99.18 defaults
+(measured 2026-09-08, `data(toySpiDE)`, default bandwidths) the planted G1/A/B effect reaches `t`
+6.05 at its best bandwidth (3.72 / 5.72 / 5.45 / 6.05 at 10 / 30 / 50 / 70), and in niche mode the
+true niche B is the strongest at 5.57 while the former competitor C sits at 2.15. The 0.99.17
+profile-`psi` figures (10.19 and 14.27) were larger because the profile dispersion (0.28 against the
+moderated 3.09 for G1) shrank the Pearson-scaled SE; the QL scale sees the residual scatter
+directly, so the two `psi` rules now give the same statistic (5.7-5.8 at bandwidth 30 under every
+combination). Two unit tests had encoded the 0.99.16 artefacts -- one asserting the argmax of a raw
 coefficient, which a near-empty gene can win, the other asserting that the spurious call survives
-FDR -- and now assert the statistic instead.
+FDR -- and assert the statistic instead.
 
-Three things to know about the implementation. The polish stage replaces edgeR's cross-gene
-moderated dispersion with a per-gene profile-ML one, deliberately. The nested indicator block
+Three things to know about the implementation. The polish stage keeps edgeR's cross-gene
+moderated dispersion by default and can replace it with a per-gene profile-ML one
+(`polish.psi = "profile"`); the two are indistinguishable on the null and in the cohort's calls,
+and the profile step is the expensive part of the stage. The nested indicator block
 is absorbed by a Schur complement inside `.newtonSolver()`, so the per-gene Newton cost is one
 dense-column gram regardless of how many groups exist — but `.blockedInference()` still forms
 a **dense** per-gene gram over the full design, so with ~660 extra columns real-cohort
@@ -568,8 +579,30 @@ a constant +0.010. The pair gains recall (0.402 vs 0.361 TPR at S = 30) with sli
 S ≥ 10 and FDP 0.59 vs 0.35 at S = 4. The simulator places niche cells by the same potential in every
 sample, so it plants **no** between-sample composition effect: on it the nested intercept can only
 cost, and the real-cohort shuffle grids are where it earned its place. Both facts hold; do not read
-the synthetic null as a reason to revert. Candidate cures, unmeasured: a moderated `psi` at the
-converged mean for the small-S convergence cost, and the nested block's Satterthwaite df.
+the synthetic null as a reason to revert. One candidate cure is measured and adopted (next
+section); the nested block's Satterthwaite df is still unmeasured.
+
+### The dispersion rule and the SE scale (0.99.18)
+
+Four arms on the benchmark (40 reps; `research/notes/dispersion_arms.R`, `fdr-ordering/FINDINGS.md`
+2026-09-08) crossed the convergence stage's `psi` rule (profile-ML vs `fitNB`'s moderated value
+kept) with the standard-error scale (Pearson vs quasi-likelihood). Null type-I at S = 4/10/16/30:
+profile + Pearson 0.091/0.076/0.071/0.068, moderated + Pearson 0.091/0.074/0.071/0.068, moderated +
+QL 0.050/0.055/0.055/0.055, profile + QL 0.055/0.055/0.054/0.053. **The `psi` rule is irrelevant
+and the scale is the whole difference**: the QL scale is the only configuration that holds the
+nominal level at every S including 4. Recall at FDR .05 returns to the no-switch design's (0.360 vs
+0.402 for Pearson at S = 30, whose excess is its inflated null; raw power 0.666/0.694/0.660) and
+realised FDP sits far below nominal (0.014 at S = 30, 0 at S = 4 vs 0.59) — the cascade is
+conservative on QL p-values, a separate lever. On the cohort the scale changes nothing (110 of ~115
+calls shared, 81–83 of the base 84 kept; raw null `sd(t)` 1.058 vs 1.014, absorbed by the per-gene
+calibration). Cost: moderated `psi` runs the cohort's real grid in 178 min vs 266 (profile), and
+0.6× CPU at S ≥ 16; the QL pre-pass is free at cohort scale (3× at S = 4 only, where a task is 8
+CPU-min). **Defaults from 0.99.18: `polish.psi = "moderated"`, `dispersion = "ql"`.** The QL
+machinery lives in SpaNorm (>= 1.7.10): `nbUnitDeviance()`, `nbDevianceMoments()`,
+`qlDispersion()` with CPU and torch backends (the moments are one shared (log mu, log phi) table
+per gene block; the rest is elementwise), oracle-tested there against `edgeR::glmQLFit()`; spiDE
+only wires the pre-pass over gene blocks and `limma::squeezeVar()`. A fixed-effects unconverged fit
+(`random = "none", converge = FALSE`) keeps its legacy `psi` scale with a message.
 
 **The legacy niche-only design's higher simulation recall is a different estimand, not a better
 test** (`research/notes/design_power_decomposition.R`: one power dataset under four libraries,

@@ -302,6 +302,7 @@ test_that("non-integer counts are refused before the fit, not after it", {
 })
 
 test_that("a dispersion optimum on its search bound keeps fitNB's estimate", {
+  # the profile rule is the one with a search; the default keeps fitNB's value
   set.seed(4)
   n <- 300
   W <- cbind(1, scale(rnorm(n)))
@@ -310,12 +311,12 @@ test_that("a dispersion optimum on its search bound keeps fitNB's estimate", {
   # likelihood is monotone and optimize() returns its ceiling (~976), which is
   # not an estimate. On the fixed-effects path psi scales the SE directly.
   r <- suppressWarnings(
-    spiDE:::.polishGene(rep(0, n), W, c(0, 0), 0.7, c(0, 0), sv))
+    spiDE:::.polishGene(rep(0, n), W, c(0, 0), 0.7, c(0, 0), sv, psi.method = "profile"))
   expect_true(r$psi_bound)
   expect_equal(r$psi, 0.7)
   # a well-identified gene is unaffected
   y <- rnbinom(n, mu = exp(W %*% c(1.5, 0.3)), size = 1 / 0.4)
-  r2 <- spiDE:::.polishGene(y, W, c(0, 0), 1, c(0, 0), sv)
+  r2 <- spiDE:::.polishGene(y, W, c(0, 0), 1, c(0, 0), sv, psi.method = "profile")
   expect_false(r2$psi_bound)
   expect_true(r2$polished)
   expect_gt(r2$psi, 0.1)

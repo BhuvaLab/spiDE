@@ -33,7 +33,7 @@ fitSpiDE(spe, condition = NULL, ...)
   converge = TRUE,
   converge.maxit = 50L,
   converge.tol = 1e-08,
-  polish.psi = c("profile", "moderated"),
+  polish.psi = c("moderated", "profile"),
   block.size = NULL,
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
@@ -230,10 +230,13 @@ fits.}
 log-likelihood tolerance for the per-gene convergence stage.}
 
 \item{polish.psi}{how the convergence stage sets each gene's dispersion:
-\code{"profile"} (default) re-estimates it by profile maximum likelihood
-at the converged mean; \code{"moderated"} keeps \code{fitNB}'s cross-gene
-moderated value and converges only the coefficients. Only used with
-\code{converge = TRUE}.}
+\code{"moderated"} (default) keeps \code{fitNB}'s cross-gene moderated
+value and converges only the coefficients; \code{"profile"} re-estimates
+it by profile maximum likelihood at the converged mean. Measured on the
+synthetic null and the real cohort, the two are indistinguishable in
+type-I error and in the triplets called, and the moderated one is about a
+third cheaper because the profile step is the expensive part of the
+convergence stage. Only used with \code{converge = TRUE}.}
 
 \item{block.size}{genes per block in the per-gene convergence stage (see
 \code{\link[=testSpiDE]{testSpiDE()}} for the same argument at inference time). NULL fits every

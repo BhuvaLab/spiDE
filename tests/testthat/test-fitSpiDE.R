@@ -36,15 +36,14 @@ test_that("fitSpiDE recovers the planted B-niche effect on G1 in A cells", {
   # This used to assert which.max(alpha[, col]) == "G1", which is the wrong
   # quantity: a near-empty gene (G10 here, mean count 0.26) can carry a larger
   # point estimate than the planted one on an estimate its own standard error
-  # swamps. Converging each gene made that explicit -- G1's dispersion falls
-  # from 3.09 to 0.28 once its dynamic range is actually fitted, which is the
-  # documented .toySPE() pathology -- so its coefficient shrinks while its t
-  # statistic goes from 1.68 (fdr .09, not significant) to 10.19 (fdr 2e-15).
-  # Assert the t.
+  # swamps. Assert the t: under the 0.99.18 defaults (moderated dispersion,
+  # QL scale) the planted effect is the largest statistic at this bandwidth
+  # at about 3.7, with the runner-up near 1.8; the 0.99.17 profile-psi figure
+  # of 10.19 came through a Pearson-scaled SE that the QL scale replaces.
   tab <- results(testSpiDE(res, spe = spe, fdr = 1))
   ab <- tab[tab$ct_index == "A" & tab$ct_niche == "B", ]
   expect_equal(ab$gene[which.max(abs(ab$t))], "G1")
-  expect_gt(abs(ab$t[ab$gene == "G1"]), 5)
+  expect_gt(abs(ab$t[ab$gene == "G1"]), 3)
   expect_gt(f@alpha["G1", col], 0)
 })
 

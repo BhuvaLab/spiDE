@@ -548,14 +548,15 @@ because Newton *from* a degenerate point diverges. Each polished gene depends
 only on its own counts, so the stage is blocked over genes and parallelised
 (`block.size`, `BPPARAM`), exactly as inference is.
 
-## Profile maximum likelihood for the dispersion
+## The dispersion at the converged mean
 
 `fitNB` estimates $\psi_g$ with `edgeR`'s empirical-Bayes moderation, which
-shrinks each gene's dispersion toward a cross-gene trend. The polish replaces
-it with the gene's own **profile maximum-likelihood** value. "Profile" means:
-hold the coefficients at their converged value $\hat\theta$, so that
-$\hat\mu_{c,g}$ is fixed, and view the log-likelihood as a function of the
-dispersion alone,
+shrinks each gene's dispersion toward a cross-gene trend. The polish keeps
+that value (`polish.psi = "moderated"`, the default) and converges only the
+coefficients under it. The alternative, `polish.psi = "profile"`, replaces it
+with the gene's own **profile maximum-likelihood** value: hold the
+coefficients at their converged value $\hat\theta$, so that $\hat\mu_{c,g}$ is
+fixed, view the log-likelihood as a function of the dispersion alone,
 
 $$
 \ell_g(\psi \mid \hat\mu) \;=\; \sum_c \Big[
@@ -565,25 +566,27 @@ $$
   - \frac1\psi\log\big(1+\psi\hat\mu_{c,g}\big)\Big] ,
 $$
 
-then maximise it over $\log\psi$ on a bounded interval (`psi.range`, by
-default $[10^{-3}, 10^{3}]$) with a one-dimensional search
-(`stats::optimize`). The coefficients are then re-polished at the new
-$\psi_g$, and the pair of steps is repeated once, so the returned
-$(\hat\theta, \hat\psi_g)$ is a joint optimum to the stated tolerance.
+maximise it over $\log\psi$ on a bounded interval (`psi.range`, by default
+$[10^{-3}, 10^{3}]$) with a one-dimensional search (`stats::optimize`),
+re-polish the coefficients at the new $\psi_g$, and repeat the pair once, so
+the returned $(\hat\theta, \hat\psi_g)$ is a joint optimum to the stated
+tolerance. A gene that carries no information about overdispersion — all
+zero, or effectively Poisson — has a profile likelihood that is monotone in
+$\psi$, so the search returns a *bound*, not an estimate; such a gene keeps the
+moderated value and is flagged `psi_bound` in `@polish`.
 
-Three consequences follow from giving up moderation.
-
-- A gene that carries no information about overdispersion — all zero, or
-  effectively Poisson — has a profile likelihood that is monotone in $\psi$,
-  so the search returns a *bound*, not an estimate. Such a gene keeps
-  `fitNB`'s moderated value and is flagged `psi_bound` in `@polish`.
-- An unmoderated $\psi_g$ is no longer a safe scale for the standard error,
-  so inference uses the **Pearson working dispersion** (next section) on
-  every path.
-- With few samples the loss of shrinkage is measurable as a mild
-  anti-conservatism that fades as samples accrue (calibration vignette). A
-  moderated dispersion evaluated at the converged mean is the indicated
-  refinement.
+Why the moderated value is the default is a measurement, not a preference.
+The profile step is the expensive part of the stage (a bounded search with
+two re-polishes per gene), and on both the synthetic null and the real
+cohort the two rules are indistinguishable: the same type-I error at every
+sample size to the third decimal, the same triplets called. What the profile
+value *did* do in an earlier release was sharpen a planted effect whose
+moderated dispersion was far from its own optimum — but that sharpening
+came through the standard error, and the standard error is now scaled by
+the quasi-likelihood dispersion (next section), which sees the residual
+scatter directly and does not depend on which $\psi_g$ the mean was
+converged under. Either way, $\psi_g$ is not itself the scale of the
+standard error.
 
 The polish also converges on the **unclamped** likelihood: `fitNB`'s
 winsorisation is a robustness device for a fit that shares one weight vector
@@ -660,13 +663,30 @@ for a tested coefficient uses three things.
    with the tested block extracted. Because $Z$ absorbs the within-patient
    correlation, this block is on a between-patient scale — larger than the
    fixed-effects standard error, which is the point.
-2. **The Pearson working dispersion,**
+2. **The quasi-likelihood dispersion** (`dispersion = "ql"`, the default).
+   The unit deviance $d_{c,g}$ of each observation is rescaled by the first
+   two moments it has under the fitted NB, matched to a scaled chi-square
+   (edgeR v4's construction: if $d \sim c\,\chi^2_\nu$ then
+   $w_0 = 2E[d]/\mathrm{Var}[d]$ rescales the deviance and
+   $w_1 = 2E[d]^2/\mathrm{Var}[d]$ is the observation's effective degrees of
+   freedom, both obtained by direct summation over the pmf), and
    $$
-   \varphi_g = \frac{1}{C - p}\sum_c \frac{(Y_{c,g} - \mu_{c,g})^2}{\mu_{c,g} + \psi_g\mu_{c,g}^2},
+   \varphi_g = \frac{\sum_c w_{0,c,g}\, d_{c,g}}{(1 - p/C)\sum_c w_{1,c,g}}
    $$
-   the same quasi-likelihood device `summary(glm(..., family = quasipoisson))`
-   reports: trust the variance function, rescale it by the residual scatter
-   this fit shows.
+   is then moderated across genes with `limma::squeezeVar()` against the
+   gene's mean count. At small counts $E[d]$ is nowhere near 1 — at a mean of
+   0.1 with dispersion 5 each observation carries about half a degree of
+   freedom — which is why the raw deviance over $C - p$ is unusable there
+   and why this construction, rather than the Pearson one, holds the nominal
+   level at four samples (calibration vignette). The moments depend only on
+   $(\mu, \psi)$, so they are evaluated once on a shared table and
+   interpolated; the rest is elementwise over genes and cells, on the CPU
+   or the accelerator (`SpaNorm::qlDispersion()`). The **Pearson working
+   dispersion**,
+   $\varphi_g = \frac{1}{C - p}\sum_c (Y_{c,g} - \mu_{c,g})^2 / (\mu_{c,g} + \psi_g\mu_{c,g}^2)$,
+   the device `summary(glm(..., family = quasipoisson))` reports, remains
+   available as `dispersion = "pearson"`; it rejects at 0.09 against a
+   nominal 0.05 with four samples and fades to 0.068 at thirty.
 3. **A $t$ reference distribution** with a per-coefficient degrees of
    freedom, next.
 

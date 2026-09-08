@@ -257,9 +257,41 @@ at its reference df or the estimation of its variance component. The pair
 gains recall (**0.402** against 0.361 at $S = 30$) with slightly better FDP
 from $S = 10$ and a worse one at $S = 4$ (0.59 against 0.35). None of this is
 a reason to revert: the defaults were chosen for a confound real cohorts
-carry, because patients differ in composition. The two candidate refinements
-— a moderated dispersion at the converged mean, and the nested block's
-reference df — are what this measurement will judge.
+carry, because patients differ in composition. Of the two candidate
+refinements, the dispersion at the converged mean is measured next; the
+nested block's reference df is not yet.
+
+## The dispersion rule and the standard-error scale (0.99.18)
+
+Four arms on the same benchmark, all with the nested block and the
+convergence step, cross the dispersion rule of the convergence stage
+(profile-ML per gene, or `fitNB`'s cross-gene moderated value kept) with the
+scale of the standard errors (the Pearson working dispersion, or the
+quasi-likelihood dispersion). Null type-I at a nominal 0.05, mean of both
+layouts, 40 replicates:
+
+| $S$ | profile $\psi$ + Pearson (0.99.17) | moderated $\psi$ + Pearson | moderated $\psi$ + QL (0.99.18) | profile $\psi$ + QL |
+|---|---|---|---|---|
+| 4 | 0.091 | 0.091 | 0.050 | 0.055 |
+| 10 | 0.076 | 0.074 | 0.055 | 0.055 |
+| 16 | 0.071 | 0.071 | 0.055 | 0.054 |
+| 30 | 0.068 | 0.068 | 0.055 | 0.053 |
+
+The dispersion rule is irrelevant — the two Pearson arms agree to the third
+decimal, and so do the two QL arms — so the small-$S$ convergence cost was
+never the loss of moderation. The scale is the whole difference, and the QL
+scale is the first configuration measured here that holds the nominal level
+at every $S$, including $S = 4$. Its recall at FDR 0.05 is that of the design
+with neither switch (**0.360** against 0.361 at $S = 30$; the Pearson scale's
+0.402 is bought with its inflated null: raw power at 0.05 is 0.666, 0.660
+and 0.694 respectively) and its realised FDP sits far below nominal (0.014
+at $S = 30$, 0.000 at $S = 4$ against 0.59), which says the hierarchical
+cascade is conservative on better-calibrated p-values. On the real cohort
+the QL and Pearson variants share 110 of about 115 calls and both keep 81 to
+83 of the earlier 84. The moderated dispersion runs the cohort's real grid
+in two thirds of the wall time (178 against 266 minutes) and the QL pre-pass
+adds nothing measurable at cohort scale (about 5% at $S \ge 16$ on the
+benchmark, more only on tiny designs). Both are the defaults from 0.99.18.
 
 ## The `CellType:condition` term, and a design that looks more powerful
 

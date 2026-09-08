@@ -17,7 +17,7 @@ polishSpiDE(object, spe, ...)
   block.size = NULL,
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
-  polish.psi = c("profile", "moderated")
+  polish.psi = c("moderated", "profile")
 )
 }
 \arguments{
@@ -45,9 +45,10 @@ gene (the \code{converge.maxit} / \code{converge.tol} of \code{\link[=fitSpiDE]{
 \item{verbose}{report progress.}
 
 \item{polish.psi}{how the dispersion is set at the converged mean:
-\code{"profile"} (the default) re-estimates each gene's dispersion by
-profile maximum likelihood; \code{"moderated"} keeps \code{fitNB}'s
-cross-gene moderated value and converges only the coefficients under it.}
+\code{"moderated"} (the default) keeps \code{fitNB}'s cross-gene
+moderated value and converges only the coefficients under it;
+\code{"profile"} re-estimates each gene's dispersion by profile maximum
+likelihood. See \code{\link{fitSpiDE}}.}
 }
 \value{
 the object with converged \code{alpha} and \code{psi}, per-gene

@@ -65,8 +65,8 @@ setMethod(
                         df.method = c("satterthwaite", "between"),
                         re.celltype = TRUE, converge = TRUE,
                         converge.maxit = 50L, converge.tol = 1e-8,
-                        polish.psi = c("profile", "moderated"),
-                        dispersion = c("pearson", "ql"),
+                        polish.psi = c("moderated", "profile"),
+                        dispersion = c("ql", "pearson"),
                         block.size = NULL, gpu.mem.budget = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
