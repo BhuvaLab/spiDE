@@ -30,9 +30,6 @@ fitSpiDE(spe, condition = NULL, ...)
   re.min.cells = 100L,
   df.method = c("satterthwaite", "between"),
   re.celltype = TRUE,
-  converge = TRUE,
-  converge.maxit = 50L,
-  converge.tol = 1e-08,
   block.size = NULL,
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
@@ -210,33 +207,9 @@ the block present every niche slope is a within-group slope and the shuffle
 null is calibrated in every expression band. Set \code{FALSE} to reproduce
 pre-correction fits. Ignored when \code{random = "none"}.}
 
-\item{converge}{logical; after \code{fitNB} returns, converge each gene to
-its own penalised negative-binomial optimum and re-estimate its dispersion
-there. \strong{Default \code{TRUE}.} \code{fitNB} fits every gene in one
-IRLS loop with a single gene-averaged cell weight vector and an aggregate
-convergence criterion, which is what makes a whole-transcriptome fit
-affordable; for bright, cell-type-restricted genes it stops 1-4 standard
-errors short of that gene's own optimum, with a dispersion about 1.6 times
-too large. The stage is per-gene, so it is blocked and parallelised over
-\code{block.size} / \code{BPPARAM} exactly as inference is. Note that it
-replaces edgeR's cross-gene moderated dispersion with a per-gene profile
-maximum-likelihood dispersion at the converged mean: with many cells per
-gene that is well determined, but it is a deliberate departure from
-\code{fitNB}'s moderation. Set \code{FALSE} to reproduce pre-correction
-fits.}
-
-\item{converge.maxit, converge.tol}{iteration cap and relative
-log-likelihood tolerance for the per-gene convergence stage.}
-
-\item{block.size}{genes per block in the per-gene convergence stage (see
-\code{\link[=testSpiDE]{testSpiDE()}} for the same argument at inference time). NULL fits every
-gene in one block.}
-
-\item{BPPARAM}{a BiocParallelParam. Used by the per-gene convergence
-stage (\code{converge = TRUE}), which is blocked over genes and
-dispatched with it; each worker densifies its own gene block, so
-peak memory scales with the number of workers. Absent an explicit
-\code{block.size}, one block per worker is used.}
+\item{block.size, BPPARAM}{gene blocking and dispatch for the blocked steps
+of the mixed fit (see \code{\link[=testSpiDE]{testSpiDE()}} for the same arguments at inference
+time; \code{\link[=polishSpiDE]{polishSpiDE()}} takes its own).}
 
 \item{verbose}{a logical, whether to print fitting progress.}
 }

@@ -26,9 +26,8 @@ spiDE(spe, condition = NULL, ...)
   combine = c("cauchy", "brown"),
   df.method = c("satterthwaite", "between"),
   re.celltype = TRUE,
-  converge = TRUE,
-  converge.maxit = 50L,
-  converge.tol = 1e-08,
+  polish = TRUE,
+  dispersion = c("ql", "pearson"),
   block.size = NULL,
   gpu.mem.budget = NULL,
   BPPARAM = BiocParallel::SerialParam(),
@@ -152,11 +151,13 @@ distinction from the fitted variance components and is preferred.}
 intercept so the tested niche slopes are within-group. Default
 \code{TRUE}. See \code{\link[=fitSpiDE]{fitSpiDE()}}.}
 
-\item{converge}{logical; converge each gene to its own penalised NB optimum
-after the shared fit. Default \code{TRUE}. See \code{\link[=fitSpiDE]{fitSpiDE()}}.}
+\item{polish}{logical; run the polish stage (\code{\link[=polishSpiDE]{polishSpiDE()}}) between the
+fit and the test: converge each gene, set its dispersion and re-estimate
+the variance components from the converged fit. Default \code{TRUE};
+\code{FALSE} tests the shared fit as \code{fitNB} returned it. Run the
+stages by hand to control the polish's own settings.}
 
-\item{converge.maxit, converge.tol}{iteration cap and relative
-log-likelihood tolerance for the per-gene convergence stage.}
+\item{dispersion}{the standard-error scale; see \code{\link[=testSpiDE]{testSpiDE()}}.}
 
 \item{block.size}{a numeric, genes per inference block (NULL = a single
 block on the CPU backend, or a memory-bounded auto-selected size on the

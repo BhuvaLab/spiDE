@@ -198,8 +198,10 @@ test_that(".waldCauchyBlock returns a proper matrix for a single-gene block", {
 
 test_that("batched Cauchy path matches the per-gene .waldBrownGene loop (CPU)", {
   tf <- .toyFit()
+  # the comparison is about the batching, so both sides take the Pearson
+  # scale the reference below computes by hand (the default is the QL scale)
   f <- spiDE:::.blockedInference(tf$fit, tf$Y, combine = "cauchy",
-                                 backend = "cpu")
+                                 backend = "cpu", dispersion = "pearson")
 
   # per-gene reference for the same fit
   W_full <- tf$fit@W
@@ -213,7 +215,7 @@ test_that("batched Cauchy path matches the per-gene .waldBrownGene loop (CPU)", 
   alpha_sub <- tf$fit@alpha[, cols_gene, drop = FALSE]
   psi <- tf$fit@psi
   # Mirror .blockedInference()'s own choices, or this reference tests a
-  # different estimator: a POLISHED fit (converge = TRUE, the default) is
+  # different estimator: a POLISHED fit (after polishSpiDE(), the pipeline's default) is
   # evaluated at the unclamped mean, because the polish converged on the
   # unclamped likelihood, and its SE is scaled by the Pearson working
   # dispersion rather than the now-unmoderated per-gene psi.

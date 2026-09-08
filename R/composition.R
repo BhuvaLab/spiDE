@@ -173,3 +173,22 @@ setMethod(
     out
   }
 )
+
+# ---- patient-level helpers (shared with the archived two-stage estimator) -----
+
+#' First non-missing value of a cell-level vector, per patient
+#'
+#' Indexes the original vector rather than going through tapply(), which
+#' unlists a factor into bare integer level codes -- a factor patient
+#' covariate would then enter the stage-2 design as a continuous trend in
+#' arbitrary codes, silently. Taking the first NON-missing cell also keeps a
+#' patient whose first cell happens to be NA while its value is known
+#' elsewhere.
+#' @noRd
+.patientValue <- function(x, pat, pats) {
+  idx <- vapply(pats, function(p) {
+    i <- which(pat == p & !is.na(x))
+    if (length(i)) i[1L] else which(pat == p)[1L]
+  }, integer(1))
+  stats::setNames(x[idx], pats)
+}

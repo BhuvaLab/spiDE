@@ -18,7 +18,8 @@ testSpiDE(object, ...)
   backend = c("auto", "cpu", "gpu"),
   gpu.mem.budget = NULL,
   BPPARAM = BiocParallel::SerialParam(),
-  ...
+  ...,
+  dispersion = c("ql", "pearson")
 )
 }
 \arguments{
@@ -66,6 +67,18 @@ sub-batch sized from this budget on the GPU path and from
 the latter to trade memory for speed on wide (random-slope) designs.}
 
 \item{BPPARAM}{a BiocParallelParam for the inference stage.}
+
+\item{dispersion}{the scale of the standard errors: \code{"ql"} (default),
+the edgeR-v4 quasi-likelihood dispersion of each gene (its adjusted
+deviance over its effective residual df, \code{SpaNorm::qlDispersion()})
+moderated across genes with \code{limma::squeezeVar()}; or
+\code{"pearson"}, the working Pearson dispersion of the fit. The QL
+scale is the only one measured to hold the nominal type-I error at every
+sample size, including four samples, where the Pearson scale rejects at
+0.09 against a nominal 0.05 (see \code{vignette("spiDE-calibration")}).
+It runs on either backend. A fixed-effects, unconverged fit
+(\code{random = "none", converge = FALSE}) has neither scale and keeps its
+legacy NB-dispersion scale with a message.}
 }
 \value{
 the input \code{object} with combined p-values and the tidy results

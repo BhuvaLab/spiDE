@@ -164,7 +164,9 @@
 #' @importFrom stats optimize
 #' @noRd
 .polishGene <- function(y, W, a0, psi0, pen, solver, maxit = 50L, tol = 1e-8,
-                        ct_cols = NULL, psi.range = c(1e-3, 1e3)) {
+                        ct_cols = NULL, psi.range = c(1e-3, 1e3),
+                        psi.method = c("profile", "moderated")) {
+  psi.method <- match.arg(psi.method)
   restarted <- FALSE
   singular <- FALSE
 
@@ -296,7 +298,10 @@
   converged <- f$converged
   it_total <- f$it
   psi_bound <- FALSE
-  for (k in 1:2) {
+  # "moderated" keeps fitNB's cross-gene moderated dispersion and converges
+  # only the mean under it; "profile" re-estimates psi by profile ML at the
+  # converged mean and re-polishes, twice
+  if (psi.method == "profile") for (k in 1:2) {
     pm <- psi_ml(f$mu)
     if (pm$at_bound) {
       # the dispersion is not identified for this gene; keep the moderated one
@@ -334,7 +339,8 @@
 #' @noRd
 .polishFit <- function(Y, W, alpha, psi, pen, re_group = NULL, covtype = NULL,
                        maxit = 50L, tol = 1e-8, block.size = NULL,
-                       BPPARAM = BiocParallel::SerialParam(), verbose = FALSE) {
+                       BPPARAM = BiocParallel::SerialParam(), verbose = FALSE,
+                       psi.method = "profile") {
   ng <- nrow(alpha)
   if (!length(pen) %in% c(1L, ncol(W))) {
     stop("'lambda.a' must be a single value or one per design column (",
@@ -355,11 +361,11 @@
   chk <- as.numeric(Y[seq_len(min(nrow(Y), 20L)), , drop = FALSE])
   chk <- chk[is.finite(chk)]
   if (length(chk) && max(abs(chk - round(chk))) > 1e-8) {
-    stop("converge = TRUE needs integer counts: the negative binomial ",
+    stop("the polish stage needs integer counts: the negative binomial ",
          "likelihood is undefined otherwise, and every gene's dispersion would ",
          "silently collapse to its upper bound.\n  The assay passed is not ",
          "integer-valued (e.g. a back-transform such as 2^logcounts - 1).\n  ",
-         "Use the raw counts, or pass converge = FALSE.", call. = FALSE)
+         "Use the raw counts, or skip polishSpiDE().", call. = FALSE)
   }
   ct_cols <- if (is.null(covtype)) NULL else as.character(covtype) == "CellType"
   nested <- if (is.null(re_group)) {
@@ -407,7 +413,8 @@
     out <- lapply(seq_along(gi), function(i) {
       g <- gi[[i]]
       .polishGene(as.numeric(Yb[i, ]), W, alpha[g, ], psi[[g]], pen, solver,
-                  maxit = maxit, tol = tol, ct_cols = ct_cols)
+                  maxit = maxit, tol = tol, ct_cols = ct_cols,
+                  psi.method = psi.method)
     })
     if (verbose && (b %% step == 0L || b == nb)) {
       message(sprintf("    block %d/%d (%.1f min elapsed)", b, nb,
@@ -454,8 +461,7 @@
 #' A mixed fit carries its penalty vector; a fixed-effects fit carries none
 #' (\code{@penalty} is what selects the mixed inference path, so it cannot be
 #' set on a fixed fit) and the ridge is whatever \code{lambda.a} the fit was
-#' made with. One helper for both routes, so \code{fitSpiDE(converge = TRUE)}
-#' and \code{polishSpiDE()} cannot disagree on what they polish against.
+#' made with.
 #' @noRd
 .polishPenalty <- function(penalty, lambda.a, p) {
   if (!is.null(penalty)) return(penalty)
@@ -467,20 +473,73 @@
 .polishSpiDEFit <- function(f, Y, lambda.a = 0, maxit = 50L, tol = 1e-8,
                             block.size = NULL,
                             BPPARAM = BiocParallel::SerialParam(),
-                            verbose = TRUE) {
+                            verbose = TRUE, psi.method = "profile",
+                            tau2 = TRUE, tau2.maxit = 3L, tau2.tol = 1e-3,
+                            tau2.range = c(1e-8, 1e4)) {
   f <- updateObject(f)
   Yf <- Y[rownames(f@alpha), , drop = FALSE]
   pen <- .polishPenalty(f@penalty, lambda.a, ncol(f@W))
-  pol <- .polishFit(Yf, f@W, f@alpha, f@psi, pen, f@re_group,
-                    covtype = as.character(f@covtype),
-                    maxit = maxit, tol = tol, block.size = block.size,
-                    BPPARAM = BPPARAM, verbose = verbose)
+  run_polish <- function(alpha0, psi0, pen_now) {
+    .polishFit(Yf, f@W, alpha0, psi0, pen_now, f@re_group,
+               covtype = as.character(f@covtype),
+               maxit = maxit, tol = tol, block.size = block.size,
+               BPPARAM = BPPARAM, verbose = verbose, psi.method = psi.method)
+  }
+  pol <- run_polish(f@alpha, f@psi, pen)
   alpha <- pol$alpha
   dimnames(alpha) <- dimnames(f@alpha)
+  psi <- as.numeric(pol$psi)
+
+  # The variance components from the CONVERGED fit. The fit's Schall loop
+  # reads the shared fit's own coefficients and dispersion, which can sit far
+  # from every gene's optimum (research fdr-ordering/FINDINGS.md, 2026-09-08:
+  # a between-sample variance of 10 against a planted 0.49 on the clustered
+  # fixture, from sample intercepts three times too wide). One Schall step on
+  # the polished coefficients with the gene-averaged weights at the polished
+  # mean and dispersion, then a re-polish at the new penalty, iterated to
+  # tolerance; the Satterthwaite df follows below.
+  mixed <- !is.null(f@re_group) && !is.null(f@tau2) && length(f@tau2)
+  if (tau2 && mixed) {
+    tau2_now <- f@tau2
+    for (it in seq_len(tau2.maxit)) {
+      wbar <- .repWeights(Yf, alpha, f@W, psi, winsor = Inf)
+      A <- crossprod(f@W * sqrt(wbar))
+      minv <- tryCatch(SpaNorm::invert_mat(A + diag(pen)), error = function(e) NULL)
+      if (is.null(minv)) {
+        warning("the penalised information at the converged fit is singular; ",
+                "the variance components are left as the fit estimated them",
+                call. = FALSE)
+        break
+      }
+      tau2_new <- .schallStep(alpha, minv, f@re_group, tau2_now, tau2.range)
+      step <- max(abs(log(unlist(tau2_new)) - log(unlist(tau2_now))))
+      if (verbose) message(sprintf("  tau2 from the converged fit: %s",
+                                   paste(sprintf("%s=%.3g", names(tau2_new), unlist(tau2_new)), collapse = ", ")))
+      tau2_now <- tau2_new
+      for (g in names(tau2_now)) pen[which(f@re_group == g)] <- 1 / tau2_now[[g]]
+      pol <- run_polish(alpha, psi, pen)
+      alpha <- pol$alpha
+      dimnames(alpha) <- dimnames(f@alpha)
+      psi <- as.numeric(pol$psi)
+      if (step < tau2.tol) break
+    }
+    f@tau2 <- tau2_now
+    f@penalty <- pen
+    # the reference df reads the components and the penalty
+    if (!is.null(names(f@df))) {
+      wbar <- .repWeights(Yf, alpha, f@W, psi, winsor = Inf)
+      A <- crossprod(f@W * sqrt(wbar))
+      minv <- tryCatch(SpaNorm::invert_mat(A + diag(pen)), error = function(e) NULL)
+      tested <- match(names(f@df), colnames(f@W))
+      df_new <- if (is.null(minv)) NULL else
+        .satterthwaiteDF(A, minv, pen, f@re_group, tau2_now, tested, ncol(Yf), names(f@df))
+      if (!is.null(df_new)) f@df <- df_new
+    }
+  }
   polish <- pol$polish
   rownames(polish) <- rownames(f@alpha)
   f@alpha <- alpha
-  f@psi <- as.numeric(pol$psi)
+  f@psi <- psi
   f@polish <- polish
   f@loglik <- as.numeric(.blockLoglik(Yf, alpha, f@W, f@psi, winsor = Inf))
   # everything inference derived from the old coefficients is now stale
@@ -494,34 +553,32 @@
   f
 }
 
-#' Converge an existing fit, gene by gene
+#' The polish stage: converge each gene, set its dispersion, re-estimate the
+#' variance components
 #'
-#' A post-hoc adjustment: takes a fitted [fitSpiDE()] object and converges
-#' every gene to its own penalised negative-binomial optimum, re-estimating
-#' the dispersion at the converged mean. This is exactly the stage that
-#' \code{fitSpiDE(converge = TRUE)} (the default) runs after
-#' \code{SpaNorm::fitNB} returns; as a separate function it can be applied to a
-#' fit made with \code{converge = FALSE}, to a fit serialised by an older
-#' version of the package, or re-applied with different iteration settings,
-#' without refitting. The two routes share one implementation and one penalty
-#' vector, so \code{polishSpiDE(fitSpiDE(..., converge = FALSE))} and
-#' \code{fitSpiDE(..., converge = TRUE)} give the same fit.
+#' The stage between [fitSpiDE()] and [testSpiDE()] (the pipeline is fit ->
+#' polish -> test -> gsea; [spiDE()] runs it by default). It converges every
+#' gene to its own penalised negative-binomial optimum by damped Newton,
+#' re-estimates its dispersion at the converged mean (\code{psi}), and for a
+#' mixed fit re-estimates the variance components from the converged
+#' coefficients and refreshes the Satterthwaite reference df (\code{tau2}).
+#' Run it, or skip it, according to the data: it needs integer counts.
 #'
 #' Why it exists: \code{fitNB} fits all genes in one IRLS loop with a shared
 #' cell-weight vector and an aggregate convergence criterion, and for bright,
 #' cell-type-restricted genes it stops one to four standard errors short of
 #' the gene's own optimum, with a dispersion estimated off the optimum that is
-#' too large. Converging each gene calibrates the null and, on the toy fixture,
-#' sharpens the planted signal (see the model vignette).
+#' too large. The fit's Schall loop reads those same unconverged coefficients
+#' and dispersion, so its variance components inherit the error: on the
+#' clustered test fixture it reports a between-sample variance of 10 against
+#' a planted 0.49, which this stage brings back to the planted value.
 #'
 #' Every inference slot derived from the old coefficients (\code{t_stat},
 #' \code{se}, the combined p-values, the results table and the cross-bandwidth
-#' weights) is cleared; call [testSpiDE()] again afterwards. The reference
-#' degrees of freedom (\code{@df}) and the variance components are kept, as
-#' they are under \code{fitSpiDE(converge = TRUE)}.
+#' weights) is cleared; call [testSpiDE()] again afterwards.
 #'
 #' @param object a SpiDEResults from [fitSpiDE()] (one GLM fit per bandwidth).
-#'   A [twoStageSpiDE()] result has no per-gene GLM fit and is refused.
+#'   An object without per-gene GLM fits is refused.
 #' @param spe the SpatialExperiment the fit was made from (for the counts).
 #' @param assay a character, the counts assay.
 #' @param lambda.a the ridge the fit was made with, for a fixed-effects fit
@@ -534,29 +591,47 @@
 #' @param BPPARAM a BiocParallelParam; the stage is blocked over genes.
 #' @param verbose report progress.
 #' @param ... further arguments passed to the method.
+#' @param psi how the dispersion is set at the converged mean:
+#'   \code{"profile"} (the default) re-estimates each gene's dispersion by
+#'   profile maximum likelihood at the converged mean; \code{"moderated"}
+#'   keeps \code{fitNB}'s cross-gene moderated value and converges only the
+#'   coefficients under it. The moderated value is whatever the shared fit
+#'   left, which can be far from the gene's own (fifteen times, on the
+#'   clustered fixture), and the variance-component step below needs a
+#'   dispersion consistent with the converged mean.
+#' @param tau2 logical; for a mixed fit, re-estimate the variance components
+#'   from the converged fit (one Schall step on the polished coefficients,
+#'   then a re-polish at the new penalty, iterated), and refresh the
+#'   Satterthwaite reference df. The fit's own loop reads the shared fit's
+#'   unconverged coefficients, which over-estimates the between-sample
+#'   variance badly where that fit is off its optimum.
+#' @param tau2.maxit,tau2.tol iteration cap and relative tolerance on
+#'   \code{log(tau2)} for that re-estimate.
 #' @return the object with converged \code{alpha} and \code{psi}, per-gene
 #'   diagnostics in \code{@polish}, and inference cleared.
 #' @examples
 #' data(toySpiDE)
 #' spe <- buildNiches(toySpiDE, sigma = 20)
 #' fit0 <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none",
-#'                  converge = FALSE, verbose = FALSE)
+#'                  verbose = FALSE)
 #' fit1 <- polishSpiDE(fit0, spe, verbose = FALSE)
 #' head(fits(fit1)[[1]]@polish)
-#' @seealso [fitSpiDE()] for the same stage as a default, [testSpiDE()] to
-#'   recompute inference afterwards.
+#' @seealso [fitSpiDE()] for the stage before, [testSpiDE()] for the stage
+#'   after.
 #' @rdname polishSpiDE
 #' @export
 setMethod(
   "polishSpiDE",
   signature = "SpiDEResults",
-  definition = function(object, spe, assay = "counts", lambda.a = 0,
+  definition = function(object, spe, assay = "counts",
+                        psi = c("profile", "moderated"), tau2 = TRUE,
+                        tau2.maxit = 3L, tau2.tol = 1e-3, lambda.a = 0,
                         maxit = 50L, tol = 1e-8, block.size = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE) {
     object <- updateObject(object)
+    psi <- match.arg(psi)
     if (!length(object@fits)) {
-      stop("nothing to polish: the object carries no per-gene GLM fit ",
-           "(a twoStageSpiDE() result has none)", call. = FALSE)
+      stop("nothing to polish: the object carries no per-gene GLM fit", call. = FALSE)
     }
     checkSPE(spe, assay = assay)
     Y <- SummarizedExperiment::assay(spe, assay)
@@ -570,6 +645,8 @@ setMethod(
       if (verbose) message(sprintf("Polishing bandwidth sigma = %s",
                                    object@sigma[i]))
       .polishSpiDEFit(object@fits[[i]], Y, lambda.a = lambda.a,
+                      psi.method = psi, tau2 = tau2, tau2.maxit = tau2.maxit,
+                      tau2.tol = tau2.tol,
                       maxit = maxit, tol = tol, block.size = block.size,
                       BPPARAM = BPPARAM, verbose = verbose)
     })

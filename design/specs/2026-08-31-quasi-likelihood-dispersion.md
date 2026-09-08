@@ -1,7 +1,8 @@
 # Quasi-likelihood dispersion (edgeR v4 style) — design
 
 - **Date:** 2026-08-31
-- **Status:** **REFUTED BY MEASUREMENT 2026-09-01 — do not wire Stage A in.**
+- **Status:** **ADOPTED 2026-09-08 (spiDE 0.99.18, `dispersion = "ql"` default; machinery moved to SpaNorm 1.7.10 with a torch backend).** The 2026-09-01 refutation below is withdrawn: it was scored on the composition bias the nested (sample x cell type) intercept removes, which no per-gene scale could fix. Re-measured on the fixed design (research `fdr-ordering/FINDINGS.md`, 2026-09-08), the QL scale is the only configuration that holds the nominal null at every sample size. The original refutation text is kept below as the record of why it was first rejected.
+- **Original status (2026-09-01):** REFUTED BY MEASUREMENT — do not wire Stage A in.
   The QL dispersion was built (`spiDE:::.qlDispersion`, oracle-tested against
   `edgeR::glmQLFit` to 3e-3) and measured on the real cohort before wiring. It
   centres the scale (median dispersion 0.837 -> 0.954, median `sd(null t)`

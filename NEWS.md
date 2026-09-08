@@ -1,3 +1,83 @@
+# spiDE 0.99.19
+
+## Changes
+
+* **The pipeline is fit -> polish -> test -> gsea, and the polish is a stage.**
+  `fitSpiDE()` fits the shared model and nothing more: `converge`,
+  `converge.maxit`, `converge.tol` and `polish.psi` are gone from it.
+  `polishSpiDE()` is the stage the user runs, or skips, according to their
+  data; `spiDE()` runs it by default (`polish = TRUE`) and `polish = FALSE`
+  tests the shared fit as `fitNB` returned it.
+* **The variance components are re-estimated from the converged fit.** The
+  fit's Schall loop reads the shared fit's own coefficients and dispersion,
+  which can sit far from every gene's optimum: on the clustered test fixture
+  it reported a between-sample variance of 10 against a planted 0.49 (from
+  sample intercepts three times too wide), under every release since
+  2026-08-08. `polishSpiDE(tau2 = TRUE)` (the default) takes one Schall step
+  on the polished coefficients with the gene-averaged weights at the
+  polished mean and dispersion, re-polishes at the new penalty, iterates to
+  `tau2.tol`, and refreshes the Satterthwaite reference df. The fixture's
+  component lands in the planted window. Calibration had survived the old
+  value because the QL scale is robust to the dispersion and an inflated
+  component only weakens the ridge, but the reference df, the shrinkage and
+  the Newton weights all read it.
+* **The polish's dispersion rule is the profile value again**
+  (`polishSpiDE(psi = "profile")`). The moderated rule, made the default in
+  0.99.18 for a third of the cost, keeps whatever the shared fit left, which
+  on the same fixture is fifteen times the converged value; the
+  variance-component step needs a dispersion consistent with the converged
+  mean. The two rules remain indistinguishable on the null and in the real
+  cohort's calls, and the cost argument has weakened now that the GPU
+  carries the cohort's real grid in a third of the CPU time.
+* **The two-stage estimator has left the package.** `twoStageSpiDE()` and its
+  stages are archived as a standalone research package, `spiDEtwostage`
+  (`research/twostage/` in the research repository), which returns its own
+  result object; `SpiDEResults` loses the `diagnostics` slot and the validity
+  relaxation that allowed an empty `fits`. The mixed-effects estimator is the
+  recommended approach: it fits all cells jointly, so thin cell types borrow
+  strength, and on the real cohort it was the better-calibrated of the two.
+  The two-stage benchmark stays on the research site as the record of that
+  comparison.
+
+# spiDE 0.99.18
+
+## Changes
+
+* **The standard errors are scaled by the quasi-likelihood dispersion.**
+  `testSpiDE(dispersion = "ql")` is the default: each gene's edgeR-v4
+  quasi-likelihood dispersion (its adjusted NB deviance over its effective
+  residual df, `SpaNorm::qlDispersion()`) moderated across genes with
+  `limma::squeezeVar()`, in place of the working Pearson dispersion, which
+  remains available as `dispersion = "pearson"`. Measured on the synthetic
+  benchmark (40 replicates, intercept mode, Satterthwaite df) it is the only
+  configuration that holds the nominal type-I error at every sample size:
+  0.050–0.055 at S = 4, 10, 16 and 30 against 0.091, 0.076, 0.071 and 0.068
+  for the Pearson scale. Its recall at FDR 0.05 is that of the design with
+  neither 0.99.17 switch (0.360 against 0.361 at S = 30, and 0.402 for the
+  Pearson scale, whose extra recall is bought with its inflated null) and its
+  realised FDP sits far below nominal (0.014 at S = 30, 0.000 at S = 4 where
+  the Pearson scale reaches 0.59). On the real cohort it calls the same
+  triplets as before (111 of 114 shared) at no extra cost. It runs on either
+  backend: the deviance moments are one shared (log mu, log phi) table per
+  gene block and the rest is elementwise over genes x cells on the device.
+  A fixed-effects, unconverged fit (`random = "none", converge = FALSE`)
+  has no such scale and keeps its legacy NB-dispersion scale with a message.
+* **The convergence stage keeps the moderated dispersion.**
+  `fitSpiDE(polish.psi = "moderated")` is the default: the coefficients are
+  converged per gene under `fitNB`'s cross-gene moderated dispersion, and the
+  per-gene profile-ML re-estimate is available as `polish.psi = "profile"`.
+  The two are indistinguishable on the null at every sample size (to the
+  third decimal) and call the same triplets on the real cohort, and the
+  moderated one runs the cohort's real grid in two thirds of the wall time
+  (178 against 266 minutes), because the profile step was the expensive part
+  of the stage. `polishSpiDE()` takes the same argument with the same default.
+* The quasi-likelihood machinery now lives in SpaNorm (>= 1.7.10) as
+  `nbUnitDeviance()`, `nbDevianceMoments()` and `qlDispersion()`, with both
+  backends and the oracle tests against `edgeR::glmQLFit()`; spiDE carries
+  only the wiring. The 2026-08-31 refutation of the QL dispersion is
+  withdrawn: it was scored on the composition bias that the nested intercept
+  removes, which no per-gene scale could fix.
+
 # spiDE 0.99.17
 
 ## New Features

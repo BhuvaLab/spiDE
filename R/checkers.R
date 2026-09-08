@@ -39,10 +39,10 @@ checkCounts <- function(Y, integer.only = FALSE) {
     ss <- as.numeric(Y[seq_len(min(nrow(Y), 20L)), , drop = FALSE])
     ss <- ss[is.finite(ss)]
     if (length(ss) && max(abs(ss - round(ss))) > 1e-8) {
-      stop("converge = TRUE requires integer counts, and this assay is not ",
-           "integer-valued (a back-transform such as 2^logcounts - 1 is the ",
-           "usual cause).\n  Every gene's dispersion would silently collapse ",
-           "to its upper bound.\n  Supply raw counts, or pass converge = FALSE.",
+      stop("the polish stage requires integer counts, and this assay is not ",
+           "integer-valued: the negative binomial likelihood is undefined off ",
+           "the integers, so every gene's dispersion would collapse ",
+           "to its upper bound.\n  Supply raw counts, or skip polishSpiDE().",
            call. = FALSE)
     }
   }
@@ -81,7 +81,7 @@ checkCovariates <- function(spe, covariates, finite.only = FALSE) {
   # log() of a zero-valued QC column gives -Inf, and centring that gives NaN.
   #
   # OPT-IN, because it is only the GLM design that breaks this way.
-  # twoStageSpiDE() deliberately DROPS patients with a missing patient-level
+  # a patient-level estimator would deliberately DROP patients with a missing patient-level
   # covariate and reports the dropout, which is a documented behaviour its
   # tests assert; rejecting there would remove a feature.
   if (!finite.only) return(invisible(TRUE))

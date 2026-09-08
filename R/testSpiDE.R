@@ -28,6 +28,17 @@
 #'   controls type-I error under correlation without estimating a correlation
 #'   matrix; "brown" is the correlation-aware Brown's method. Used only if the
 #'   Wald inference is not already present on the fits.
+#' @param dispersion the scale of the standard errors: \code{"ql"} (default),
+#'   the edgeR-v4 quasi-likelihood dispersion of each gene (its adjusted
+#'   deviance over its effective residual df, \code{SpaNorm::qlDispersion()})
+#'   moderated across genes with \code{limma::squeezeVar()}; or
+#'   \code{"pearson"}, the working Pearson dispersion of the fit. The QL
+#'   scale is the only one measured to hold the nominal type-I error at every
+#'   sample size, including four samples, where the Pearson scale rejects at
+#'   0.09 against a nominal 0.05 (see \code{vignette("spiDE-calibration")}).
+#'   It runs on either backend. A fixed-effects, unconverged fit
+#'   (\code{random = "none", converge = FALSE}) has neither scale and keeps its
+#'   legacy NB-dispersion scale with a message.
 #' @param block.size a numeric, genes per inference block (NULL = a single
 #'   block on the CPU backend, or a memory-bounded auto-selected size on the
 #'   GPU backend).
@@ -68,7 +79,9 @@ setMethod(
                         block.size = NULL,
                         backend = c("auto", "cpu", "gpu"),
                         gpu.mem.budget = NULL,
-                        BPPARAM = BiocParallel::SerialParam(), ...) {
+                        BPPARAM = BiocParallel::SerialParam(), ...,
+                        dispersion = c("ql", "pearson")) {
+    dispersion <- match.arg(dispersion)
     checkFdr(fdr)
     combine <- match.arg(combine)
     backend <- match.arg(backend)
@@ -88,7 +101,7 @@ setMethod(
       fits <- lapply(fits, function(f) {
         .blockedInference(f, Y, block.size = block.size, combine = combine,
                           backend = backend, gpu.mem.budget = gpu.mem.budget,
-                          BPPARAM = BPPARAM)
+                          BPPARAM = BPPARAM, dispersion = dispersion)
       })
       object@fits <- fits
     }

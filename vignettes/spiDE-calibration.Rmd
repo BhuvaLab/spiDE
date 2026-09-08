@@ -227,10 +227,9 @@ refinement.
 
 ## The small-sample regime
 
-`fitSpiDE(random = "intercept")` is the most powerful calibrated estimator
-once samples are plentiful — recall **0.66** at $S = 30$ against 0.45 for the
-best two-stage arm — but it fails at small $S$ in a way the null table does
-not show: realised FDP **0.35** at $S = 4$ against a nominal 0.05, recovering
+`fitSpiDE(random = "intercept")` is a powerful estimator once samples are
+plentiful — raw power **0.66** at $S = 30$ — but it fails at small $S$ in a way
+the null table does not show: realised FDP **0.35** at $S = 4$ against a nominal 0.05, recovering
 to 0.04 by $S = 16$. Any sub-analysis that thins the patient count re-enters
 this regime.
 
@@ -257,9 +256,41 @@ at its reference df or the estimation of its variance component. The pair
 gains recall (**0.402** against 0.361 at $S = 30$) with slightly better FDP
 from $S = 10$ and a worse one at $S = 4$ (0.59 against 0.35). None of this is
 a reason to revert: the defaults were chosen for a confound real cohorts
-carry, because patients differ in composition. The two candidate refinements
-— a moderated dispersion at the converged mean, and the nested block's
-reference df — are what this measurement will judge.
+carry, because patients differ in composition. Of the two candidate
+refinements, the dispersion at the converged mean is measured next; the
+nested block's reference df is not yet.
+
+## The dispersion rule and the standard-error scale (0.99.18)
+
+Four arms on the same benchmark, all with the nested block and the
+convergence step, cross the dispersion rule of the convergence stage
+(profile-ML per gene, or `fitNB`'s cross-gene moderated value kept) with the
+scale of the standard errors (the Pearson working dispersion, or the
+quasi-likelihood dispersion). Null type-I at a nominal 0.05, mean of both
+layouts, 40 replicates:
+
+| $S$ | profile $\psi$ + Pearson (0.99.17) | moderated $\psi$ + Pearson | moderated $\psi$ + QL (0.99.18) | profile $\psi$ + QL |
+|---|---|---|---|---|
+| 4 | 0.091 | 0.091 | 0.050 | 0.055 |
+| 10 | 0.076 | 0.074 | 0.055 | 0.055 |
+| 16 | 0.071 | 0.071 | 0.055 | 0.054 |
+| 30 | 0.068 | 0.068 | 0.055 | 0.053 |
+
+The dispersion rule is irrelevant — the two Pearson arms agree to the third
+decimal, and so do the two QL arms — so the small-$S$ convergence cost was
+never the loss of moderation. The scale is the whole difference, and the QL
+scale is the first configuration measured here that holds the nominal level
+at every $S$, including $S = 4$. Its recall at FDR 0.05 is that of the design
+with neither switch (**0.360** against 0.361 at $S = 30$; the Pearson scale's
+0.402 is bought with its inflated null: raw power at 0.05 is 0.666, 0.660
+and 0.694 respectively) and its realised FDP sits far below nominal (0.014
+at $S = 30$, 0.000 at $S = 4$ against 0.59), which says the hierarchical
+cascade is conservative on better-calibrated p-values. On the real cohort
+the QL and Pearson variants share 110 of about 115 calls and both keep 81 to
+83 of the earlier 84. The moderated dispersion runs the cohort's real grid
+in two thirds of the wall time (178 against 266 minutes) and the QL pre-pass
+adds nothing measurable at cohort scale (about 5% at $S \ge 16$ on the
+benchmark, more only on tiny designs). Both are the defaults from 0.99.18.
 
 ## The `CellType:condition` term, and a design that looks more powerful
 
@@ -287,22 +318,6 @@ designs only when they estimate the same quantity.
 Cauchy (two-sided) matches or beats Brown's method on power while holding
 type-I error under correlation without estimating the correlation matrix;
 report: *Combining niche p-values*.
-
-## The two-stage estimator
-
-On the simulation study its `"ols"` stage-1 path is the best-calibrated arm
-(null type-I **0.043–0.054**, flat in $S$), with raw power **0.451** at
-$S = 30$ against 0.293 (`"nb"`) and 0.274 (`"spanorm"`, the most liberal at
-0.055–0.071 and the least powerful); FDP 0.032 against 0.173 for `"spanorm"`
-at $S = 16$. Pooling the dispersion per sample (`pool.psi = TRUE`) is
-consistently better calibrated (0.067 against 0.073 paired over 30 datasets).
-On the real cohort the picture reverses for thin index types: its
-$\mathrm{sd}(t)$ tracks cells per (patient, index) subset at $r = -0.84$ —
-Tumor at 388 cells per subset is calibrated (1.05), Mast at 38 cells is not
-(1.65) — and the mixed GLM, which fits all cells jointly, is the better
-calibrated estimator across all index types (1.04 against 1.36). Dropout
-confounded with condition also fires there in B cell, DC and Monocyte.
-Report: *Two-stage estimation*.
 
 ## The gene-set layer
 
