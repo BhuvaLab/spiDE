@@ -517,11 +517,14 @@
                                    paste(sprintf("%s=%.3g", names(tau2_new), unlist(tau2_new)), collapse = ", ")))
       tau2_now <- tau2_new
       for (g in names(tau2_now)) pen[which(f@re_group == g)] <- 1 / tau2_now[[g]]
+      # a step below tolerance leaves the penalty where the coefficients were
+      # converged: no re-polish is needed, and a polish pass is the expensive
+      # part of the stage
+      if (step < tau2.tol) break
       pol <- run_polish(alpha, psi, pen)
       alpha <- pol$alpha
       dimnames(alpha) <- dimnames(f@alpha)
       psi <- as.numeric(pol$psi)
-      if (step < tau2.tol) break
     }
     f@tau2 <- tau2_now
     f@penalty <- pen
