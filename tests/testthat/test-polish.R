@@ -407,3 +407,113 @@ test_that("the absorbed covariance equals the dense one on the TESTED columns", 
   expect_equal(as.numeric(crossprod(wv, absorbed %*% wv)),
                as.numeric(crossprod(wfull, dense %*% wfull)), tolerance = 1e-8)
 })
+
+# The re-polish after a variance-component step starts from a converged fit at
+# a nearby penalty. Measured on the 0.99.19 cohort runs, a re-polish pass that
+# treated that start like fitNB's cost half a cold pass (110-168 min against
+# 245-395 on the panel): three information matrices and two profile-psi
+# searches per gene, and at bandwidth 10 about 100 genes thrown back to the
+# sane start on every pass because their converged fit has a fitted log-mean
+# below -10. A warm pass is a few damped Newton steps at the held dispersion.
+
+test_that(".polishFit's warm re-polish at a nearby penalty matches the cold one", {
+  d <- toy_design()
+  ng <- 5
+  A0 <- matrix(0, ng, ncol(d$W), dimnames = list(paste0("G", seq_len(ng)),
+                                                 colnames(d$W)))
+  A0[, 1] <- 0.5
+  Y <- t(vapply(seq_len(ng), function(g) {
+    mu <- exp(d$W %*% c(1 + 0.2 * g, rep(0.15, 5), rnorm(8, 0, 0.2)))
+    rnbinom(nrow(d$W), mu = as.numeric(mu), size = 1 / 0.4)
+  }, numeric(nrow(d$W))))
+  dimnames(Y) <- list(rownames(A0), NULL)
+  re_group <- ifelse(d$nested, "SampleCellTypeInt", NA_character_)
+  first <- spiDE:::.polishFit(Y, d$W, A0, rep(0.4, ng), d$pen, re_group)
+
+  # one Schall step's worth of change in the nested penalty
+  pen2 <- d$pen
+  pen2[d$nested] <- 2 * pen2[d$nested]
+  cold <- spiDE:::.polishFit(Y, d$W, first$alpha, first$psi, pen2, re_group)
+  warm <- spiDE:::.polishFit(Y, d$W, first$alpha, first$psi, pen2, re_group,
+                             warm = TRUE)
+
+  expect_equal(warm$alpha, cold$alpha, tolerance = 1e-3)
+  # the dispersion is held: its profile optimum moves at second order in the
+  # penalty change
+  expect_equal(warm$psi, first$psi)
+  expect_lt(max(abs(warm$loglik - cold$loglik) / abs(cold$loglik)), 1e-4)
+  expect_true(all(warm$polish$iterations <= 5L))
+  expect_true(all(warm$polish$polished))
+})
+
+test_that("a warm re-polish keeps a converged fit whose fitted log-mean is below -10", {
+  # a gene absent from one cell type: its cell-type intercept runs off toward
+  # -Inf under a zero ridge and the converged fit has log mu < -10 there. That
+  # is what the cold path's restart check catches in fitNB's output, and it
+  # must not throw a converged fit away on a re-polish.
+  n <- 240
+  ct <- rep(c("A", "B"), length.out = n)
+  gidx <- rep(seq_len(8), length.out = n)
+  Z <- stats::model.matrix(~ 0 + factor(gidx))
+  colnames(Z) <- paste0("SampleCellType", seq_len(8))
+  W <- cbind(CellTypeA = as.numeric(ct == "A"), CellTypeB = as.numeric(ct == "B"),
+             x1 = rnorm(n), Z)
+  nested <- grepl("^SampleCellType", colnames(W))
+  pen <- c(0, 0, 0, rep(1.7, 8))
+  ct_cols <- c(TRUE, TRUE, rep(FALSE, 9))
+  y <- rnbinom(n, mu = exp(1.5), size = 2)
+  y[ct == "B"] <- 0L
+  solver <- spiDE:::.newtonSolver(W, pen, nested)
+
+  first <- spiDE:::.polishGene(y, W, rep(0, ncol(W)), 0.5, pen, solver,
+                               ct_cols = ct_cols)
+  expect_lt(min(as.numeric(W %*% first$alpha)), -10)
+  # the cold path restarts it -- the trap the warm path must avoid
+  cold <- spiDE:::.polishGene(y, W, first$alpha, first$psi, pen, solver,
+                              ct_cols = ct_cols)
+  expect_true(cold$restarted)
+  warm <- spiDE:::.polishGene(y, W, first$alpha, first$psi, pen, solver,
+                              ct_cols = ct_cols, warm = TRUE)
+  expect_false(warm$restarted)
+  expect_true(warm$polished)
+  # the identified coefficients stay put; the unidentified intercept stays
+  # where the converged fit left it rather than at the sane start (-6.9)
+  expect_equal(warm$alpha[-2], first$alpha[-2], tolerance = 1e-4)
+  expect_lt(warm$alpha[2], -10)
+  expect_equal(warm$psi, first$psi)
+})
+
+test_that("forked polish workers run BLAS single-threaded and leave the parent alone", {
+  skip_if_not_installed("RhpcBLASctl")
+  skip_on_os("windows")
+  bp <- BiocParallel::MulticoreParam(2, progressbar = FALSE)
+  skip_if_not(BiocParallel::bpnworkers(bp) == 2)
+  prev <- RhpcBLASctl::blas_get_num_procs()
+  withr::defer(RhpcBLASctl::blas_set_num_threads(prev))
+  RhpcBLASctl::blas_set_num_threads(2L)
+  skip_if_not(RhpcBLASctl::blas_get_num_procs() == 2L)
+
+  got <- unlist(BiocParallel::bplapply(1:2, function(i) {
+    spiDE:::.workerBLAS()
+    RhpcBLASctl::blas_get_num_procs()
+  }, BPPARAM = bp))
+  expect_equal(got, c(1L, 1L))
+  expect_equal(RhpcBLASctl::blas_get_num_procs(), 2L)
+
+  # and .polishFit applies it whenever it has more than one worker
+  d <- toy_design()
+  ng <- 4
+  A0 <- matrix(0, ng, ncol(d$W), dimnames = list(paste0("G", seq_len(ng)),
+                                                 colnames(d$W)))
+  Y <- t(vapply(seq_len(ng), function(g) {
+    mu <- exp(d$W %*% c(1 + 0.2 * g, rep(0.15, 5), rnorm(8, 0, 0.2)))
+    rnbinom(nrow(d$W), mu = as.numeric(mu), size = 1 / 0.4)
+  }, numeric(nrow(d$W))))
+  dimnames(Y) <- list(rownames(A0), NULL)
+  re_group <- ifelse(d$nested, "SampleCellTypeInt", NA_character_)
+  msgs <- capture_messages(
+    spiDE:::.polishFit(Y, d$W, A0, rep(0.4, ng), d$pen, re_group,
+                       BPPARAM = bp, verbose = TRUE))
+  expect_match(paste(msgs, collapse = " "), "one BLAS thread per worker")
+  expect_equal(RhpcBLASctl::blas_get_num_procs(), 2L)
+})

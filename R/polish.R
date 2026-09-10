@@ -158,6 +158,15 @@
 #' @param ct_cols a logical over the columns of \code{W} marking the cell-type
 #'   intercepts (from the design's covtype tags).
 #' @param psi.range the search interval for the profile-ML dispersion.
+#' @param warm logical; \code{a0}/\code{psi0} are a CONVERGED fit at a nearby
+#'   penalty (the re-polish after a variance-component step). A warm polish is
+#'   a few damped Newton steps at the held dispersion: no profile-psi search
+#'   (its optimum moves at second order in the penalty change) and no
+#'   log-mean restart check -- a converged fit legitimately has fitted
+#'   log-means below -10 where a gene is absent from a cell type, and treating
+#'   that like fitNB's degenerate output threw ~100 of 769 genes back to the
+#'   sane start on every re-polish pass at bandwidth 10 on the cohort (3-5 in
+#'   the cold pass), each redoing a full cold polish.
 #' @return a list with \code{alpha}, \code{psi}, \code{loglik},
 #'   \code{iterations}, \code{restarted}, \code{capped}, \code{singular},
 #'   \code{psi_bound} and \code{polished}.
@@ -165,7 +174,7 @@
 #' @noRd
 .polishGene <- function(y, W, a0, psi0, pen, solver, maxit = 50L, tol = 1e-8,
                         ct_cols = NULL, psi.range = c(1e-3, 1e3),
-                        psi.method = c("profile", "moderated")) {
+                        psi.method = c("profile", "moderated"), warm = FALSE) {
   psi.method <- match.arg(psi.method)
   restarted <- FALSE
   singular <- FALSE
@@ -281,6 +290,16 @@
   }
   a <- a0
   psi <- psi0
+  if (warm) {
+    if (!all(is.finite(a))) return(fallback("nonfinite"))
+    f <- newton(a, psi, maxit)
+    if (singular || !all(is.finite(f$a)) || !is.finite(f$ll)) {
+      return(fallback(if (singular) "singular" else "nonfinite"))
+    }
+    return(list(alpha = f$a, psi = psi, loglik = f$ll, iterations = f$it,
+                restarted = FALSE, capped = !f$converged, singular = FALSE,
+                psi_bound = FALSE, polished = TRUE))
+  }
   if (!all(is.finite(a)) || min(as.numeric(W %*% a)) < -10) {
     a <- sane_start()
     restarted <- TRUE
@@ -319,6 +338,26 @@
        psi_bound = psi_bound, polished = TRUE)
 }
 
+#' Run this worker's BLAS single-threaded
+#'
+#' Called inside a \code{bplapply()} worker of a multi-worker BPPARAM. A
+#' forked worker inherits the parent's OpenBLAS thread count, so N workers on
+#' N cores run N x threads BLAS threads: measured at the cohort's design shape
+#' (77,454 cells, 345 dense + 660 nested columns), 4 workers x 4 threads on 4
+#' cores take 2.3-2.6 s per Newton step against 0.24-0.28 s at one thread each,
+#' while one worker gains only 1.5x from 4 threads -- the per-gene gram is
+#' memory-bound. The 0.99.19 cohort runs (4 workers x 8 threads on 8 cores)
+#' spent 245-395 min on the cold polish pass this way. A no-op without
+#' RhpcBLASctl (Suggests), and never called in the parent process.
+#' @return the previous thread count, invisibly (\code{NA} without RhpcBLASctl).
+#' @noRd
+.workerBLAS <- function() {
+  if (!requireNamespace("RhpcBLASctl", quietly = TRUE)) return(invisible(NA_integer_))
+  prev <- RhpcBLASctl::blas_get_num_procs()
+  if (isTRUE(prev > 1L)) RhpcBLASctl::blas_set_num_threads(1L)
+  invisible(prev)
+}
+
 #' Converge every gene's fit, blocked over genes
 #'
 #' @param Y counts (genes x cells).
@@ -332,7 +371,14 @@
 #'   first column.
 #' @param maxit,tol forwarded to \code{.polishGene()}.
 #' @param block.size,BPPARAM gene blocking and dispatch, as in [testSpiDE()].
+#'   With more than one worker, each worker's BLAS is set single-threaded
+#'   (\code{.workerBLAS()}) when RhpcBLASctl is installed: forked workers
+#'   inherit the parent's OpenBLAS thread count, and \code{workers x threads}
+#'   on \code{workers} cores was measured at 9x per Newton step at the
+#'   cohort's design shape (4 x 4 on 4 cores: 2.3-2.6 s against 0.24-0.28 s).
 #' @param verbose logical.
+#' @param warm logical, forwarded to \code{.polishGene()}: a re-polish of a
+#'   converged fit at a nearby penalty.
 #' @return a list with \code{alpha}, \code{psi}, \code{loglik} and a per-gene
 #'   \code{polish} data.frame.
 #' @importFrom BiocParallel bplapply SerialParam bpnworkers
@@ -340,7 +386,7 @@
 .polishFit <- function(Y, W, alpha, psi, pen, re_group = NULL, covtype = NULL,
                        maxit = 50L, tol = 1e-8, block.size = NULL,
                        BPPARAM = BiocParallel::SerialParam(), verbose = FALSE,
-                       psi.method = "profile") {
+                       psi.method = "profile", warm = FALSE) {
   ng <- nrow(alpha)
   if (!length(pen) %in% c(1L, ncol(W))) {
     stop("'lambda.a' must be a single value or one per design column (",
@@ -392,9 +438,12 @@
     block.size <- max(1L, min(2000L, ceiling(ng / nw)))
   }
   blocks <- .chunkGenes(ng, block.size)
+  single_blas <- .singleBLAS(BPPARAM)
   if (verbose) {
-    message(sprintf("  converging %d genes per gene (%d block%s)", ng,
-                    length(blocks), if (length(blocks) == 1L) "" else "s"))
+    message(sprintf("  %s %d genes per gene (%d block%s%s)",
+                    if (warm) "re-polishing" else "converging", ng,
+                    length(blocks), if (length(blocks) == 1L) "" else "s",
+                    if (single_blas) ", one BLAS thread per worker" else ""))
   }
   # A whole-transcriptome polish is hours of work, so report progress rather
   # than going silent after the opening message. Blocks are timed as they
@@ -403,7 +452,7 @@
   t0 <- Sys.time()
   nb <- length(blocks)
   step <- max(1L, nb %/% 20L)
-  res <- BiocParallel::bplapply(seq_along(blocks), function(b) {
+  res <- .bplapplySingleBLAS(seq_along(blocks), function(b) {
     gi <- blocks[[b]]
     # densify the whole block once: Y may be sparse or a DelayedArray, where a
     # per-gene read costs a round trip each time (the invariant is that the
@@ -414,7 +463,7 @@
       g <- gi[[i]]
       .polishGene(as.numeric(Yb[i, ]), W, alpha[g, ], psi[[g]], pen, solver,
                   maxit = maxit, tol = tol, ct_cols = ct_cols,
-                  psi.method = psi.method)
+                  psi.method = psi.method, warm = warm)
     })
     if (verbose && (b %% step == 0L || b == nb)) {
       message(sprintf("    block %d/%d (%.1f min elapsed)", b, nb,
@@ -468,27 +517,117 @@
   if (length(lambda.a) == 1L) rep(lambda.a, p) else lambda.a
 }
 
+#' The variance-component fixed-point iteration, Steffensen-accelerated
+#'
+#' Schall's update is a fixed-point map whose convergence is linear, at a
+#' rate that is the fraction of "missing information" in the random-effect
+#' block: fast for a well-identified per-sample intercept (within 1% of its
+#' limit in two steps on the cohort), slow for the (sample x cell type) block
+#' (ratio 0.5-0.7 per step on the cohort, where a cap of three left it 6-12%
+#' above its extrapolated limit in thirteen of fifteen runs; on the clustered
+#' fixture, whose nested component is truly zero, the map creeps toward the
+#' floor sublinearly). Aitken's delta-squared extrapolation after every two
+#' plain steps (Steffensen's method) reaches a geometric limit exactly and a
+#' near-geometric one in a few steps; it is applied per component, and only
+#' when the last two steps contract monotonically (ratio in (0, 0.95)), so an
+#' oscillating or stalled sequence is left to the plain map. The extrapolated
+#' value is clamped to \code{range}.
+#'
+#' @param tau2 named list, the starting components.
+#' @param step a function of the current components returning the next Schall
+#'   values (same shape), or \code{NULL} to stop and keep the current ones.
+#' @param maxit,tol iteration cap and tolerance on the largest change in
+#'   \code{log(tau2)} across components.
+#' @param accelerate logical; \code{FALSE} is the plain map.
+#' @param range the clamp for an extrapolated value.
+#' @param verbose report each step.
+#' @return a list with \code{tau2}, \code{iterations} (steps taken) and
+#'   \code{converged}.
+#' @noRd
+.tau2Iterate <- function(tau2, step, maxit = 10L, tol = 1e-2, accelerate = TRUE,
+                         range = c(1e-8, 1e4), verbose = FALSE) {
+  x0 <- NULL          # the point two plain steps ago (the Steffensen window)
+  x1 <- NULL
+  converged <- FALSE
+  it <- 0L
+  for (k in seq_len(maxit)) {
+    tau2_new <- step(tau2)
+    if (is.null(tau2_new)) break
+    if (!all(is.finite(unlist(tau2_new)))) {
+      stop("a variance component is non-finite after a Schall step (",
+           paste(sprintf("%s=%s", names(tau2_new),
+                         format(unlist(tau2_new), digits = 3)), collapse = ", "),
+           "). tau2 is shared by every gene of the bandwidth, so the stage ",
+           "stops here rather than carry a bad component into every gene's ",
+           "penalty and reference df; a non-finite coefficient in the polished ",
+           "fit (see @polish) is the usual cause.", call. = FALSE)
+    }
+    it <- k
+    note <- ""
+    if (accelerate && !is.null(x0)) {
+      # x0 -> x1 -> tau2_new are two plain steps from the window's start
+      for (g in names(tau2_new)) {
+        d1 <- x1[[g]] - x0[[g]]
+        d2 <- tau2_new[[g]] - x1[[g]]
+        r <- if (d1 != 0) d2 / d1 else NA_real_
+        if (is.finite(r) && r > 0 && r < 0.95) {
+          ext <- tau2_new[[g]] - d2^2 / (d2 - d1)
+          tau2_new[[g]] <- min(max(ext, range[1]), range[2])
+          note <- " (extrapolated)"
+        }
+      }
+      x0 <- NULL
+      x1 <- NULL
+    } else if (accelerate) {
+      if (is.null(x0)) {
+        x0 <- tau2
+        x1 <- tau2_new
+      }
+    }
+    delta <- max(abs(log(unlist(tau2_new)) - log(unlist(tau2))))
+    if (verbose) {
+      message(sprintf("  tau2 from the converged fit: %s%s",
+                      paste(sprintf("%s=%.3g", names(tau2_new), unlist(tau2_new)),
+                            collapse = ", "), note))
+    }
+    tau2 <- tau2_new
+    if (delta < tol) {
+      converged <- TRUE
+      break
+    }
+  }
+  list(tau2 = tau2, iterations = it, converged = converged)
+}
+
 #' Polish one SpiDEFit in place: converged coefficients, inference invalidated
 #' @noRd
 .polishSpiDEFit <- function(f, Y, lambda.a = 0, maxit = 50L, tol = 1e-8,
                             block.size = NULL,
                             BPPARAM = BiocParallel::SerialParam(),
                             verbose = TRUE, psi.method = "profile",
-                            tau2 = TRUE, tau2.maxit = 3L, tau2.tol = 1e-3,
+                            tau2 = TRUE, tau2.maxit = 10L, tau2.tol = 1e-2,
+                            tau2.accelerate = TRUE,
                             tau2.range = c(1e-8, 1e4)) {
   f <- updateObject(f)
   Yf <- Y[rownames(f@alpha), , drop = FALSE]
   pen <- .polishPenalty(f@penalty, lambda.a, ncol(f@W))
-  run_polish <- function(alpha0, psi0, pen_now) {
+  run_polish <- function(alpha0, psi0, pen_now, warm = FALSE) {
     .polishFit(Yf, f@W, alpha0, psi0, pen_now, f@re_group,
                covtype = as.character(f@covtype),
                maxit = maxit, tol = tol, block.size = block.size,
-               BPPARAM = BPPARAM, verbose = verbose, psi.method = psi.method)
+               BPPARAM = BPPARAM, verbose = verbose, psi.method = psi.method,
+               warm = warm)
   }
   pol <- run_polish(f@alpha, f@psi, pen)
   alpha <- pol$alpha
   dimnames(alpha) <- dimnames(f@alpha)
   psi <- as.numeric(pol$psi)
+  # the diagnostics are the cold pass's (its iterations, restarts and fitNB's
+  # psi); the re-polish passes below add their Newton iterations to one column
+  polish <- pol$polish
+  repolish_it <- integer(nrow(polish))
+  repolish_capped <- logical(nrow(polish))
+  repolish_singular <- logical(nrow(polish))
 
   # The variance components from the CONVERGED fit. The fit's Schall loop
   # reads the shared fit's own coefficients and dispersion, which can sit far
@@ -500,32 +639,43 @@
   # tolerance; the Satterthwaite df follows below.
   mixed <- !is.null(f@re_group) && !is.null(f@tau2) && length(f@tau2)
   if (tau2 && mixed) {
-    tau2_now <- f@tau2
-    for (it in seq_len(tau2.maxit)) {
+    # the components the current coefficients are converged at: the fit's,
+    # after the cold pass. A step only re-polishes when they change.
+    pen_tau2 <- f@tau2
+    repolish_at <- function(tau2_now) {
+      for (g in names(tau2_now)) pen[which(f@re_group == g)] <<- 1 / tau2_now[[g]]
+      pol <- run_polish(alpha, psi, pen, warm = TRUE)
+      alpha <<- pol$alpha
+      dimnames(alpha) <<- dimnames(f@alpha)
+      repolish_it <<- repolish_it + pol$polish$iterations
+      # a warm pass that hit its cap or a singular system leaves that gene at
+      # its previous converged fit; the flags must reach @polish, not only a
+      # verbose message
+      repolish_capped <<- repolish_capped | pol$polish$capped
+      repolish_singular <<- repolish_singular | pol$polish$singular
+      pen_tau2 <<- tau2_now
+    }
+    schall <- function(tau2_now) {
+      if (any(unlist(tau2_now) != unlist(pen_tau2))) repolish_at(tau2_now)
       wbar <- .repWeights(Yf, alpha, f@W, psi, winsor = Inf)
       A <- crossprod(f@W * sqrt(wbar))
       minv <- tryCatch(SpaNorm::invert_mat(A + diag(pen)), error = function(e) NULL)
       if (is.null(minv)) {
         warning("the penalised information at the converged fit is singular; ",
-                "the variance components are left as the fit estimated them",
+                "the variance components are left where the loop reached",
                 call. = FALSE)
-        break
+        return(NULL)
       }
-      tau2_new <- .schallStep(alpha, minv, f@re_group, tau2_now, tau2.range)
-      step <- max(abs(log(unlist(tau2_new)) - log(unlist(tau2_now))))
-      if (verbose) message(sprintf("  tau2 from the converged fit: %s",
-                                   paste(sprintf("%s=%.3g", names(tau2_new), unlist(tau2_new)), collapse = ", ")))
-      tau2_now <- tau2_new
-      for (g in names(tau2_now)) pen[which(f@re_group == g)] <- 1 / tau2_now[[g]]
-      # a step below tolerance leaves the penalty where the coefficients were
-      # converged: no re-polish is needed, and a polish pass is the expensive
-      # part of the stage
-      if (step < tau2.tol) break
-      pol <- run_polish(alpha, psi, pen)
-      alpha <- pol$alpha
-      dimnames(alpha) <- dimnames(f@alpha)
-      psi <- as.numeric(pol$psi)
+      .schallStep(alpha, minv, f@re_group, tau2_now, tau2.range)
     }
+    loop <- .tau2Iterate(f@tau2, schall, maxit = tau2.maxit, tol = tau2.tol,
+                         accelerate = tau2.accelerate, range = tau2.range,
+                         verbose = verbose)
+    tau2_now <- loop$tau2
+    # the coefficients at the REPORTED penalty: the loop ends on a step (or an
+    # extrapolation) it has not re-polished at, so one more warm pass -- a
+    # Newton step or two per gene -- makes alpha, penalty and df consistent
+    if (any(unlist(tau2_now) != unlist(pen_tau2))) repolish_at(tau2_now)
     f@tau2 <- tau2_now
     f@penalty <- pen
     # the reference df reads the components and the penalty
@@ -536,10 +686,19 @@
       tested <- match(names(f@df), colnames(f@W))
       df_new <- if (is.null(minv)) NULL else
         .satterthwaiteDF(A, minv, pen, f@re_group, tau2_now, tested, ncol(Yf), names(f@df))
-      if (!is.null(df_new)) f@df <- df_new
+      if (is.null(df_new)) {
+        warning("the Satterthwaite reference df could not be refreshed at the ",
+                "reported penalty (singular penalised information); it is left ",
+                "as the fit computed it, at the fit's variance components",
+                call. = FALSE)
+      } else {
+        f@df <- df_new
+      }
     }
   }
-  polish <- pol$polish
+  polish$repolish.iterations <- repolish_it
+  polish$repolish.capped <- repolish_capped
+  polish$repolish.singular <- repolish_singular
   rownames(polish) <- rownames(f@alpha)
   f@alpha <- alpha
   f@psi <- psi
@@ -591,7 +750,11 @@
 #'   gene (the \code{converge.maxit} / \code{converge.tol} of [fitSpiDE()]).
 #' @param block.size genes per block; \code{NULL} splits one block per
 #'   \code{BPPARAM} worker.
-#' @param BPPARAM a BiocParallelParam; the stage is blocked over genes.
+#' @param BPPARAM a BiocParallelParam; the stage is blocked over genes. With
+#'   more than one worker, each worker runs its BLAS single-threaded when
+#'   RhpcBLASctl is installed: forked workers inherit the parent's OpenBLAS
+#'   thread count, and oversubscribing the cores that way was measured at 9x
+#'   per Newton step. The parent process is left as it was.
 #' @param verbose report progress.
 #' @param ... further arguments passed to the method.
 #' @param psi how the dispersion is set at the converged mean:
@@ -603,13 +766,28 @@
 #'   clustered fixture), and the variance-component step below needs a
 #'   dispersion consistent with the converged mean.
 #' @param tau2 logical; for a mixed fit, re-estimate the variance components
-#'   from the converged fit (one Schall step on the polished coefficients,
-#'   then a re-polish at the new penalty, iterated), and refresh the
-#'   Satterthwaite reference df. The fit's own loop reads the shared fit's
+#'   from the converged fit (a Schall step on the polished coefficients, then
+#'   a re-polish at the new penalty, iterated to a fixed point), and refresh
+#'   the Satterthwaite reference df. The fit's own loop reads the shared fit's
 #'   unconverged coefficients, which over-estimates the between-sample
-#'   variance badly where that fit is off its optimum.
-#' @param tau2.maxit,tau2.tol iteration cap and relative tolerance on
-#'   \code{log(tau2)} for that re-estimate.
+#'   variance badly where that fit is off its optimum. Only the first pass is
+#'   a cold polish; each re-polish is a few damped Newton steps per gene at
+#'   the held dispersion from the previous converged fit (they agree with a
+#'   cold re-polish to 1e-3 on the coefficients), and the stage ends with one
+#'   more such pass at the reported penalty so coefficients, penalty and df
+#'   are consistent.
+#' @param tau2.maxit,tau2.tol iteration cap and tolerance on the largest
+#'   change in \code{log(tau2)} across components for that re-estimate. The
+#'   tolerance is where the estimates stop mattering downstream: on the
+#'   clustered fixture a 5\% change in a component moves individual
+#'   t-statistics by at most 0.05 (median below 0.001), a tenfold error in a
+#'   near-zero nested component by up to 0.13.
+#' @param tau2.accelerate logical; Steffensen-accelerate the fixed-point
+#'   iteration (Aitken's extrapolation after every two plain steps, per
+#'   component, only while the steps contract monotonically). Schall's map
+#'   converges linearly and slowly for the (sample x cell type) block: capped
+#'   at three plain steps it stopped 6-12\% above its limit on the cohort.
+#'   \code{FALSE} is the plain map.
 #' @return the object with converged \code{alpha} and \code{psi}, per-gene
 #'   diagnostics in \code{@polish}, and inference cleared.
 #' @examples
@@ -628,7 +806,8 @@ setMethod(
   signature = "SpiDEResults",
   definition = function(object, spe, assay = "counts",
                         psi = c("profile", "moderated"), tau2 = TRUE,
-                        tau2.maxit = 3L, tau2.tol = 1e-3, lambda.a = 0,
+                        tau2.maxit = 10L, tau2.tol = 1e-2,
+                        tau2.accelerate = TRUE, lambda.a = 0,
                         maxit = 50L, tol = 1e-8, block.size = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE) {
     object <- updateObject(object)
@@ -649,7 +828,7 @@ setMethod(
                                    object@sigma[i]))
       .polishSpiDEFit(object@fits[[i]], Y, lambda.a = lambda.a,
                       psi.method = psi, tau2 = tau2, tau2.maxit = tau2.maxit,
-                      tau2.tol = tau2.tol,
+                      tau2.tol = tau2.tol, tau2.accelerate = tau2.accelerate,
                       maxit = maxit, tol = tol, block.size = block.size,
                       BPPARAM = BPPARAM, verbose = verbose)
     })

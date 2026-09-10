@@ -130,6 +130,29 @@ report one as the other.
    `longtests/testthat/test-mixed-numerics.R` and `tests/testthat/test-polish-stage.R` hold the
    stage to the planted window.
 
+   **Its cost is one cold pass, and the rest was measured away (2026-09-10).** The 0.99.19
+   cohort runs spent 620-700 min per task on this stage (769 genes, four workers): a cold pass
+   of 245-395 min and three re-polish passes of 110-168 min each. Three causes. (1) **BLAS
+   oversubscription**: the cohort driver sets OpenBLAS to `OMP_NUM_THREADS` for the fit and
+   then forks `NCPU` polish workers, each inheriting that count -- 4 x 8 threads on 8 cores.
+   At the cohort's design shape, 4 workers x 4 threads on 4 cores take 2.3-2.6 s per Newton
+   step against 0.24-0.28 s at one thread each (9x), and one worker gains only 1.5x from four
+   threads (the gram is memory-bound). Both blocked stages (`.polishFit()` and `.blockedInference()`) now dispatch through
+   `.bplapplySingleBLAS()`, which sets one BLAS thread inside each worker (RhpcBLASctl in
+   Suggests); any driver that forks workers must do the same for code that predates it. (2) **The re-polish is warm** (`.polishGene(warm =
+   TRUE)`): a few Newton steps at the held dispersion, no psi search, no restart check (that
+   check threw ~100 of 769 genes back to the sane start on every re-polish at bandwidth 10).
+   (3) **The loop converges**: Schall's map is linear and slow for the nested block (6-12% above
+   its limit after the old cap of three, in 13 of 15 runs), so `.tau2Iterate()` is
+   Steffensen-accelerated with `tau2.maxit = 10`, `tau2.tol = 1e-2`, and a final warm pass at
+   the reported penalty. The tolerance is set where the estimate stops mattering: a 5% change
+   in a component moves individual `t` by at most 0.05, a tenfold error in a near-zero nested
+   one by 0.13. A fixed-point stop does not exist for a component that is truly zero (the
+   default `.toyClustered()`), where the map creeps toward the floor sublinearly and the cap
+   decides; `.toyClustered(sd_nested = 0.3)` gives an interior one. The gene-subset estimate
+   of `tau2` (one scalar per component, a mean over genes) is the next lever at transcriptome
+   scale and is not built. Record: `research/fdr-ordering/FINDINGS.md`, 2026-09-10.
+
 3. **Inference + combination + FDR** — `testSpiDE()` (`R/testSpiDE.R`), which chains three internal
    stages:
    - `.blockedInference()` (`R/inference.R`) — per gene *block* (genes are independent post-fit, so

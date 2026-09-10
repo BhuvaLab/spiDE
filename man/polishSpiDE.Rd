@@ -14,8 +14,9 @@ polishSpiDE(object, spe, ...)
   assay = "counts",
   psi = c("profile", "moderated"),
   tau2 = TRUE,
-  tau2.maxit = 3L,
-  tau2.tol = 0.001,
+  tau2.maxit = 10L,
+  tau2.tol = 0.01,
+  tau2.accelerate = TRUE,
   lambda.a = 0,
   maxit = 50L,
   tol = 1e-08,
@@ -44,14 +45,30 @@ clustered fixture), and the variance-component step below needs a
 dispersion consistent with the converged mean.}
 
 \item{tau2}{logical; for a mixed fit, re-estimate the variance components
-from the converged fit (one Schall step on the polished coefficients,
-then a re-polish at the new penalty, iterated), and refresh the
-Satterthwaite reference df. The fit's own loop reads the shared fit's
+from the converged fit (a Schall step on the polished coefficients, then
+a re-polish at the new penalty, iterated to a fixed point), and refresh
+the Satterthwaite reference df. The fit's own loop reads the shared fit's
 unconverged coefficients, which over-estimates the between-sample
-variance badly where that fit is off its optimum.}
+variance badly where that fit is off its optimum. Only the first pass is
+a cold polish; each re-polish is a few damped Newton steps per gene at
+the held dispersion from the previous converged fit (they agree with a
+cold re-polish to 1e-3 on the coefficients), and the stage ends with one
+more such pass at the reported penalty so coefficients, penalty and df
+are consistent.}
 
-\item{tau2.maxit, tau2.tol}{iteration cap and relative tolerance on
-\code{log(tau2)} for that re-estimate.}
+\item{tau2.maxit, tau2.tol}{iteration cap and tolerance on the largest
+change in \code{log(tau2)} across components for that re-estimate. The
+tolerance is where the estimates stop mattering downstream: on the
+clustered fixture a 5\\% change in a component moves individual
+t-statistics by at most 0.05 (median below 0.001), a tenfold error in a
+near-zero nested component by up to 0.13.}
+
+\item{tau2.accelerate}{logical; Steffensen-accelerate the fixed-point
+iteration (Aitken's extrapolation after every two plain steps, per
+component, only while the steps contract monotonically). Schall's map
+converges linearly and slowly for the (sample x cell type) block: capped
+at three plain steps it stopped 6-12\\% above its limit on the cohort.
+\code{FALSE} is the plain map.}
 
 \item{lambda.a}{the ridge the fit was made with, for a fixed-effects fit
 (\code{random = "none"}), which does not record it; ignored for a mixed
@@ -63,7 +80,11 @@ gene (the \code{converge.maxit} / \code{converge.tol} of \code{\link[=fitSpiDE]{
 \item{block.size}{genes per block; \code{NULL} splits one block per
 \code{BPPARAM} worker.}
 
-\item{BPPARAM}{a BiocParallelParam; the stage is blocked over genes.}
+\item{BPPARAM}{a BiocParallelParam; the stage is blocked over genes. With
+more than one worker, each worker runs its BLAS single-threaded when
+RhpcBLASctl is installed: forked workers inherit the parent's OpenBLAS
+thread count, and oversubscribing the cores that way was measured at 9x
+per Newton step. The parent process is left as it was.}
 
 \item{verbose}{report progress.}
 }

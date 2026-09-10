@@ -19,6 +19,33 @@
   split(seq_len(n), ceiling(seq_len(n) / block.size))
 }
 
+#' Should multi-worker dispatch run each worker's BLAS single-threaded?
+#' @noRd
+.singleBLAS <- function(BPPARAM) {
+  BiocParallel::bpnworkers(BPPARAM) > 1L &&
+    requireNamespace("RhpcBLASctl", quietly = TRUE)
+}
+
+#' bplapply() with single-threaded BLAS inside multi-worker dispatch
+#'
+#' A forked worker inherits the parent's OpenBLAS thread count, so N workers
+#' on N cores run N x threads BLAS threads; measured at the cohort's design
+#' shape, 4 workers x 4 threads on 4 cores take 2.3-2.6 s per Newton step
+#' against 0.24-0.28 s at one thread each (see \code{.workerBLAS()}). Both
+#' blocked stages -- the polish and the inference, whose per-gene gram is the
+#' same BLAS work -- dispatch through this wrapper. Serial dispatch, and a
+#' session without RhpcBLASctl, are plain \code{bplapply()}.
+#' @noRd
+.bplapplySingleBLAS <- function(X, FUN, ..., BPPARAM = BiocParallel::SerialParam()) {
+  if (!.singleBLAS(BPPARAM)) {
+    return(BiocParallel::bplapply(X, FUN, ..., BPPARAM = BPPARAM))
+  }
+  BiocParallel::bplapply(X, function(x, ...) {
+    .workerBLAS()
+    FUN(x, ...)
+  }, ..., BPPARAM = BPPARAM)
+}
+
 #' Apply a t tail to a statistic matrix, with per-column df
 #'
 #' \code{df} may be a scalar (one df for all columns),
@@ -607,7 +634,7 @@
     ql_table <- SpaNorm::qlMomentTable(
       lmu_range = c(log(.MU_FLOOR), log(2 * max(Y) + 2)),
       lphi_range = log(range(psi[is.finite(psi) & psi > 0])))
-    ql_parts <- BiocParallel::bplapply(blocks, function(gi) {
+    ql_parts <- .bplapplySingleBLAS(blocks, function(gi) {
       Yb <- as.matrix(Y[gi, , drop = FALSE])
       if (gpu_active) {
         Yb_q <- SpaNorm::toGPUMatrix(Yb, backend = backend)
@@ -630,7 +657,7 @@
     ql_scale <- rep(NA_real_, ng); ql_scale[ok] <- sq$var.post
   }
 
-  block_res <- BiocParallel::bplapply(blocks, function(gi) {
+  block_res <- .bplapplySingleBLAS(blocks, function(gi) {
     Yb <- as.matrix(Y[gi, , drop = FALSE])
     alpha_block <- alpha_full[gi, , drop = FALSE]
     psib <- psi[gi]
