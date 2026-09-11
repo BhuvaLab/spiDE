@@ -764,7 +764,13 @@
 #'   coefficients under it. The moderated value is whatever the shared fit
 #'   left, which can be far from the gene's own (fifteen times, on the
 #'   clustered fixture), and the variance-component step below needs a
-#'   dispersion consistent with the converged mean.
+#'   dispersion consistent with the converged mean. The two rules are
+#'   indistinguishable on the synthetic benchmark's null and power and in the
+#'   cohort's calls (\code{vignette("spiDE-calibration")}), and
+#'   \code{"moderated"} is the cheaper one: it skips the dispersion search
+#'   and the two re-polishes it triggers, about a fifth to a third of the
+#'   stage. Both rules' timings and results are in the benchmark's timing
+#'   and calibration tables, measured from one fit polished both ways.
 #' @param tau2 logical; for a mixed fit, re-estimate the variance components
 #'   from the converged fit (a Schall step on the polished coefficients, then
 #'   a re-polish at the new penalty, iterated to a fixed point), and refresh

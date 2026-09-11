@@ -45,6 +45,11 @@
   the "polished / fitNB" ratio the cohort driver reports read about 1.
 * `.toyClustered(sd_nested = )` plants a (sample x cell type) intercept, so a
   fixture can have an interior nested variance component.
+* The polish's two dispersion rules are documented with their cost
+  (`polishSpiDE(psi = "moderated")` skips the dispersion search and the two
+  re-polishes it triggers) and benchmarked from one fit polished both ways:
+  the harness times the polish on its own and the timing table carries one
+  row per arm and size (`research/config.R`, arm `polish-rules`).
 
 # spiDE 0.99.19
 
