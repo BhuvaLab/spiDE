@@ -317,7 +317,7 @@ cohort's full transcriptome their per-gene calibrated statistics agree at
 $r = 0.999$ over two million triplets with the same six exceedances at the
 calibrated threshold. The difference is cost. The polish is the whole cost
 of the pipeline, three to six times the fit at ten thousand genes on one
-core, and the moderated rule saves 13 to 18% of it here (at 24,000 cells:
+core, and the moderated rule saves 13 to 19% of it here (at 24,000 cells:
 fit 17.7 min, polish 100.9 against 87.3, inference 4.2) and half of it on
 the cohort's bright genes (651 against 332 minutes on 64 workers).
 
