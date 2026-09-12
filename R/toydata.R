@@ -411,7 +411,7 @@
 #' @noRd
 .toyClustered <- function(n_samples = 8, n_per = 80, n_genes = 30, field = 500,
                           sd.lib.sample = 0.15, sd.lib.celltype = 0.35,
-                          sd_patient = 0.7, seed = 1) {
+                          sd_patient = 0.7, sd_nested = 0, seed = 1) {
   .localSeed(seed)
   gene_names <- sprintf("G%d", seq_len(n_genes))
   sample_ids <- sprintf("S%d", seq_len(n_samples))
@@ -440,6 +440,16 @@
   u <- matrix(rnorm(n_genes * n_samples, 0, sd_patient), nrow = n_genes,
               dimnames = list(gene_names, sample_ids))
   log_effect <- u[, cd$sample_id, drop = FALSE]
+  # an optional per-(gene, sample, cell type) intercept on top: the nested
+  # variance component the (sample x cell type) block estimates. Drawn only
+  # when asked for, so the default fixture's random stream is unchanged.
+  if (sd_nested > 0) {
+    key <- paste(cd$sample_id, cd$cell_type, sep = ":")
+    keys <- sort(unique(key))
+    v <- matrix(rnorm(n_genes * length(keys), 0, sd_nested), nrow = n_genes,
+                dimnames = list(gene_names, keys))
+    log_effect <- log_effect + v[, key, drop = FALSE]
+  }
 
   lib.size <- .simLibSize(cd$sample_id, cd$cell_type,
                           sd.sample = sd.lib.sample,

@@ -130,6 +130,29 @@ report one as the other.
    `longtests/testthat/test-mixed-numerics.R` and `tests/testthat/test-polish-stage.R` hold the
    stage to the planted window.
 
+   **Its cost is one cold pass, and the rest was measured away (2026-09-10).** The 0.99.19
+   cohort runs spent 620-700 min per task on this stage (769 genes, four workers): a cold pass
+   of 245-395 min and three re-polish passes of 110-168 min each. Three causes. (1) **BLAS
+   oversubscription**: the cohort driver sets OpenBLAS to `OMP_NUM_THREADS` for the fit and
+   then forks `NCPU` polish workers, each inheriting that count -- 4 x 8 threads on 8 cores.
+   At the cohort's design shape, 4 workers x 4 threads on 4 cores take 2.3-2.6 s per Newton
+   step against 0.24-0.28 s at one thread each (9x), and one worker gains only 1.5x from four
+   threads (the gram is memory-bound). Both blocked stages (`.polishFit()` and `.blockedInference()`) now dispatch through
+   `.bplapplySingleBLAS()`, which sets one BLAS thread inside each worker (RhpcBLASctl in
+   Suggests); any driver that forks workers must do the same for code that predates it. (2) **The re-polish is warm** (`.polishGene(warm =
+   TRUE)`): a few Newton steps at the held dispersion, no psi search, no restart check (that
+   check threw ~100 of 769 genes back to the sane start on every re-polish at bandwidth 10).
+   (3) **The loop converges**: Schall's map is linear and slow for the nested block (6-12% above
+   its limit after the old cap of three, in 13 of 15 runs), so `.tau2Iterate()` is
+   Steffensen-accelerated with `tau2.maxit = 10`, `tau2.tol = 1e-2`, and a final warm pass at
+   the reported penalty. The tolerance is set where the estimate stops mattering: a 5% change
+   in a component moves individual `t` by at most 0.05, a tenfold error in a near-zero nested
+   one by 0.13. A fixed-point stop does not exist for a component that is truly zero (the
+   default `.toyClustered()`), where the map creeps toward the floor sublinearly and the cap
+   decides; `.toyClustered(sd_nested = 0.3)` gives an interior one. The gene-subset estimate
+   of `tau2` (one scalar per component, a mean over genes) is the next lever at transcriptome
+   scale and is not built. Record: `research/fdr-ordering/FINDINGS.md`, 2026-09-10.
+
 3. **Inference + combination + FDR** — `testSpiDE()` (`R/testSpiDE.R`), which chains three internal
    stages:
    - `.blockedInference()` (`R/inference.R`) — per gene *block* (genes are independent post-fit, so
@@ -455,7 +478,7 @@ FDR -- and assert the statistic instead.
 
 Three things to know about the implementation. The polish stage re-estimates the dispersion per
 gene by profile ML (`psi = "profile"`, the default) and can keep edgeR's cross-gene moderated one
-(`psi = "moderated"`, a third cheaper); the two are indistinguishable on the null and in the
+(`psi = "moderated"`, the cheaper rule); the two are indistinguishable on the null and in the
 cohort's calls, but the moderated value is whatever the shared fit left (fifteen times the
 converged value on `.toyClustered()`), and the variance-component step needs the converged one. The nested indicator block
 is absorbed by a Schur complement inside `.newtonSolver()`, so the per-gene Newton cost is one
@@ -580,6 +603,23 @@ machinery lives in SpaNorm (>= 1.7.10): `nbUnitDeviance()`, `nbDevianceMoments()
 per gene block; the rest is elementwise), oracle-tested there against `edgeR::glmQLFit()`; spiDE
 only wires the pre-pass over gene blocks and `limma::squeezeVar()`. A fixed-effects unpolished fit
 (`random = "none"`, no `polishSpiDE()`) keeps its legacy `psi` scale with a message.
+
+**The two rules re-measured from one fit under the 0.99.20 polish (2026-09-12, arm
+`polish-rules`, `research/fdr-ordering/FINDINGS.md`).** Equivalent: null 0.058 / 0.060
+(profile / moderated) at S >= 10 and 0.055 / 0.052 at S = 4, TPR 0.379 / 0.366 with FDP
+0.014 / 0.019 at S = 30; on the cohort's full transcriptome the per-gene calibrated
+statistics agree at r = 0.999 with the same six exceedances at the threshold (a "6 vs 1"
+call count was one extra null exceedance in five grids, not power). The moderated rule saves
+13-19% of the polish on the benchmark (100.9 vs 87.3 min at 24,000 cells, where the fit is
+17.7 and inference 4.2) and half on the cohort (651 vs 332 min on 64 workers), so the
+default-rule choice is a cost choice; the fixture's "moderated psi 15x off" is a small-fixture
+artefact that neither dataset reproduces (tau2 within 3% for the per-sample component and 7% for the nested one). **Classic BH over all triplets
+does not reclaim the cascade's conservatism**: on identical fits the cascade is slightly less
+conservative and slightly more powerful at every nominal level (S = 30: 0.379 / 0.014 vs
+0.371 / 0.011 at 0.05; 0.476 / 0.101 vs 0.461 / 0.062 at 0.20). The realised FDP sits far
+below nominal under both because the QL-scaled p-values are conservative; any recall lever
+is in the p-values, not the multiplicity step. Tables `timing` (per design, with
+`polish_seconds`) and `fdr_procedure` in the canonical set.
 
 **The legacy niche-only design's higher simulation recall is a different estimand, not a better
 test** (`research/notes/design_power_decomposition.R`: one power dataset under four libraries,

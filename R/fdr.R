@@ -191,7 +191,7 @@
     bandwidth.max = numeric(), coef = numeric(), t = numeric(),
     DirectionGene = character(), DirectionIndex = character(),
     DirectionNiche = character(), fdr.gene = numeric(),
-    fdr.index = numeric(), fdr.niche = numeric(),
+    fdr.index = numeric(), fdr.niche = numeric(), p.niche = numeric(),
     stringsAsFactors = FALSE
   )
 
@@ -208,7 +208,7 @@
   out <- out[, c(
     "gene", "ct_index", "ct_niche", "bandwidth.max", "coef", "t",
     "DirectionGene", "DirectionIndex", "DirectionNiche",
-    "fdr.gene", "fdr.index", "fdr.niche"
+    "fdr.gene", "fdr.index", "fdr.niche", "p.niche"
   )]
   if (two.sided) {
     # gene- and index-level direction from the signs of that unit's significant

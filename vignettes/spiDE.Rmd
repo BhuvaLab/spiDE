@@ -150,7 +150,9 @@ The shared fit is one IRLS loop over all genes with one gene-averaged cell
 weight vector, which is what makes a whole-transcriptome fit affordable; for
 bright, cell-type-restricted genes it can stop short of that gene's own
 optimum. `polishSpiDE()` converges each gene by damped Newton on its own
-penalised likelihood, re-estimates its dispersion there (`psi = "profile"`),
+penalised likelihood, re-estimates its dispersion there (`psi = "profile"`;
+`psi = "moderated"` keeps the shared fit's value and is the cheaper rule, with
+the same calibration and power — see `vignette("spiDE-calibration")`),
 and, for a mixed fit, re-estimates the variance components from the
 converged coefficients (`tau2 = TRUE`) and refreshes the reference df. It
 returns the object with inference cleared, so `testSpiDE()` runs on it:

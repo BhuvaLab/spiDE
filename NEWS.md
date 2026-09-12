@@ -1,3 +1,72 @@
+# spiDE 0.99.20
+
+## Changes
+
+* **The polish stage costs one cold pass, not four.** On the 0.99.19 cohort
+  runs (769 genes, four workers) the stage took 620-700 min: a cold pass of
+  245-395 min and three re-polish passes of 110-168 min each, and four of
+  fifteen tasks hit their 12 h limit inside the fourth pass. Three causes,
+  each measured, each fixed:
+  * **Forked polish workers now run BLAS single-threaded.** A forked worker
+    inherits the parent's OpenBLAS thread count, so four workers on eight
+    cores ran 32 threads. At the cohort's design shape, four workers with
+    four threads each on four cores take 2.3-2.6 s per Newton step against
+    0.24-0.28 s with one thread each (9x), while a single worker gains only
+    1.5x from four threads. Both blocked stages, the polish and the inference (whose per-gene
+    gram is the same BLAS work), now dispatch through a wrapper that sets
+    one BLAS thread inside each worker when RhpcBLASctl (now in Suggests)
+    is installed; the parent process is left alone.
+  * **The re-polish after a variance-component step is warm.** It starts
+    from a converged fit at a nearby penalty, so it is a few damped Newton
+    steps per gene at the held dispersion: no profile-psi search, and no
+    log-mean restart check, which had thrown about 100 of 769 genes back to
+    the sane start on every re-polish pass at bandwidth 10 (3-5 in the cold
+    pass). It agrees with a cold re-polish to 1e-3 on the coefficients; on
+    the clustered fixture the variance components agree to four digits and
+    the t-statistics to 0.01, and re-profiling the held dispersion at the
+    end of the loop would move them by at most 0.014.
+  * **The variance-component loop converges instead of stopping at a cap.**
+    Schall's update is a linearly convergent fixed-point map, and with the
+    cap of three the (sample x cell type) component was still 6-12% above its
+    extrapolated limit in thirteen of fifteen cohort runs (the per-sample one
+    is within 1% after two steps). That matters: a tenfold error in a
+    near-zero nested component moves individual t-statistics by up to 0.13.
+    The loop is now Steffensen-accelerated (Aitken extrapolation after every
+    two plain steps, per component, only while the steps contract), with
+    `tau2.maxit = 10`, `tau2.tol = 1e-2` on `log(tau2)` and
+    `tau2.accelerate = TRUE` (`FALSE` is the plain map), and it ends with one
+    more warm pass at the reported penalty so coefficients, penalty and df
+    are consistent.
+* `@polish` gains `repolish.iterations`, the Newton steps spent in the
+  re-polish passes, `repolish.capped` and `repolish.singular` (a warm pass
+  that hit its cap or a singular system, which leaves the gene at its previous
+  converged fit), and `psi_fitnb` is `fitNB`'s dispersion again: the
+  0.99.19 loop handed each re-polish the previous pass's polished value, so
+  the "polished / fitNB" ratio the cohort driver reports read about 1.
+* `.toyClustered(sd_nested = )` plants a (sample x cell type) intercept, so a
+  fixture can have an interior nested variance component.
+* From the review of the loop: its tolerance is an estimated distance to the
+  fixed point rather than a step size (a step-size rule declares convergence
+  ten times early on a slowly contracting map); `` carries the loop's
+  `iterations`, `converged` and per-step `trace` as the attribute `"tau2"`;
+  under the profile rule the stage ends with one profile pass at the
+  reported coefficients; a singular final information degrades the reference
+  df to the between-sample scalar, as the fit does; the cold pass no longer
+  restarts a gene whose only fitted log-means below -10 are at zero-count
+  cells; and `results()` keeps the triplet p-value (`p.niche`) beside its FDR
+  columns. RhpcBLASctl moved to Imports so the single-threaded workers do
+  not depend on an optional package.
+* The polish's two dispersion rules are documented with their cost
+  (`polishSpiDE(psi = "moderated")` skips the dispersion search and the two
+  re-polishes it triggers) and benchmarked from one fit polished both ways:
+  the harness times the polish on its own and the timing table carries one
+  row per arm and size (`research/config.R`, arm `polish-rules`). Measured:
+  the rules are equivalent on null and power, the moderated rule saves 13-19%
+  of the polish on the benchmark and half on the cohort, and classic BH over
+  all triplet tests does not reclaim the cascade's conservatism (the cascade
+  is slightly the more powerful at every level); see
+  `vignette("spiDE-calibration")`.
+
 # spiDE 0.99.19
 
 ## Changes

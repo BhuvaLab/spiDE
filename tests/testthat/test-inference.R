@@ -353,3 +353,27 @@ test_that("absorbing the nested block gives identical inference to the dense gra
   expect_equal(absorbed$p.pos, dense$p.pos, tolerance = 1e-8)
   expect_equal(absorbed$se_pat, dense$se_pat, tolerance = 1e-8)
 })
+
+test_that(".bplapplySingleBLAS runs forked workers single-threaded and serial dispatch untouched", {
+  # forked workers inherit the parent's OpenBLAS thread count, and N workers x
+  # T threads on N cores was measured at 9x per Newton step at the cohort's
+  # design shape. Both blocked stages dispatch through this wrapper.
+  skip_if_not_installed("RhpcBLASctl")
+  skip_on_os("windows")
+  bp <- BiocParallel::MulticoreParam(2, progressbar = FALSE)
+  skip_if_not(BiocParallel::bpnworkers(bp) == 2)
+  prev <- RhpcBLASctl::blas_get_num_procs()
+  withr::defer(RhpcBLASctl::blas_set_num_threads(prev))
+  RhpcBLASctl::blas_set_num_threads(2L)
+  skip_if_not(RhpcBLASctl::blas_get_num_procs() == 2L)
+
+  threads <- function(i) RhpcBLASctl::blas_get_num_procs()
+  expect_equal(unlist(spiDE:::.bplapplySingleBLAS(1:2, threads, BPPARAM = bp)), c(1L, 1L))
+  expect_equal(unlist(spiDE:::.bplapplySingleBLAS(1:2, threads,
+                                                  BPPARAM = BiocParallel::SerialParam())),
+               c(2L, 2L))
+  expect_equal(RhpcBLASctl::blas_get_num_procs(), 2L)
+  # extra arguments reach FUN
+  expect_equal(unlist(spiDE:::.bplapplySingleBLAS(1:2, function(i, k) i * k, BPPARAM = bp,
+                                                  k = 10L)), c(10L, 20L))
+})

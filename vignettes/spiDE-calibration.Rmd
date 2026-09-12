@@ -292,6 +292,46 @@ in two thirds of the wall time (178 against 266 minutes) and the QL pre-pass
 adds nothing measurable at cohort scale (about 5% at $S \ge 16$ on the
 benchmark, more only on tiny designs). Both are the defaults from 0.99.18.
 
+## The polish's two dispersion rules, timed, and the FDR procedure (0.99.20)
+
+The polish stage of 0.99.20 converges each gene once from `fitNB`'s output
+and then re-polishes warm after every variance-component step, with the loop
+Steffensen-accelerated to its fixed point rather than capped. Its dispersion
+rule is `psi = "profile"` (re-estimated by profile likelihood at the
+converged mean, the default) or `psi = "moderated"` (`fitNB`'s cross-gene
+value kept, which skips the profile search and the two re-polishes it
+triggers). The two were measured from **one fit per simulated dataset**,
+polished both ways, so the rule is the only difference (arm `polish-rules`,
+40 replicates per point, random intercept, Satterthwaite df):
+
+| $S$ | null type-I, profile / moderated | TPR at FDR 0.05 | realised FDP | raw power |
+|---|---|---|---|---|
+| 4 | 0.055 / 0.052 | 0.001 / 0.001 | 0.033 / 0.042 | 0.247 / 0.228 |
+| 10 | 0.059 / 0.060 | 0.069 / 0.062 | 0.014 / 0.012 | 0.437 / 0.428 |
+| 16 | 0.058 / 0.060 | 0.200 / 0.193 | 0.012 / 0.015 | 0.548 / 0.538 |
+| 30 | 0.058 / 0.060 | 0.379 / 0.366 | 0.014 / 0.019 | 0.681 / 0.675 |
+
+They are equivalent within the study's resolution (standard errors of
+0.002 to 0.003 on the null and about 0.01 on recall), and on the real
+cohort's full transcriptome their per-gene calibrated statistics agree at
+$r = 0.999$ over two million triplets with the same six exceedances at the
+calibrated threshold. The difference is cost. The polish is the whole cost
+of the pipeline, three to six times the fit at ten thousand genes on one
+core, and the moderated rule saves 13 to 19% of it here (at 24,000 cells:
+fit 17.7 min, polish 100.9 against 87.3, inference 4.2) and half of it on
+the cohort's bright genes (651 against 332 minutes on 64 workers).
+
+Every fit of that arm was also scored with classic Benjamini–Hochberg over
+all triplet tests, from the same $t$-statistics and reference df, beside the
+hierarchical cascade `testSpiDE()` uses. At $S = 30$ under the profile rule
+the cascade gives TPR 0.379 and realised FDP 0.014 at nominal 0.05 against
+0.371 and 0.011 for classic BH, and 0.476 / 0.101 against 0.461 / 0.062 at
+nominal 0.20: the cascade is the slightly less conservative and slightly
+more powerful of the two at every level. Both sit far below the nominal
+line, so the conservatism seen since 0.99.18 is a property of the
+QL-scaled p-values, not of the multiplicity step; a different correction
+does not reclaim it.
+
 ## The `CellType:condition` term, and a design that looks more powerful
 
 The design spiDE shipped before 0.99.7 had no `CellType:condition` column,

@@ -14,8 +14,9 @@ polishSpiDE(object, spe, ...)
   assay = "counts",
   psi = c("profile", "moderated"),
   tau2 = TRUE,
-  tau2.maxit = 3L,
-  tau2.tol = 0.001,
+  tau2.maxit = 10L,
+  tau2.tol = 0.01,
+  tau2.accelerate = TRUE,
   lambda.a = 0,
   maxit = 50L,
   tol = 1e-08,
@@ -39,19 +40,40 @@ An object without per-gene GLM fits is refused.}
 profile maximum likelihood at the converged mean; \code{"moderated"}
 keeps \code{fitNB}'s cross-gene moderated value and converges only the
 coefficients under it. The moderated value is whatever the shared fit
-left, which can be far from the gene's own (fifteen times, on the
-clustered fixture), and the variance-component step below needs a
-dispersion consistent with the converged mean.}
+left, which can be far from the gene's own on a small fixture. The two
+rules were measured from one fit polished both ways, on the synthetic
+benchmark and on a real cohort, and are equivalent in calibration and
+power; \code{"moderated"} is the cheaper one, since it skips the
+dispersion search and the two re-polishes it triggers. The numbers are in
+\code{vignette("spiDE-calibration")}. Under \code{"profile"} the stage
+ends with one profile pass at the reported coefficients, so \code{@psi}
+is the optimum at the mean the stage reports.}
 
 \item{tau2}{logical; for a mixed fit, re-estimate the variance components
-from the converged fit (one Schall step on the polished coefficients,
-then a re-polish at the new penalty, iterated), and refresh the
-Satterthwaite reference df. The fit's own loop reads the shared fit's
+from the converged fit (a Schall step on the polished coefficients, then
+a re-polish at the new penalty, iterated to a fixed point), and refresh
+the Satterthwaite reference df. The fit's own loop reads the shared fit's
 unconverged coefficients, which over-estimates the between-sample
-variance badly where that fit is off its optimum.}
+variance badly where that fit is off its optimum. Only the first pass is
+a cold polish; each re-polish is a few damped Newton steps per gene at
+the held dispersion from the previous converged fit (they agree with a
+cold re-polish to 1e-3 on the coefficients), and the stage ends with one
+more such pass at the reported penalty so coefficients, penalty and df
+are consistent.}
 
-\item{tau2.maxit, tau2.tol}{iteration cap and relative tolerance on
-\code{log(tau2)} for that re-estimate.}
+\item{tau2.maxit, tau2.tol}{iteration cap and tolerance on the largest
+change in \code{log(tau2)} across components for that re-estimate. The
+tolerance is where the estimates stop mattering downstream: on the
+clustered fixture a 5\\% change in a component moves individual
+t-statistics by at most 0.05 (median below 0.001), a tenfold error in a
+near-zero nested component by up to 0.13.}
+
+\item{tau2.accelerate}{logical; Steffensen-accelerate the fixed-point
+iteration (Aitken's extrapolation after every two plain steps, per
+component, only while the steps contract monotonically). Schall's map
+converges linearly and slowly for the (sample x cell type) block: capped
+at three plain steps it stopped 6-12\\% above its limit on the cohort.
+\code{FALSE} is the plain map.}
 
 \item{lambda.a}{the ridge the fit was made with, for a fixed-effects fit
 (\code{random = "none"}), which does not record it; ignored for a mixed
@@ -63,13 +85,23 @@ gene (the \code{converge.maxit} / \code{converge.tol} of \code{\link[=fitSpiDE]{
 \item{block.size}{genes per block; \code{NULL} splits one block per
 \code{BPPARAM} worker.}
 
-\item{BPPARAM}{a BiocParallelParam; the stage is blocked over genes.}
+\item{BPPARAM}{a BiocParallelParam; the stage is blocked over genes. With
+more than one worker, each worker runs its BLAS single-threaded when
+RhpcBLASctl is installed (forked workers inherit the parent's thread
+count, and oversubscribing the cores that way costs an order of
+magnitude per gene); the parent process is left as it was.}
 
 \item{verbose}{report progress.}
 }
 \value{
 the object with converged \code{alpha} and \code{psi}, per-gene
-diagnostics in \code{@polish}, and inference cleared.
+diagnostics in \code{@polish} (the cold pass's \code{iterations},
+\code{restarted}, \code{capped}, \code{singular}, \code{psi_bound},
+\code{polished} and \code{psi_fitnb}, plus \code{repolish.iterations},
+\code{repolish.capped} and \code{repolish.singular} accumulated over the
+warm passes, and for a mixed fit the attribute \code{"tau2"}: the loop's
+\code{iterations}, \code{converged} and per-step \code{trace}), and
+inference cleared.
 }
 \description{
 The stage between \code{\link[=fitSpiDE]{fitSpiDE()}} and \code{\link[=testSpiDE]{testSpiDE()}} (the pipeline is fit ->
