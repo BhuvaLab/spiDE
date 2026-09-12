@@ -478,7 +478,7 @@ FDR -- and assert the statistic instead.
 
 Three things to know about the implementation. The polish stage re-estimates the dispersion per
 gene by profile ML (`psi = "profile"`, the default) and can keep edgeR's cross-gene moderated one
-(`psi = "moderated"`, a third cheaper); the two are indistinguishable on the null and in the
+(`psi = "moderated"`, the cheaper rule); the two are indistinguishable on the null and in the
 cohort's calls, but the moderated value is whatever the shared fit left (fifteen times the
 converged value on `.toyClustered()`), and the variance-component step needs the converged one. The nested indicator block
 is absorbed by a Schur complement inside `.newtonSolver()`, so the per-gene Newton cost is one

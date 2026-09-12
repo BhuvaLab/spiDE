@@ -45,6 +45,17 @@
   the "polished / fitNB" ratio the cohort driver reports read about 1.
 * `.toyClustered(sd_nested = )` plants a (sample x cell type) intercept, so a
   fixture can have an interior nested variance component.
+* From the review of the loop: its tolerance is an estimated distance to the
+  fixed point rather than a step size (a step-size rule declares convergence
+  ten times early on a slowly contracting map); `` carries the loop's
+  `iterations`, `converged` and per-step `trace` as the attribute `"tau2"`;
+  under the profile rule the stage ends with one profile pass at the
+  reported coefficients; a singular final information degrades the reference
+  df to the between-sample scalar, as the fit does; the cold pass no longer
+  restarts a gene whose only fitted log-means below -10 are at zero-count
+  cells; and `results()` keeps the triplet p-value (`p.niche`) beside its FDR
+  columns. RhpcBLASctl moved to Imports so the single-threaded workers do
+  not depend on an optional package.
 * The polish's two dispersion rules are documented with their cost
   (`polishSpiDE(psi = "moderated")` skips the dispersion search and the two
   re-polishes it triggers) and benchmarked from one fit polished both ways:

@@ -34,6 +34,7 @@ biocViews: Software, Spatial, DifferentialExpression, GeneExpression,
 Depends:
     R (>= 4.5.0)
 Imports:
+    RhpcBLASctl,
     BiocGenerics,
     SpaNorm (>= 1.7.10),
     SpatialExperiment,
@@ -64,7 +65,6 @@ Suggests:
     nlme,
     lme4,
     lmerTest,
-    RhpcBLASctl,
     withr
 Remotes:
     bhuvad/SpaNorm

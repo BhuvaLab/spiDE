@@ -21,27 +21,45 @@
 
 #' Should multi-worker dispatch run each worker's BLAS single-threaded?
 #' @noRd
-.singleBLAS <- function(BPPARAM) {
-  BiocParallel::bpnworkers(BPPARAM) > 1L &&
-    requireNamespace("RhpcBLASctl", quietly = TRUE)
+.singleBLAS <- function(BPPARAM) BiocParallel::bpnworkers(BPPARAM) > 1L
+
+#' Run this worker's BLAS and OpenMP single-threaded
+#'
+#' Called inside a \code{bplapply()} worker of a multi-worker BPPARAM, never
+#' in the parent.
+#' @return the BLAS thread count before the call, so a persistent (snow)
+#'   worker can be restored after the block.
+#' @noRd
+.workerBLAS <- function() {
+  prev <- RhpcBLASctl::blas_get_num_procs()
+  if (isTRUE(prev > 1L)) RhpcBLASctl::blas_set_num_threads(1L)
+  RhpcBLASctl::omp_set_num_threads(1L)
+  invisible(prev)
 }
 
 #' bplapply() with single-threaded BLAS inside multi-worker dispatch
 #'
 #' A forked worker inherits the parent's OpenBLAS thread count, so N workers
-#' on N cores run N x threads BLAS threads; measured at the cohort's design
-#' shape, 4 workers x 4 threads on 4 cores take 2.3-2.6 s per Newton step
-#' against 0.24-0.28 s at one thread each (see \code{.workerBLAS()}). Both
-#' blocked stages -- the polish and the inference, whose per-gene gram is the
-#' same BLAS work -- dispatch through this wrapper. Serial dispatch, and a
-#' session without RhpcBLASctl, are plain \code{bplapply()}.
+#' on N cores run N x threads BLAS threads. Measured at the cohort's design
+#' shape (77,454 cells, 345 dense + 660 nested columns; 2026-09-10): 4
+#' workers x 4 threads on 4 cores take 2.3-2.6 s per Newton step against
+#' 0.24-0.28 s at one thread each, while one worker gains only 1.5x from 4
+#' threads -- the per-gene gram is memory-bound. The 0.99.19 cohort runs (4
+#' workers x 8 threads on 8 cores) spent 245-395 min on the cold polish pass
+#' this way. Both blocked stages -- the polish and the inference, whose
+#' per-gene gram is the same BLAS work -- dispatch through this wrapper; the
+#' niche construction and the gene-set stage are not gram-bound and do not.
+#' A persistent worker gets its thread count back when the element is done;
+#' a forked one dies with the call. Serial dispatch is plain
+#' \code{bplapply()}.
 #' @noRd
 .bplapplySingleBLAS <- function(X, FUN, ..., BPPARAM = BiocParallel::SerialParam()) {
   if (!.singleBLAS(BPPARAM)) {
     return(BiocParallel::bplapply(X, FUN, ..., BPPARAM = BPPARAM))
   }
   BiocParallel::bplapply(X, function(x, ...) {
-    .workerBLAS()
+    prev <- .workerBLAS()
+    on.exit(if (isTRUE(prev > 1L)) RhpcBLASctl::blas_set_num_threads(prev), add = TRUE)
     FUN(x, ...)
   }, ..., BPPARAM = BPPARAM)
 }

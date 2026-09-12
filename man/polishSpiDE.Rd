@@ -40,15 +40,14 @@ An object without per-gene GLM fits is refused.}
 profile maximum likelihood at the converged mean; \code{"moderated"}
 keeps \code{fitNB}'s cross-gene moderated value and converges only the
 coefficients under it. The moderated value is whatever the shared fit
-left, which can be far from the gene's own (fifteen times, on the
-clustered fixture), and the variance-component step below needs a
-dispersion consistent with the converged mean. The two rules are
-indistinguishable on the synthetic benchmark's null and power and in the
-cohort's calls (\code{vignette("spiDE-calibration")}), and
-\code{"moderated"} is the cheaper one: it skips the dispersion search
-and the two re-polishes it triggers, about a fifth to a third of the
-stage. Both rules' timings and results are in the benchmark's timing
-and calibration tables, measured from one fit polished both ways.}
+left, which can be far from the gene's own on a small fixture. The two
+rules were measured from one fit polished both ways, on the synthetic
+benchmark and on a real cohort, and are equivalent in calibration and
+power; \code{"moderated"} is the cheaper one, since it skips the
+dispersion search and the two re-polishes it triggers. The numbers are in
+\code{vignette("spiDE-calibration")}. Under \code{"profile"} the stage
+ends with one profile pass at the reported coefficients, so \code{@psi}
+is the optimum at the mean the stage reports.}
 
 \item{tau2}{logical; for a mixed fit, re-estimate the variance components
 from the converged fit (a Schall step on the polished coefficients, then
@@ -88,15 +87,21 @@ gene (the \code{converge.maxit} / \code{converge.tol} of \code{\link[=fitSpiDE]{
 
 \item{BPPARAM}{a BiocParallelParam; the stage is blocked over genes. With
 more than one worker, each worker runs its BLAS single-threaded when
-RhpcBLASctl is installed: forked workers inherit the parent's OpenBLAS
-thread count, and oversubscribing the cores that way was measured at 9x
-per Newton step. The parent process is left as it was.}
+RhpcBLASctl is installed (forked workers inherit the parent's thread
+count, and oversubscribing the cores that way costs an order of
+magnitude per gene); the parent process is left as it was.}
 
 \item{verbose}{report progress.}
 }
 \value{
 the object with converged \code{alpha} and \code{psi}, per-gene
-diagnostics in \code{@polish}, and inference cleared.
+diagnostics in \code{@polish} (the cold pass's \code{iterations},
+\code{restarted}, \code{capped}, \code{singular}, \code{psi_bound},
+\code{polished} and \code{psi_fitnb}, plus \code{repolish.iterations},
+\code{repolish.capped} and \code{repolish.singular} accumulated over the
+warm passes, and for a mixed fit the attribute \code{"tau2"}: the loop's
+\code{iterations}, \code{converged} and per-step \code{trace}), and
+inference cleared.
 }
 \description{
 The stage between \code{\link[=fitSpiDE]{fitSpiDE()}} and \code{\link[=testSpiDE]{testSpiDE()}} (the pipeline is fit ->

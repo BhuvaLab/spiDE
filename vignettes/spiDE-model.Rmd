@@ -578,17 +578,19 @@ the moderated value and is flagged `psi_bound` in `@polish`.
 `psi = "moderated"` keeps `fitNB`'s value and converges only the
 coefficients, which skips the profile search and the two re-polishes it
 triggers. The two rules were measured from one fit per dataset, polished
-both ways, on the synthetic benchmark and on the real cohort's full
-transcriptome (`vignette("spiDE-calibration")`): they are equivalent on the
-null, on power and in the calibrated statistics of two million real
-triplets ($r = 0.999$), because the standard errors are scaled by the
-quasi-likelihood dispersion (next chapter), which sees the residual scatter
-directly, and the variance components they lead to agree within three
-percent. The difference is cost: the moderated rule saves 13 to 18% of the
-polish on the benchmark and half of it on the cohort, whose bright genes
-make the profile search expensive. The fifteen-fold gap between the
-moderated and the converged dispersion seen on the small fixture above does
-not appear on either dataset.
+both ways, on the synthetic benchmark and on a real cohort's full
+transcriptome: they are equivalent in calibration, in power and in the
+calibrated statistics of every real triplet, because the standard errors
+are scaled by the quasi-likelihood dispersion (next chapter), which sees the
+residual scatter directly, and the variance components they lead to agree
+closely. The difference is cost, a modest saving on the benchmark and a
+large one on the cohort, whose bright genes make the profile search
+expensive; the numbers are in `vignette("spiDE-calibration")`. The
+fifteen-fold gap between the moderated and the converged dispersion seen on
+the small fixture above does not appear on either dataset. Under the
+profile rule the stage ends with one profile pass at the coefficients it
+reports, so `@psi` is the optimum at that mean rather than at the mean of
+the cold pass.
 
 ## Absorbing the nested block: the Schur complement
 
@@ -681,8 +683,14 @@ is the whole cost of the stage; each warm pass is a fraction of it.
 
 `@polish` is a per-gene table: `iterations`, `psi_fitnb` (the dispersion
 before polishing), `restarted`, `capped`, `singular`, `psi_bound` and
-`polished`; `@tau2`, `@penalty` and `@df` carry the re-estimated components,
-the penalty they imply and the refreshed reference df. `polished = FALSE` marks a gene the Newton could not run on at
+`polished`, all from the cold pass, and `repolish.iterations`,
+`repolish.capped` and `repolish.singular`, accumulated over every warm pass
+of the variance-component loop (a gene flagged there sits at its last
+converged fit rather than at the reported penalty). For a mixed fit the
+table carries the attribute `"tau2"`: the loop's `iterations`, whether it
+`converged` to its tolerance or stopped at its cap, and a per-step `trace`
+of the components. `@tau2`, `@penalty` and `@df` carry the re-estimated
+components, the penalty they imply and the refreshed reference df. `polished = FALSE` marks a gene the Newton could not run on at
 all, which keeps the multi-gene fit's estimate rather than substituting a
 worse one. Both flags are expected in small numbers; a large count is worth
 investigating before trusting that bandwidth. On bright genes the converged

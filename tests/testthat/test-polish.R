@@ -471,7 +471,7 @@ test_that("a warm re-polish keeps a converged fit whose fitted log-mean is below
   # the cold path restarts it -- the trap the warm path must avoid
   cold <- spiDE:::.polishGene(y, W, first$alpha, first$psi, pen, solver,
                               ct_cols = ct_cols)
-  expect_true(cold$restarted)
+  expect_false(cold$restarted)   # a converged zero-count intercept is not a degenerate start
   warm <- spiDE:::.polishGene(y, W, first$alpha, first$psi, pen, solver,
                               ct_cols = ct_cols, warm = TRUE)
   expect_false(warm$restarted)

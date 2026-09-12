@@ -91,6 +91,48 @@
   tau2_new
 }
 
+#' The per-column ridge implied by the variance components
+#'
+#' \code{1 / tau2_g} on every column of group \code{g}; fixed columns keep
+#' their entry of \code{pen}. Used by the fit's loop and the polish stage.
+#' @noRd
+.penaltyFromTau2 <- function(pen, re_group, tau2) {
+  for (g in names(tau2)) pen[which(re_group == g)] <- 1 / tau2[[g]]
+  pen
+}
+
+#' The gene-averaged penalised information and its inverse
+#'
+#' \code{A = W' diag(wbar) W} with \code{wbar} the gene-averaged working
+#' weights (\code{.repWeights()}), and \code{minv = (A + diag(pen))^-1}, or
+#' \code{NULL} for \code{minv} when the inversion fails -- the callers decide
+#' what a singular shared information means at their site.
+#' @noRd
+.penalisedInfo <- function(Y, alpha, W, psi, pen, winsor = 4) {
+  wbar <- .repWeights(Y, alpha, W, psi, winsor = winsor)
+  A <- crossprod(W * sqrt(wbar))
+  minv <- tryCatch(SpaNorm::invert_mat(A + diag(pen)), error = function(e) NULL)
+  list(A = A, minv = minv)
+}
+
+#' The between-sample reference df of a mixed fit
+#'
+#' The scalar \code{df.method = "between"} uses, and the value the polish
+#' degrades to when its final information is singular (the same direction
+#' \code{.fitNBmixed()} fails in): \code{S - 2} in condition mode; in niche
+#' mode the cell-level residual df under a random intercept, or \code{S - 1}
+#' with random slopes.
+#' @noRd
+.betweenDF <- function(re_group, mode, ncells) {
+  n_samples <- sum(re_group == "SampleInt", na.rm = TRUE)
+  has_slope <- any(re_group == "SampleSlope", na.rm = TRUE)
+  if (identical(mode, "niche")) {
+    if (has_slope) max(n_samples - 1, 1) else max(ncells - sum(is.na(re_group)), 1)
+  } else {
+    max(n_samples - 2, 1)
+  }
+}
+
 #' Estimate random-effect variance components (Schall / PQL, shared across genes)
 #'
 #' Implements the mixed model via ridge: random-effect columns are penalised by
@@ -156,7 +198,7 @@
   pen <- base
   for (it in seq_len(re.maxit)) {
     pen <- base
-    for (g in groups) pen[which(re_group == g)] <- 1 / tau2[[g]]
+    pen <- .penaltyFromTau2(pen, re_group, tau2)
     tau2_fit <- tau2
 
     if (verbose) message(sprintf("  RE iteration %d: %s", it,
@@ -201,7 +243,7 @@
   # final fit: ALL cells, FULL dispersion, at the converged penalty. This is the
   # fit inference uses (alpha / psi / gmean); the loop only supplied tau2.
   pen <- base
-  for (g in groups) pen[which(re_group == g)] <- 1 / tau2[[g]]
+  pen <- .penaltyFromTau2(pen, re_group, tau2)
   fit <- do.call(SpaNorm::fitNB, c(
     list(Y, W, lambda.a = pen, winsor = winsor, backend = backend,
          verbose = verbose),

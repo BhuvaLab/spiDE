@@ -25,7 +25,7 @@ if (is.list(tb) && !is.data.frame(tb) && !is.null(tb$results)) tb <- as.data.fra
 # valid-subset re-FDR here (the ResponseNiche Satterthwaite df is large), and
 # research/fdr-ordering/R/recover.R has the exact recovery
 if (!"p.niche" %in% names(tb) && "t" %in% names(tb)) tb$p.niche <- 2 * stats::pnorm(-abs(tb$t))
-stopifnot(all(c("t", "p.niche", "ct_index") %in% names(tb)))
+stopifnot(all(c("t", "p.niche", "ct_index") %in% names(tb)), any(is.finite(tb$t)))
 
 cat("== 1. global ==\n")
 cat(sprintf("   triplets %d | sd(t) %.3f | frac|t|>1.96 %.4f | raw p<.05 %.4f\n",

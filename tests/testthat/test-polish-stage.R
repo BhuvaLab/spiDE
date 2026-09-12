@@ -61,6 +61,8 @@ test_that("spiDE(polish = FALSE) is the fit and the test without the stage", {
   b <- testSpiDE(fitSpiDE(spe, "condition", sigma = 30, verbose = FALSE), spe = spe, fdr = 1)
   expect_equal(results(a), results(b))
   expect_null(fits(a)[[1]]@polish)
+  # the triplet p-value the cascade used is kept beside its FDR columns
+  expect_true("p.niche" %in% names(results(a)))
   d <- spiDE(spe, "condition", sigma = 30, fdr = 1, verbose = FALSE)
   e <- testSpiDE(polishSpiDE(fitSpiDE(spe, "condition", sigma = 30, verbose = FALSE), spe, verbose = FALSE), spe = spe, fdr = 1)
   expect_equal(results(d), results(e))
@@ -99,8 +101,25 @@ test_that(".tau2Iterate reaches a geometric fixed point in a few steps and the p
   # an exactly geometric sequence is extrapolated to its limit by Aitken
   expect_lt(max(abs(log(unlist(acc$tau2)) - log(target))), 1e-6)
   expect_lte(acc$iterations, 5L)
+  expect_true(acc$converged)
+  expect_true(is.data.frame(acc$trace) && nrow(acc$trace) == acc$iterations)
   expect_gt(plain$iterations, 8L)
   expect_lt(max(abs(log(unlist(plain$tau2)) - log(target))), 2e-2)
+})
+
+test_that(".tau2Iterate's tolerance is a distance to the limit, not a step size", {
+  # a slowly contracting plain map (ratio 0.9): the last step falls below the
+  # tolerance long before the sequence is within it, so a step-size rule would
+  # report convergence 10x too early
+  target <- c(SampleInt = 0.24, SampleCellTypeInt = 0.05)
+  slow <- function(tau2) as.list(target + 0.9 * (unlist(tau2) - target))
+  start <- as.list(1.5 * target)
+  plain <- spiDE:::.tau2Iterate(start, slow, maxit = 30L, tol = 1e-2, accelerate = FALSE)
+  # the log-step falls below 0.01 by the fifteenth step with a tenth of a
+  # log unit still to go; a distance rule keeps going to the cap
+  expect_false(plain$converged)
+  expect_equal(plain$iterations, 30L)
+  expect_gt(max(abs(log(unlist(plain$tau2)) - log(target))), 1e-2)
 })
 
 test_that(".tau2Iterate leaves an oscillating sequence to the plain map", {
@@ -129,7 +148,8 @@ test_that("the polish converges both variance components, not just the first", {
   expect_lt(abs(log(got[["SampleInt"]]) - log(ref[["SampleInt"]])), 1e-2)
   expect_lt(abs(log(got[["SampleCellTypeInt"]]) - log(ref[["SampleCellTypeInt"]])), 1e-2)
   # and it got there in fewer variance-component steps than the reference
-  expect_lt(sum(grepl("tau2 from the converged fit", msgs)), 12L)
+  expect_lt(sum(grepl("tau2 from the converged fit", msgs)), 10L)
+  expect_true(isTRUE(attr(fits(def)[[1]]@polish, "tau2")$converged))
   # the penalty and the components agree at the end
   f <- fits(def)[[1]]
   for (g in names(got)) {
@@ -155,7 +175,8 @@ test_that("a singular information at the end of the loop warns that the df was n
   w <- capture_warnings(pol <- polishSpiDE(cl$fit, cl$spe, verbose = FALSE))
   expect_match(paste(w, collapse = " "), "reference df")
   f <- fits(pol)[[1]]
-  expect_true(is.numeric(f@df) && !is.null(names(f@df)) && all(is.finite(f@df)))
+  # the df degrades to the between-sample scalar (S - 2 = 6), as the fit does
+  expect_equal(unname(f@df), 6)
 })
 
 test_that("the diagnostics flag a re-polish that hit its cap", {
@@ -168,4 +189,19 @@ test_that("the diagnostics flag a re-polish that hit its cap", {
   g <- fits(polishSpiDE(cl$fit, cl$spe, maxit = 2L, tol = 0, verbose = FALSE))[[1]]
   expect_true(all(g@polish$capped))
   expect_true(all(g@polish$repolish.capped))
+})
+
+test_that("the dispersion is re-profiled at the coefficients the stage reports", {
+  # the warm passes hold psi; after the loop one profile pass puts it at the
+  # final mean, so @psi is the profile optimum at @alpha (to the optimiser's
+  # tolerance), not the cold pass's value at a penalty the stage moved on from
+  cl <- clustered()
+  f <- fits(polishSpiDE(cl$fit, cl$spe, verbose = FALSE))[[1]]
+  Y <- as.matrix(SummarizedExperiment::assay(cl$spe, "counts"))[rownames(f@alpha), ]
+  for (g in seq_len(3)) {
+    mu <- pmax(as.numeric(exp(f@W %*% f@alpha[g, ])), spiDE:::.MU_FLOOR)
+    o <- stats::optimize(function(lp) -sum(stats::dnbinom(Y[g, ], size = 1 / exp(lp), mu = mu, log = TRUE)),
+                         c(log(1e-3), log(1e3)))
+    expect_equal(unname(f@psi[g]), exp(o$minimum), tolerance = 1e-3)
+  }
 })
