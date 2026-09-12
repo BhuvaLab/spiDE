@@ -49,7 +49,12 @@
   (`polishSpiDE(psi = "moderated")` skips the dispersion search and the two
   re-polishes it triggers) and benchmarked from one fit polished both ways:
   the harness times the polish on its own and the timing table carries one
-  row per arm and size (`research/config.R`, arm `polish-rules`).
+  row per arm and size (`research/config.R`, arm `polish-rules`). Measured:
+  the rules are equivalent on null and power, the moderated rule saves 13-18%
+  of the polish on the benchmark and half on the cohort, and classic BH over
+  all triplet tests does not reclaim the cascade's conservatism (the cascade
+  is slightly the more powerful at every level); see
+  `vignette("spiDE-calibration")`.
 
 # spiDE 0.99.19
 

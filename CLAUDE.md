@@ -604,6 +604,23 @@ per gene block; the rest is elementwise), oracle-tested there against `edgeR::gl
 only wires the pre-pass over gene blocks and `limma::squeezeVar()`. A fixed-effects unpolished fit
 (`random = "none"`, no `polishSpiDE()`) keeps its legacy `psi` scale with a message.
 
+**The two rules re-measured from one fit under the 0.99.20 polish (2026-09-12, arm
+`polish-rules`, `research/fdr-ordering/FINDINGS.md`).** Equivalent: null 0.058 / 0.060
+(profile / moderated) at S >= 10 and 0.055 / 0.052 at S = 4, TPR 0.379 / 0.366 with FDP
+0.014 / 0.019 at S = 30; on the cohort's full transcriptome the per-gene calibrated
+statistics agree at r = 0.999 with the same six exceedances at the threshold (a "6 vs 1"
+call count was one extra null exceedance in five grids, not power). The moderated rule saves
+13-18% of the polish on the benchmark (102.5 vs 89.0 min at 24,000 cells, where the fit is
+17.8 and inference 4.3) and half on the cohort (651 vs 332 min on 64 workers), so the
+default-rule choice is a cost choice; the fixture's "moderated psi 15x off" is a small-fixture
+artefact that neither dataset reproduces (tau2 within 3%). **Classic BH over all triplets
+does not reclaim the cascade's conservatism**: on identical fits the cascade is slightly less
+conservative and slightly more powerful at every nominal level (S = 30: 0.379 / 0.014 vs
+0.371 / 0.011 at 0.05; 0.476 / 0.101 vs 0.461 / 0.062 at 0.20). The realised FDP sits far
+below nominal under both because the QL-scaled p-values are conservative; any recall lever
+is in the p-values, not the multiplicity step. Tables `timing` (per design, with
+`polish_seconds`) and `fdr_procedure` in the canonical set.
+
 **The legacy niche-only design's higher simulation recall is a different estimand, not a better
 test** (`research/notes/design_power_decomposition.R`: one power dataset under four libraries,
 including a build from `5027da1` that differs from the niche-only build only by the
