@@ -610,8 +610,8 @@ only wires the pre-pass over gene blocks and `limma::squeezeVar()`. A fixed-effe
 0.014 / 0.019 at S = 30; on the cohort's full transcriptome the per-gene calibrated
 statistics agree at r = 0.999 with the same six exceedances at the threshold (a "6 vs 1"
 call count was one extra null exceedance in five grids, not power). The moderated rule saves
-13-18% of the polish on the benchmark (102.5 vs 89.0 min at 24,000 cells, where the fit is
-17.8 and inference 4.3) and half on the cohort (651 vs 332 min on 64 workers), so the
+13-18% of the polish on the benchmark (100.9 vs 87.3 min at 24,000 cells, where the fit is
+17.7 and inference 4.2) and half on the cohort (651 vs 332 min on 64 workers), so the
 default-rule choice is a cost choice; the fixture's "moderated psi 15x off" is a small-fixture
 artefact that neither dataset reproduces (tau2 within 3%). **Classic BH over all triplets
 does not reclaim the cascade's conservatism**: on identical fits the cascade is slightly less
