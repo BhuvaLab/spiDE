@@ -18,6 +18,12 @@ Rscript .claude/skills/calibration-check/scripts/calibration_check.R \
 
 The fit object is optional but strongly preferred — the dropout-vs-condition
 test and the valid-subset selection both need `@diagnostics$inclusion`.
+Note (2026-09-12): a `SpiDEResults` from 0.99.19 onward has no `diagnostics`
+slot, so sections 3 and 4 are skipped on it; the inclusion table has to be
+rebuilt from the object's `coldata` (cells per sample x index type against
+`min.cells`) before those sections run again. Sections 1 and 2 accept the
+cohort driver's grid files (`list(results = ...)`) and derive p from t when
+the table carries no p-value.
 
 ## What it reports, and how to read it
 
