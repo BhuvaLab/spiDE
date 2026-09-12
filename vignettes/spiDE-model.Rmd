@@ -576,13 +576,19 @@ $\psi$, so the search returns a *bound*, not an estimate; such a gene keeps
 the moderated value and is flagged `psi_bound` in `@polish`.
 
 `psi = "moderated"` keeps `fitNB`'s value and converges only the
-coefficients. It is about a third cheaper, and on the null and in the real
-cohort's calls the two rules are indistinguishable, because the standard
-errors are scaled by the quasi-likelihood dispersion (next chapter), which
-sees the residual scatter directly. But the moderated value is whatever the
-shared fit left, fifteen times the converged value on the fixture above, and
-the variance-component step below needs a dispersion consistent with the
-converged mean, which is why the profile rule is the default.
+coefficients, which skips the profile search and the two re-polishes it
+triggers. The two rules were measured from one fit per dataset, polished
+both ways, on the synthetic benchmark and on the real cohort's full
+transcriptome (`vignette("spiDE-calibration")`): they are equivalent on the
+null, on power and in the calibrated statistics of two million real
+triplets ($r = 0.999$), because the standard errors are scaled by the
+quasi-likelihood dispersion (next chapter), which sees the residual scatter
+directly, and the variance components they lead to agree within three
+percent. The difference is cost: the moderated rule saves 13 to 18% of the
+polish on the benchmark and half of it on the cohort, whose bright genes
+make the profile search expensive. The fifteen-fold gap between the
+moderated and the converged dispersion seen on the small fixture above does
+not appear on either dataset.
 
 ## Absorbing the nested block: the Schur complement
 
@@ -650,8 +656,26 @@ of every gene at the new penalty $\Lambda = \mathrm{diag}(1/\tau^2)$,
 iterated until the relative change in $\log\tau^2$ is below `tau2.tol` — and
 recomputes the Satterthwaite reference df (next chapter) from the new
 components and penalty. On that fixture the component lands at the planted
-value. The re-polish starts from the current optimum, so the stage costs
-about one extra polish pass per iteration, and it converges in one or two.
+value.
+
+Two things keep that loop cheap. The re-polish after a variance-component
+step is *warm*: the coefficients are already at their optimum for a penalty
+that differs by one step, so a few damped Newton iterations at the held
+dispersion reach the new optimum, with no profile search and no restart
+check (a converged fit legitimately has fitted log-means far below zero
+where a gene is absent from a cell type, and treating that like `fitNB`'s
+degenerate output would redo the cold polish). And Schall's update is a
+fixed-point map that converges linearly, slowly for the nested block, so
+the loop is Steffensen-accelerated: after every two plain steps each
+component is extrapolated by Aitken's $\Delta^2$ to the limit the two steps
+point at, provided they contract monotonically, and the next plain step
+checks it. On the real cohort the per-sample component converges in two
+steps and the nested one needs the extrapolation; the loop stops when the
+largest change in $\log\tau^2$ is below `tau2.tol` (0.01 by default, where a
+5% change in a component moves individual $t$ by at most 0.05 on the
+fixture) or at `tau2.maxit`, and ends with one more warm pass at the
+reported penalty so coefficients, penalty and df are consistent. A cold pass
+is the whole cost of the stage; each warm pass is a fraction of it.
 
 ## What the stage reports
 

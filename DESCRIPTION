@@ -68,7 +68,7 @@ Suggests:
     withr
 Remotes:
     bhuvad/SpaNorm
-URL: https://github.com/BhuvaLab/spiDE
+URL: https://bhuvalab.github.io/spiDE, https://github.com/BhuvaLab/spiDE
 BugReports: https://github.com/BhuvaLab/spiDE/issues
 VignetteBuilder: knitr
 Config/testthat/edition: 3

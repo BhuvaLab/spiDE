@@ -5,8 +5,19 @@ dst <- "vignettes/articles"
 if (!file.exists(file.path(src, "build_site.R")))
   stop("research submodule not checked out (", src, " is empty) -- ",
        "in CI this means the deploy-key step failed")
-rmd <- Sys.glob(file.path(src, "spiDE-*.Rmd"))
-stopifnot(length(rmd) >= 6)
+# The articles index in _pkgdown.yml is the single source of truth for which
+# reports become pkgdown articles: pkgdown refuses to build with an article
+# it finds on disk but not in the index, and a report retired from the
+# package site (the two-stage benchmark, kept only on the research site since
+# 0.99.19) must therefore not be synced. Reading the list from the yaml keeps
+# the two in step by construction.
+cfg <- yaml::read_yaml("_pkgdown.yml")
+listed <- unlist(lapply(cfg$articles, `[[`, "contents"))
+listed <- sub("^articles/", "", listed[grepl("^articles/spiDE-", listed)])
+rmd <- file.path(src, paste0(listed, ".Rmd"))
+missing <- rmd[!file.exists(rmd)]
+if (length(missing)) stop("indexed articles without a report source: ", paste(basename(missing), collapse = ", "))
+stopifnot(length(rmd) >= 5)
 # a report retired from the submodule must not linger here as a stale copy:
 # pkgdown lists every article it finds and refuses one missing from the index
 stale <- setdiff(Sys.glob(file.path(dst, "spiDE-*.Rmd")), file.path(dst, basename(rmd)))
