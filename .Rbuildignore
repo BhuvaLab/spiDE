@@ -25,3 +25,4 @@
 ^vignettes/articles$
 ^\.mcp\.json$
 ^\.superpowers$
+^figures$

@@ -28,6 +28,20 @@ BiocCheck::BiocCheck()               # Bioconductor-specific compliance checks
 devtools::build_vignettes()          # render vignettes/spiDE.Rmd
 ```
 
+Build the pkgdown site with the article sync first, never `pkgdown::build_site()` alone:
+
+```sh
+Rscript vignettes/articles/pkgdown-sync-articles.R && Rscript -e 'pkgdown::build_site()'
+```
+
+The validation reports are copied from the research submodule into `vignettes/articles/`
+(gitignored) by that script, which takes the list from the articles index in `_pkgdown.yml`
+and deletes any copy not in it. pkgdown refuses an article on disk that the index does not
+list (`vignette missing from index`) and one the index lists that is not on disk, and it has
+no ignore mechanism; a copy synced before a report was retired (the two-stage benchmark,
+0.99.19) survives every `git pull` on that clone until the sync runs. `vignettes/articles/README.md`
+has the error text and the remedy.
+
 Regenerate the shipped example dataset (`data/toySpiDE.rda`) with `source("data-raw/make_toySpiDE.R")`
 (loads the package via `devtools::load_all()` first, since it calls the internal `.toySPE()`).
 
