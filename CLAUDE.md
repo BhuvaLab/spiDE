@@ -626,8 +626,20 @@ statistics agree at r = 0.999 with the same six exceedances at the threshold (a 
 call count was one extra null exceedance in five grids, not power). The moderated rule saves
 13-19% of the polish on the benchmark (100.9 vs 87.3 min at 24,000 cells, where the fit is
 17.7 and inference 4.2) and half on the cohort (651 vs 332 min on 64 workers), so the
-default-rule choice is a cost choice; the fixture's "moderated psi 15x off" is a small-fixture
-artefact that neither dataset reproduces (tau2 within 3% for the per-sample component and 7% for the nested one). **Classic BH over all triplets
+default-rule choice is a cost choice ON DATA WHERE THE SHARED FIT IS NEAR ITS OPTIMUM, which both
+of those are (the cohort's median polished/shared dispersion ratio is 0.929). **It is not a free
+default (2026-09-14).** Shipping `psi = "moderated"` as the default was tried and reverted the same
+day: on `.toyClustered(n_samples = 16)`, where `fitNB`'s dispersion is fifteen times the converged
+value, the moderated rule collapses the nested variance component to the floor (1e-08 against
+0.00495) and doubles the Satterthwaite df of the between-sample contrast (30.1 against 16.0, target
+S - 2 = 14), because the Schall step reads the gene-averaged weights at the polished mean AND
+dispersion. The within-sample df is untouched, so the damage is confined to the contrast the nested
+block exists to protect, and it is anti-conservative. The long test
+`longtests/testthat/test-mixed-numerics.R` is the only guard that catches it -- the benchmark and
+the cohort never leave the near-optimum regime. `psi = "moderated"` stays available and is right
+where the shared fit is close (the cohort runs use it); it cannot be the default, because the
+diagnostic that would tell a user which regime they are in needs the converged dispersion the
+moderated rule never computes. Record: `research/fdr-ordering/FINDINGS.md`, 2026-09-14. **Classic BH over all triplets
 does not reclaim the cascade's conservatism**: on identical fits the cascade is slightly less
 conservative and slightly more powerful at every nominal level (S = 30: 0.379 / 0.014 vs
 0.371 / 0.011 at 0.05; 0.476 / 0.101 vs 0.461 / 0.062 at 0.20). The realised FDP sits far
