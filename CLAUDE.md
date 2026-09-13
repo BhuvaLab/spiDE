@@ -633,7 +633,15 @@ conservative and slightly more powerful at every nominal level (S = 30: 0.379 / 
 0.371 / 0.011 at 0.05; 0.476 / 0.101 vs 0.461 / 0.062 at 0.20). The realised FDP sits far
 below nominal under both because the QL-scaled p-values are conservative; any recall lever
 is in the p-values, not the multiplicity step. Tables `timing` (per design, with
-`polish_seconds`) and `fdr_procedure` in the canonical set.
+`polish_seconds`) and `fdr_procedure` in the canonical set. **On the real transcriptome the
+cascade is the opposite of conservative (2026-09-13):** at nominal 0.05 it returns 1,079 triplets
+over 138 genes against a mean of 311 over 41 on the five complete-null block grids, an empirical
+FDP of 0.29 (0.27 at 0.01, 0.31 at 0.10), because the real cohort's per-gene tail is heavy where
+the simulator's is not. Gating the stored `fdr = 1` q-values at a level reproduces
+`testSpiDE(fdr = level)` exactly, so any saved summary can be scored this way. Quote the per-gene
+calibrated calls on the cohort, never the cascade's; the YTMA v11 reports
+(`YTMACosMxWTA/code/final_code/YTMA_nicheDE_v11.qmd`, `YTMA_spiGSEA_v11.qmd`) carry both with
+the measurement (`research/fdr-ordering/FINDINGS.md`, 2026-09-13).
 
 **The legacy niche-only design's higher simulation recall is a different estimand, not a better
 test** (`research/notes/design_power_decomposition.R`: one power dataset under four libraries,
@@ -705,6 +713,12 @@ the set, camera-style) is the **default**: the `"self-contained"` form is not ca
 benchmark it called 20.6 of 208 sets per replicate, all false (FDP 1.00), against 0.05 for
 competitive, because it assumes the averaged z have unit spread and they do not under signal. It is
 kept only to reproduce the flat script's `fry_res`. `type = "celltype"` errors in niche mode.
+The `rho` stored on a fit depends on the design (2026-09-13): the final cohort configuration
+(library size and the nested intercepts as model terms) stores 0.00018 where the old design's
+fits carried 0.011, and since the set-level z scales with `sqrt(m / (1 + rho (m - 1)))` the
+competitive niche layer calls 618 sets at the stored value against 183 at 0.011 on the same fit.
+Report a gene-set count with its `rho`, and re-score at 0.011 when comparing with earlier arms
+(`YTMACosMxWTA/claude/code/72_v11_spigsea_rho_sensitivity.R`). No set-level null has been run.
 
 ### The toy fixture's effect size
 
