@@ -877,6 +877,7 @@
 #' @param maxit,tol iteration cap and relative log-likelihood tolerance per
 #'   gene (the \code{converge.maxit} / \code{converge.tol} of [fitSpiDE()]).
 #' @param block.size genes per block; \code{NULL} splits one block per
+#'   \code{BPPARAM} worker.
 #' @param engine \code{"batch"} (the default) converges a block of genes
 #'   together, so the design is read once per batch rather than once per gene;
 #'   \code{"gene"} is the original per-gene loop, kept as the reference
@@ -889,7 +890,6 @@
 #'   because the batched working set is gene x cell: at 77,454 cells a
 #'   2,000-gene block would allocate over a terabyte, so the gene block size
 #'   cannot be the batch size.
-#'   \code{BPPARAM} worker.
 #' @param BPPARAM a BiocParallelParam; the stage is blocked over genes. With
 #'   more than one worker, each worker runs its BLAS single-threaded when
 #'   RhpcBLASctl is installed (forked workers inherit the parent's thread
