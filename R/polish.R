@@ -62,23 +62,39 @@
 #' @param pen the per-column ridge penalty.
 #' @param nested a logical over the columns of \code{W} marking the indicator
 #'   block; all-FALSE (or \code{NULL}) selects the plain dense path.
-#' @return a list with \code{solve(w, s)} (the Newton step over all columns) and
-#'   \code{xcov(w)} (the X-block of the penalised covariance). Either returns
-#'   \code{NULL} on a singular system.
+#' @return a list with \code{factor(w)} (the penalised information at those
+#'   weights, as an opaque state), \code{solve(w, s)} (the Newton step over all
+#'   columns) and \code{xcov(w)} (the X-block of the penalised covariance).
+#'   \code{solve()} and \code{xcov()} take either a weight vector or a state
+#'   from \code{factor()}; the first two return \code{NULL} on a singular
+#'   system.
+#'
+#' Why \code{factor()} is separate: the caller already knows when the weights
+#' change. \code{.polishGene()} refreshes them only every third Newton step, but
+#' until 2026-09-15 it still paid for a full rebuild on every step, because
+#' \code{solve()} recomputed the information from the (unchanged) weights it was
+#' handed -- the gram, the group sums and the Schur complement, which the
+#' documentation below calls "essentially the whole cost of an iteration".
+#' Splitting the two lets a caller reuse a factorisation it has already paid
+#' for. It is exactly reproducible: the state is built from the same weights
+#' \code{solve()} would have used, and the step is the same \code{solve(S, rhs)}.
 #' @noRd
 .newtonSolver <- function(W, pen, nested = NULL) {
   if (is.null(nested)) nested <- rep(FALSE, ncol(W))
   if (!any(nested)) {
+    factor_dense <- function(w) {
+      info <- crossprod(W * sqrt(w))
+      diag(info) <- diag(info) + pen
+      structure(list(info = info), class = "spiDE_nfac")
+    }
+    as_fac <- function(x) if (inherits(x, "spiDE_nfac")) x else factor_dense(x)
     return(list(
+      factor = factor_dense,
       solve = function(w, s) {
-        info <- crossprod(W * sqrt(w))
-        diag(info) <- diag(info) + pen
-        tryCatch(solve(info, s), error = function(e) NULL)
+        tryCatch(solve(as_fac(w)$info, s), error = function(e) NULL)
       },
       xcov = function(w) {
-        info <- crossprod(W * sqrt(w))
-        diag(info) <- diag(info) + pen
-        tryCatch(solve(info), error = function(e) NULL)
+        tryCatch(solve(as_fac(w)$info), error = function(e) NULL)
       }
     ))
   }
@@ -113,12 +129,15 @@
     diag(A) <- diag(A) + pen_x
     cvec <- as.numeric(rowsum(w, group = gf, reorder = TRUE)) + pen_z
     B <- t(rowsum(Xw, group = gf, reorder = TRUE))   # ncol(X) x G
-    list(S = A - B %*% (t(B) / cvec), B = B, cvec = cvec)
+    structure(list(S = A - B %*% (t(B) / cvec), B = B, cvec = cvec),
+              class = "spiDE_nfac")
   }
+  as_fac <- function(x) if (inherits(x, "spiDE_nfac")) x else parts(x)
 
   list(
+    factor = parts,
     solve = function(w, s) {
-      p <- parts(w)
+      p <- as_fac(w)
       rhs <- s[xi] - as.numeric(p$B %*% (s[zi] / p$cvec))
       dx <- tryCatch(solve(p$S, rhs), error = function(e) NULL)
       if (is.null(dx)) return(NULL)
@@ -129,7 +148,7 @@
       out
     },
     xcov = function(w) {
-      tryCatch(solve(parts(w)$S), error = function(e) NULL)
+      tryCatch(solve(as_fac(w)$S), error = function(e) NULL)
     }
   )
 }
@@ -206,14 +225,22 @@
     converged <- FALSE
     stale <- 0L
     w <- NULL
+    fac <- NULL
     while (it < maxit) {
       it <- it + 1L
       s <- as.numeric(crossprod(W, (y - mu) / (1 + psi * mu))) - pen * a
       if (is.null(w) || stale >= 3L) {
         w <- mu / (1 + psi * mu)
+        # Factor here and only here: the weights are what the information
+        # depends on, and between refreshes the same factorisation is exact.
+        # A solver without $factor() -- the two-function contract this used to
+        # have, which callers and test stubs may still implement -- keeps
+        # working: $solve() accepts the weights directly and factors them
+        # itself, which is what every step used to do.
+        fac <- if (is.function(solver$factor)) solver$factor(w) else w
         stale <- 0L
       }
-      d <- solver$solve(w, s)
+      d <- solver$solve(fac, s)
       # solve() only ERRORS below rcond ~1e-7; between that and well-conditioned
       # it returns a finite but numerically meaningless answer, which the line
       # search can accept because a badly scaled step in roughly the right
@@ -243,6 +270,7 @@
         # before giving up
         if (stale > 0L) {
           w <- mu / (1 + psi * mu)
+          fac <- if (is.function(solver$factor)) solver$factor(w) else w
           stale <- 0L
           next
         }
