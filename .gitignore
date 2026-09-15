@@ -16,7 +16,9 @@ docs
 !.claude/hooks
 !.claude/settings.json
 .DS_Store
-specs/
+# anchored: the top-level specs/ is scratch, but design/specs/ is tracked --
+# an unanchored `specs/` matched both and silently refused every new design spec
+/specs/
 /doc/
 /Meta/
 spiDE.BiocCheck/

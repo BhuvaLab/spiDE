@@ -1,0 +1,134 @@
+# Fitting stage v2: a batched converged fitter: design
+
+**Status:** approved in chat 2026-09-15 (full replacement, fresh recalibration,
+both statistical defects in scope). Phases 0 and 0b landed on
+`feature/batched-fitter`; Phase 1 follows.
+
+## Why
+
+The fit is two stages with a bad cost split. `fitSpiDE()` calls
+`SpaNorm::fitNB`, which shares one gene-averaged cell weight vector across
+genes, decides convergence on the *aggregate* log-likelihood and clamps
+coefficient columns across genes — a different estimator, not an
+under-converged per-gene one. `polishSpiDE()` then converges each gene on its
+own penalised likelihood, which is what every downstream statistic is built on.
+
+On the v11 ICI arm (13,348 genes, 77,454 cells, 1,107 columns) the polish is
+430–830 min on 64 cores against 20 min for the fit and 37 for the inference:
+**>98% of the pipeline**, 2,800–5,400 core-hours per six-grid arm. That cost is
+why calibration stops at one bandwidth and five seeds; the campaign the cohort
+reports ask for (20 seeds × 4 bandwidths) is 37,000–71,000 core-hours.
+
+## What the measurement says (2026-09-15, job 28494601)
+
+`notes/polish_cost/microbench.R` at the true shape (n = 77,454, px = 398 dense
+after the SampleCellTypeInt block G = 709 is absorbed):
+
+| | 1 thread | 8 threads |
+|---|---|---|
+| cached factorisation vs rebuild | **3.0×** | 2.9× |
+| `dsyrk` vs `dgemm` for the gram | 1.7× | **16.4×** |
+| batched matvec, B = 256 | 36.8× | **135×** |
+
+Three consequences, and they set the order of work:
+
+1. **The information matrix was rebuilt every step**, though `R/polish.R:141-143`
+   documents reuse for up to three. A reuse costs 1% of a rebuild. Landed in
+   `3d78d1c`, bit-identical.
+2. **The gram form was the wrong one.** `crossprod(X, X*w)` *degrades* with
+   threads (0.43 → 2.44 s) while `crossprod(X*sqrt(w))` scales (0.25 → 0.15 s).
+   This is the mechanism behind the recorded "one worker gains only 1.5× from
+   four BLAS threads", so the 64 × 1 worker/thread policy is a workaround for a
+   fixable problem. Landed in `e10a7cc`.
+3. **Batching amortises the design read**, 90 → 0.8 ms/gene. This is the
+   premise of Phase 1 and it holds.
+
+It also **cancelled** a planned task: one `dnbinom` sum is 0.007 s against
+0.46 s of gram, so lifting the ψ-only `lgamma` constants out of the line search
+is worth ~1% of an iteration and is not worth the numerical risk.
+
+## Scope
+
+In: a block-batched per-gene Newton as the primary fitter; a device path; one
+variance-component loop; `fitNB` demoted to starting values and the cross-gene
+dispersion moderation; the Satterthwaite between-sample reference df.
+
+Out: the dispersion *rule* (`psi = "moderated"` keeping `fitNB`'s cross-gene
+value). Phase 4 makes that value degrade, so the rule errors there rather than
+silently changing meaning; replacing it by squeezing the converged per-gene
+profile dispersions is a separate change with its own gate.
+
+## The estimator does not change
+
+`.polishGene()` already computes the per-gene penalised MLE, and
+`.newtonSolver()` already absorbs the nested block analytically (Schur
+complement, diagonal `C`). Phase 1 is a restructuring, not a new estimator: the
+same objective, the same convergence rule, the same restart and fallback
+semantics. `.polishGene()` stays in the tree as the reference implementation
+and the test oracle, reachable through `engine = "gene"`.
+
+## Order of work
+
+| phase | content | gate |
+|---|---|---|
+| 0 | measure at the true shape | recorded in FINDINGS ✅ |
+| 0b | memoise the factorisation; symmetric gram | bit-identical / objective not worse ✅ |
+| 1 | `.polishBatch()`, batched on CPU | batched == unbatched to 1e-10; blocking invariance |
+| 2 | device path via `.gramBatch()`'s torch branch | CPU == GPU at `gpu_tol()` |
+| 3+4 | one τ² loop; `fitNB` to starting values | the `longtests` τ² window and df anchors |
+| 5 | the between-sample reference df | the `lmerTest` and `S - 2` anchors |
+| 6 | revalidation and recalibration | benchmark + null grids |
+
+Phase 3 is a verification rather than a phase: `.tau2Iterate()` already
+iterates to a tolerance with Steffensen acceleration (`polish.R:534-611`). What
+remains capped is the *fit's* loop (`re.maxit = 2L`), which dissolves when
+`fitNB` is demoted.
+
+## The hard part of Phase 1
+
+Every per-gene branch is a partition of the gene index set; batching turns
+control flow into set operations over index vectors.
+
+- **Active set**: an integer index, compacted when the active fraction falls
+  below ~0.75, never per iteration. Compaction is performance, not semantics —
+  tested by running with the threshold at 0 and at 1 and asserting identity.
+- **Line search**: a per-gene `step` vector and a trial-round loop. One batched
+  `dnbinom` column-sum per round evaluates every pending gene, so a block costs
+  `max(halvings)` rounds rather than `sum(halvings)`. The accept test, the 1e-9
+  slack, the 1e-6 floor and the 20-halving cap are copied verbatim.
+- **Staleness stays per gene.** A batch-synchronous policy has the same fixed
+  point but a different path, and at a 1e-8 relative stopping rule that turns
+  the comparison against `engine = "gene"` from an equality test into a
+  "both converged somewhere near" test.
+- **A singular gene must not fail its batch.** Per-slice factorisation with a
+  per-slice `ok`, so it drops to `fallback()` as today. This is the failure mode
+  `.waldCauchyBlock()` has (`inference.R:405-414`), and it must not be repeated.
+
+## Tests (written before the code)
+
+1. `B = 1` reproduces `.polishGene()` to 1e-12 on every field and flag.
+2. Batch-size invariance: 1, 2, 5, 13 on a 13-gene fixture, identical.
+3. Compaction-threshold invariance: 0 and 1, identical.
+4. **Mixed control flow in one batch** — a converged gene, a degenerate start,
+   an all-zero gene, a gene needing four halvings, a gene whose ψ sits on the
+   bound — reproduces the five run singly, flag for flag. Write this first.
+5. A singular gene does not poison its batch.
+6. Absorbed batched gram == dense batched gram on the tested columns.
+7. GPU set (Phase 2) in `test-gpuPolish.R`, `skip_if_no_gpu()` plus a skip on
+   MPS: float32 is refused, not warned about.
+
+## Acceptance
+
+Fresh recalibration was chosen, so parity with the current arm is not the gate.
+The ladder is: unit suite with no tolerance loosened → `longtests` (the τ²
+window 0.3–0.75 against a planted 0.49, the df anchors, the deflation test) →
+the simulation benchmark as a *paired* arm through `polish_variants`, so the
+engine is the only thing that differs → the cohort shuffle nulls scored against
+the pass criteria in `package_fixed_design.R`'s header → then, and only then,
+re-derive the |z| thresholds and re-render the cohort reports.
+
+## Provenance
+
+All work on `feature/batched-fitter`, in a worktree, off a clean `main`. Every
+benchmark or cohort arm runs from a `freeze_snapshot.sh` snapshot, never the
+live tree.
