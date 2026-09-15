@@ -26,6 +26,33 @@
 # keeps this a pure restructuring: no deliberate numerical divergence to argue
 # about while the control flow is being rebuilt.
 
+# Live gene x cell matrices inside one batched Newton iteration: the counts
+# slice, mu, the residual/weight matrix, the candidate coefficients' mean, the
+# accepted mean, plus headroom for R's copy-on-modify. Sized by inspection, so
+# it errs high.
+SPIDE_POLISH_GENE_CELL_MATS <- 6
+
+#' Genes per batched Newton, from a memory budget
+#'
+#' A gene block is sized to bound densification of the counts (2,000 genes); the
+#' batched Newton's working set is gene x cell and must be bounded separately.
+#' At the cohort's 77,454 cells a 2,000-gene batch would allocate over a
+#' terabyte, so the block size cannot be the batch size.
+#'
+#' @param ncells cells in the design.
+#' @param budget bytes available to ONE worker for the batched working set --
+#'   per worker, not a total to be divided among them. \code{.covBatchSize()}'s
+#'   budget is documented as a total and then claimed independently by every
+#'   forked worker, which at 64 workers is a 128 GB claim in a stage already
+#'   OOM-killed once at 503 GB. This one says what it means.
+#' @return genes per batch, at least 1.
+#' @noRd
+.polishBatchSize <- function(ncells,
+                             budget = getOption("spiDE.polish.mem.budget", 1e9)) {
+  per_gene <- 8 * as.numeric(ncells) * SPIDE_POLISH_GENE_CELL_MATS
+  max(1L, as.integer(floor(budget / per_gene)))
+}
+
 #' Converge a block of genes to their own penalised NB optima
 #'
 #' @param Yb counts for the block (genes x cells), dense.

@@ -419,7 +419,9 @@
 .polishFit <- function(Y, W, alpha, psi, pen, re_group = NULL, covtype = NULL,
                        maxit = 50L, tol = 1e-8, block.size = NULL,
                        BPPARAM = BiocParallel::SerialParam(), verbose = FALSE,
-                       psi.method = "profile", warm = FALSE) {
+                       psi.method = "profile", warm = FALSE,
+                       engine = c("batch", "gene"), batch.size = NULL) {
+  engine <- match.arg(engine)
   ng <- nrow(alpha)
   if (!length(pen) %in% c(1L, ncol(W))) {
     stop("'lambda.a' must be a single value or one per design column (",
@@ -472,9 +474,13 @@
   }
   blocks <- .chunkGenes(ng, block.size)
   single_blas <- .singleBLAS(BPPARAM)
+  bsize <- if (engine == "batch") {
+    if (is.null(batch.size)) .polishBatchSize(nrow(W)) else batch.size
+  } else NA_integer_
   if (verbose) {
-    message(sprintf("  %s %d genes per gene (%d block%s%s)",
+    message(sprintf("  %s %d genes %s (%d block%s%s)",
                     if (warm) "re-polishing" else "converging", ng,
+                    if (engine == "batch") sprintf("in batches of %d", bsize) else "per gene",
                     length(blocks), if (length(blocks) == 1L) "" else "s",
                     if (single_blas) ", one BLAS thread per worker" else ""))
   }
@@ -492,12 +498,30 @@
     # WHOLE matrix is never densified, not that a block is never densified --
     # .blockedInference() does exactly the same).
     Yb <- as.matrix(Y[gi, , drop = FALSE])
-    out <- lapply(seq_along(gi), function(i) {
-      g <- gi[[i]]
-      .polishGene(as.numeric(Yb[i, ]), W, alpha[g, ], psi[[g]], pen, solver,
-                  maxit = maxit, tol = tol, ct_cols = ct_cols,
-                  psi.method = psi.method, warm = warm)
-    })
+    out <- if (engine == "batch") {
+      # a block bounds densification of the counts; the batched Newton's
+      # working set is gene x cell and is bounded separately, so a block is
+      # walked in sub-batches rather than handed over whole
+      unlist(lapply(.chunkGenes(length(gi), bsize), function(ii) {
+        r <- .polishBatch(Yb[ii, , drop = FALSE], W, alpha[gi[ii], , drop = FALSE],
+                          psi[gi[ii]], pen, solver, maxit = maxit, tol = tol,
+                          ct_cols = ct_cols, psi.method = psi.method, warm = warm)
+        # back to the per-gene shape the merge below and @polish expect
+        lapply(seq_along(ii), function(j) {
+          list(alpha = r$alpha[j, ], psi = r$psi[[j]], loglik = r$loglik[[j]],
+               iterations = r$iterations[[j]], restarted = r$restarted[[j]],
+               capped = r$capped[[j]], singular = r$singular[[j]],
+               psi_bound = r$psi_bound[[j]], polished = r$polished[[j]])
+        })
+      }), recursive = FALSE)
+    } else {
+      lapply(seq_along(gi), function(i) {
+        g <- gi[[i]]
+        .polishGene(as.numeric(Yb[i, ]), W, alpha[g, ], psi[[g]], pen, solver,
+                    maxit = maxit, tol = tol, ct_cols = ct_cols,
+                    psi.method = psi.method, warm = warm)
+      })
+    }
     if (verbose && (b %% step == 0L || b == nb)) {
       message(sprintf("    block %d/%d (%.1f min elapsed)", b, nb,
                       as.numeric(difftime(Sys.time(), t0, units = "mins"))))
@@ -695,7 +719,9 @@
                             verbose = TRUE, psi.method = "profile",
                             tau2 = TRUE, tau2.maxit = 10L, tau2.tol = 1e-2,
                             tau2.accelerate = TRUE,
-                            tau2.range = c(1e-8, 1e4)) {
+                            tau2.range = c(1e-8, 1e4),
+                            engine = c("batch", "gene"), batch.size = NULL) {
+  engine <- match.arg(engine)
   f <- updateObject(f)
   Yf <- Y[rownames(f@alpha), , drop = FALSE]
   pen <- .polishPenalty(f@penalty, lambda.a, ncol(f@W))
@@ -704,7 +730,7 @@
                covtype = as.character(f@covtype),
                maxit = maxit, tol = tol, block.size = block.size,
                BPPARAM = BPPARAM, verbose = verbose, psi.method = psi.method,
-               warm = warm)
+               warm = warm, engine = engine, batch.size = batch.size)
   }
   pol <- run_polish(f@alpha, f@psi, pen)
   alpha <- pol$alpha
@@ -851,6 +877,18 @@
 #' @param maxit,tol iteration cap and relative log-likelihood tolerance per
 #'   gene (the \code{converge.maxit} / \code{converge.tol} of [fitSpiDE()]).
 #' @param block.size genes per block; \code{NULL} splits one block per
+#' @param engine \code{"batch"} (the default) converges a block of genes
+#'   together, so the design is read once per batch rather than once per gene;
+#'   \code{"gene"} is the original per-gene loop, kept as the reference
+#'   implementation. The two agree to ~5e-13 on the coefficients with identical
+#'   convergence flags and iteration counts, but \code{"batch"} is not
+#'   invariant to the batch boundary at machine precision -- BLAS blocks a
+#'   many-row product differently from a one-row one.
+#' @param batch.size genes per batched Newton. The default comes from a memory
+#'   budget (\code{options(spiDE.polish.mem.budget = )}, bytes per worker),
+#'   because the batched working set is gene x cell: at 77,454 cells a
+#'   2,000-gene block would allocate over a terabyte, so the gene block size
+#'   cannot be the batch size.
 #'   \code{BPPARAM} worker.
 #' @param BPPARAM a BiocParallelParam; the stage is blocked over genes. With
 #'   more than one worker, each worker runs its BLAS single-threaded when
@@ -922,9 +960,11 @@ setMethod(
                         tau2.maxit = 10L, tau2.tol = 1e-2,
                         tau2.accelerate = TRUE, lambda.a = 0,
                         maxit = 50L, tol = 1e-8, block.size = NULL,
-                        BPPARAM = BiocParallel::SerialParam(), verbose = TRUE) {
+                        BPPARAM = BiocParallel::SerialParam(), verbose = TRUE,
+                        engine = c("batch", "gene"), batch.size = NULL) {
     object <- updateObject(object)
     psi <- match.arg(psi)
+    engine <- match.arg(engine)
     if (!length(object@fits)) {
       stop("nothing to polish: the object carries no per-gene GLM fit", call. = FALSE)
     }
@@ -943,7 +983,8 @@ setMethod(
                       psi.method = psi, tau2 = tau2, tau2.maxit = tau2.maxit,
                       tau2.tol = tau2.tol, tau2.accelerate = tau2.accelerate,
                       maxit = maxit, tol = tol, block.size = block.size,
-                      BPPARAM = BPPARAM, verbose = verbose)
+                      BPPARAM = BPPARAM, verbose = verbose,
+                      engine = engine, batch.size = batch.size)
     })
     names(object@fits) <- names(updateObject(object)@fits)
     # cross-bandwidth combination and the results table are stale too
