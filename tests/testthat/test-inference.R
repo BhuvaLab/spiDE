@@ -377,3 +377,30 @@ test_that(".bplapplySingleBLAS runs forked workers single-threaded and serial di
   expect_equal(unlist(spiDE:::.bplapplySingleBLAS(1:2, function(i, k) i * k, BPPARAM = bp,
                                                   k = 10L)), c(10L, 20L))
 })
+
+test_that(".segmentSum agrees with rowsum on both backends", {
+  # The claim this exists to retire: "rowsum(), which has no tensor equivalent
+  # here" (.blockedInference()), which is why the nested absorption is CPU-only
+  # and the GPU path pays for a dense p x p gram instead of an absorbed one.
+  set.seed(7)
+  n <- 200L; k <- 5L; G <- 9L
+  M <- matrix(rnorm(n * k), n, k)
+  gidx <- sample.int(G, n, replace = TRUE)
+  ref <- rowsum(M, group = factor(gidx, levels = seq_len(G)), reorder = TRUE)
+  got <- spiDE:::.segmentSum(M, gidx, G)
+  expect_equal(unname(got), unname(ref), tolerance = 1e-12)
+
+  # a group with no rows must come back as zeros, not be dropped: the caller
+  # indexes the result positionally, so a short matrix silently misaligns every
+  # group after the gap
+  gidx2 <- gidx; gidx2[gidx2 == 4L] <- 5L
+  got2 <- spiDE:::.segmentSum(M, gidx2, G)
+  expect_equal(nrow(got2), G)
+  expect_true(all(got2[4, ] == 0))
+
+  skip_if_not_installed("torch")
+  Mt <- torch::torch_tensor(M, dtype = torch::torch_float64())
+  gott <- spiDE:::.segmentSum(Mt, gidx, G)
+  expect_equal(as.matrix(gott$cpu()), unname(ref), tolerance = 1e-12)
+  expect_equal(dim(as.matrix(gott$cpu())), c(G, k))
+})

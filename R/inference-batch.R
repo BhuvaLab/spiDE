@@ -92,6 +92,38 @@
   info
 }
 
+#' Sum the rows of a matrix within groups, on either backend
+#'
+#' \code{rowsum()} with no tensor equivalent is the stated reason the nested
+#' indicator block is absorbed on the CPU only (\code{.blockedInference()}), so
+#' the GPU path falls back to a dense \code{p x p} gram -- on the cohort's
+#' design, 1,107 columns where 398 would do. That reason does not hold: torch
+#' has \code{torch_index_add()}, which is exactly this operation, and
+#' \code{torch_scatter_add()} and \code{torch_segment_reduce()} besides
+#' (checked 2026-09-15).
+#'
+#' @param M a matrix or tensor, \code{n x k}.
+#' @param gidx the group of each row, integers in \code{1:G}.
+#' @param G the number of groups; groups absent from \code{gidx} come back as
+#'   zero rows, which \code{rowsum()} would drop.
+#' @return a \code{G x k} matrix or tensor of within-group column sums.
+#' @noRd
+.segmentSum <- function(M, gidx, G) {
+  if (SpaNorm::is_torch_tensor(M)) {
+    idx <- torch::torch_tensor(as.integer(gidx), dtype = torch::torch_long(),
+                               device = M$device)
+    out <- torch::torch_zeros(c(G, M$size(2)), dtype = M$dtype, device = M$device)
+    return(out$index_add(1, idx, M))
+  }
+  # levels = seq_len(G) so an absent group is a zero row rather than a missing
+  # one: the caller indexes the result positionally
+  gf <- factor(gidx, levels = seq_len(G))
+  out <- matrix(0, G, ncol(M))
+  r <- rowsum(M, group = gf, reorder = TRUE)
+  out[as.integer(rownames(r)), ] <- r
+  out
+}
+
 #' Subset a (block, p, p) array/tensor to (block, k, k) via a column index
 #'
 #' On a base R array, \code{varcov[, sel, sel]} already takes the
