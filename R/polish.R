@@ -120,13 +120,32 @@
   gf <- factor(gidx, levels = seq_along(zi))
 
   parts <- function(w) {
-    # ONE weighted copy of X, reused for both the gram and the group sums.
-    # Writing it as crossprod(X * sqrt(w)) plus rowsum(cbind(w, X * w), ...)
-    # allocates two full n x ncol(X) temporaries, and at realistic sizes the
-    # memory traffic -- not the flop count -- is what this stage costs.
-    Xw <- X * w
-    A <- crossprod(X, Xw)
+    # The gram is formed SYMMETRICALLY, crossprod(X * sqrt(w)) rather than
+    # crossprod(X, X * w). This reverses an earlier decision, and the
+    # measurement is the reason (FINDINGS.md, 2026-09-15, at the cohort shape
+    # n = 77,454, px = 398):
+    #
+    #                       1 BLAS thread   8 BLAS threads
+    #   crossprod(X, X*w)       0.426 s         2.436 s
+    #   crossprod(X*sqrt(w))    0.247 s         0.149 s
+    #
+    # The old comment was right that the memory traffic, not the flop count, is
+    # what this costs -- and wrong about which form pays it. dsyrk halves the
+    # flops and, more to the point, SCALES with threads where the dgemm form
+    # degrades: 0.43 -> 2.44 s as threads are added, against 0.25 -> 0.15 s.
+    # That is the mechanism behind the recorded "one worker gains only 1.5x
+    # from four BLAS threads", and it is why the polish has been run 64 workers
+    # x 1 thread. It also makes the gram exactly symmetric, which the Cholesky
+    # downstream assumes.
+    #
+    # The sqrt-weighted copy is then re-weighted in place to give X * w for the
+    # group sums, so the peak is the same two n x px temporaries the previous
+    # form reached through `Xw` plus the rowsum's own copy.
+    sw <- sqrt(w)
+    Xw <- X * sw
+    A <- crossprod(Xw)
     diag(A) <- diag(A) + pen_x
+    Xw <- Xw * sw                                    # now X * w
     cvec <- as.numeric(rowsum(w, group = gf, reorder = TRUE)) + pen_z
     B <- t(rowsum(Xw, group = gf, reorder = TRUE))   # ncol(X) x G
     structure(list(S = A - B %*% (t(B) / cvec), B = B, cvec = cvec),
