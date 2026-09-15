@@ -32,5 +32,17 @@ replace the canonical table, do it in a shell command the user can see and
 approve, not through a file write.
 MSG
     exit 2 ;;
+  *data/toySpiDE.rda)
+    cat >&2 <<'MSG'
+BLOCKED: data/toySpiDE.rda is the shipped example dataset and is generated,
+not written directly.
+
+CLAUDE.md: regenerate it with `source("data-raw/make_toySpiDE.R")` after
+`devtools::load_all()` (it calls the internal .toySPE()). The exported
+examples and the vignette depend on its planted G1/A/B effect and on the
+field/n_per tuning that lets all four default bandwidths converge; a hand
+edit or an ad-hoc save() breaks that silently.
+MSG
+    exit 2 ;;
 esac
 exit 0

@@ -20,7 +20,39 @@
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/protect-canonical-tables.sh"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/protect-running-drivers.sh"
+          }
+        ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/roxygen-drift.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(cplot list *)",
+      "Bash(cplot log *)",
+      "Bash(cplot status *)",
+      "Bash(nvidia-smi *)",
+      "Bash(sacct *)",
+      "Bash(scontrol show *)",
+      "Bash(sinfo *)",
+      "Bash(squeue *)",
+      "Bash(sstat *)"
     ]
   }
 }

@@ -10,6 +10,8 @@ docs
 !.claude/skills/hpc-job-sizing
 !.claude/skills/run-benchmark-arm
 !.claude/skills/calibration-check
+!.claude/skills/build-site
+!.claude/skills/record-finding
 !.claude/agents
 !.claude/hooks
 !.claude/settings.json
