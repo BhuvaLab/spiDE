@@ -671,7 +671,26 @@
     s2 <- unlist(lapply(ql_parts, `[[`, "s2")); dfq <- unlist(lapply(ql_parts, `[[`, "df"))
     ave <- unlist(lapply(ql_parts, `[[`, "ave"))
     ok <- is.finite(s2) & s2 > 0 & dfq > 0
-    sq <- limma::squeezeVar(s2[ok], dfq[ok], covariate = ave[ok], robust = TRUE)
+    # limma's ROBUST moderation is not guaranteed to return: with unequal df1
+    # it estimates an outlier df2 through the F tail, and an extreme
+    # (s2, df) pair makes that tail NaN, after which its internal
+    # `which.min()` is empty and `fitFDistUnequalDF1()` stops at `1:imin`.
+    # Measured on the restricted cohort design at bandwidth 70 (2026-09-14),
+    # where it killed the test stage after the fit and the polish had run.
+    # The per-gene sites in this file drop the offending gene; here the call
+    # is across genes, so dropping is not available and the treatment is to
+    # fall back to the non-robust moderation -- ordinary empirical Bayes,
+    # which is what `robust = FALSE` has always done -- and say so, rather
+    # than lose the stage.
+    sq <- tryCatch(
+      limma::squeezeVar(s2[ok], dfq[ok], covariate = ave[ok], robust = TRUE),
+      error = function(e) {
+        warning("limma::squeezeVar(robust = TRUE) failed on the ",
+                "quasi-likelihood dispersions (", conditionMessage(e),
+                "); falling back to the non-robust moderation for this fit",
+                call. = FALSE)
+        limma::squeezeVar(s2[ok], dfq[ok], covariate = ave[ok], robust = FALSE)
+      })
     ql_scale <- rep(NA_real_, ng); ql_scale[ok] <- sq$var.post
   }
 

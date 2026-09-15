@@ -1,3 +1,19 @@
+# spiDE 0.99.21
+
+## Changes
+
+* **The quasi-likelihood moderation no longer loses a stage to limma's robust
+  fit.** `limma::squeezeVar(robust = TRUE)` estimates an outlier `df2` through
+  the F tail, and with unequal `df1` an extreme `(s2, df)` pair makes that tail
+  `NaN`, after which `fitFDistUnequalDF1()` stops on an empty `which.min()`.
+  Measured on the restricted cohort design at bandwidth 70 (2026-09-14), where
+  it killed the test stage after the fit and the polish had already run. The
+  per-gene sites in `inference.R` drop the offending gene; this call is across
+  genes, so dropping is not available and the treatment is to fall back to the
+  non-robust moderation -- ordinary empirical Bayes, which is what
+  `robust = FALSE` has always done -- with a warning naming the cause, rather
+  than lose the stage.
+
 # spiDE 0.99.20
 
 ## Changes
