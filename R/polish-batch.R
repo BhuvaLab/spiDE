@@ -32,6 +32,73 @@
 # it errs high.
 SPIDE_POLISH_GENE_CELL_MATS <- 6
 
+#' The batched mean, on either backend
+#'
+#' \code{exp(A W')} floored at \code{.MU_FLOOR}, for a block of genes at once.
+#' The floor is not cosmetic: a degenerate start can drive a linear predictor to
+#' -50 and the log-likelihood to -Inf, and the per-gene engine has always
+#' clamped here.
+#'
+#' @param A the block's coefficients, \code{genes x p}.
+#' @param W the design, \code{cells x p}. Matching types: both matrices, or
+#'   both torch tensors.
+#' @return \code{genes x cells}, the same type as the inputs.
+#' @noRd
+.muBatch <- function(A, W) {
+  if (SpaNorm::is_torch_tensor(A)) {
+    eta <- torch::torch_matmul(A, W$transpose(1, 2))
+    return(torch::torch_clamp(torch::torch_exp(eta), min = .MU_FLOOR))
+  }
+  pmax(exp(A %*% t(W)), .MU_FLOOR)
+}
+
+#' The batched penalised NB log-likelihood, on either backend
+#'
+#' \code{sum_cells dnbinom(y; size = 1/psi, mu) - 0.5 * a' diag(pen) a}, per
+#' gene. On the torch branch the NB log-pmf is written out, because
+#' \code{dnbinom()} has no tensor equivalent:
+#'
+#'   lgamma(y + r) - lgamma(r) - lgamma(y + 1) + r log(r/(r+mu)) + y log(mu/(r+mu))
+#'
+#' with \code{r = 1/psi}. A zero count contributes nothing through the last
+#' term (\code{mu} is floored strictly positive, so the log is finite and the
+#' factor is zero) and \code{lgamma(1) = 0} through the third, which is what
+#' keeps an all-zero gene finite rather than \code{NaN}.
+#'
+#' \code{psi} and \code{pen} may stay plain R vectors even when the counts are
+#' tensors: they are per gene and per column, small, and holding them on the
+#' host avoids a transfer per line-search trial.
+#'
+#' @param Y counts, \code{genes x cells}.
+#' @param M the fitted means, \code{genes x cells}.
+#' @param psi per-gene dispersion, length \code{genes}.
+#' @param A the block's coefficients, \code{genes x p}.
+#' @param pen the length-\code{p} ridge penalty.
+#' @return a length-\code{genes} vector (or tensor) of penalised
+#'   log-likelihoods.
+#' @noRd
+.nbLoglikBatch <- function(Y, M, psi, A, pen) {
+  if (SpaNorm::is_torch_tensor(M)) {
+    dt <- M$dtype
+    dev <- M$device
+    asT <- function(x) {
+      if (SpaNorm::is_torch_tensor(x)) x else
+        torch::torch_tensor(as.numeric(x), dtype = dt, device = dev)
+    }
+    r <- (1 / asT(psi))$unsqueeze(2)          # genes x 1, broadcast over cells
+    Yt <- asT(Y)
+    rm_ <- r + M
+    ll <- torch::torch_lgamma(Yt + r) - torch::torch_lgamma(r) -
+      torch::torch_lgamma(Yt + 1) +
+      r * torch::torch_log(r / rm_) + Yt * torch::torch_log(M / rm_)
+    pen_t <- asT(pen)
+    return(torch::torch_sum(ll, dim = 2) -
+             0.5 * torch::torch_matmul(asT(A)$pow(2), pen_t))
+  }
+  rowSums(stats::dnbinom(Y, size = 1 / psi, mu = M, log = TRUE)) -
+    0.5 * as.numeric((A^2) %*% pen)
+}
+
 #' Genes per batched Newton, from a memory budget
 #'
 #' A gene block is sized to bound densification of the counts (2,000 genes); the
@@ -102,11 +169,11 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
   # psi is length nrow(M): a matrix is column-major, so a per-gene vector
   # recycles down each column and reaches element (i, j) as psi[i]. That is the
   # whole reason these read as if psi were scalar.
+  # one definition of each kernel, shared with the tests and with the device
+  # path; tW is kept because the base-R branch of .muBatch() transposes W and
+  # this loop calls it thousands of times
   mu_of <- function(A) pmax(exp(A %*% tW), .MU_FLOOR)
-  ll_of <- function(Y, M, ps, A) {
-    rowSums(stats::dnbinom(Y, size = 1 / ps, mu = M, log = TRUE)) -
-      0.5 * as.numeric((A^2) %*% pen)
-  }
+  ll_of <- function(Y, M, ps, A) .nbLoglikBatch(Y, M, ps, A, pen)
 
   # --- the damped Newton, over a set of genes --------------------------------
   # Mirrors .polishGene()'s newton() exactly, including the staleness policy,
