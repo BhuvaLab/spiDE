@@ -160,3 +160,36 @@ test_that("a gene that cannot be polished does not poison its batch", {
                              psi0[-2], d$pen, solver, ct_cols = d$ct_cols, warm = TRUE)
   expect_equal(b$alpha[-2, ], ok$alpha, tolerance = 1e-12, ignore_attr = TRUE)
 })
+
+test_that(".polishBatch reports what a shared factorisation would cost", {
+  # Phase 2e's design question, made measurable. newton() keeps a list of
+  # per-gene factorisations under a per-gene staleness counter. One shared
+  # TENSOR factorisation cannot do that: it must refresh the whole active stack
+  # whenever any gene in it is stale. How much of Phase 0b's memoisation that
+  # discards is an empirical question about the staleness trajectory, not
+  # something to reason about -- so the engine counts both.
+  #
+  #   factorisations       what the per-gene policy actually built
+  #   factorisations_sync  what refreshing the whole active set would have built
+  #
+  # The second is a counterfactual and costs one integer per iteration.
+  d <- toy_batch()
+  set.seed(4)
+  B <- 8L
+  mu <- exp(d$W %*% c(1.2, 0.4, 0.3, rep(0, 6)))
+  Yb <- matrix(rnbinom(B * nrow(d$W), mu = rep(as.numeric(mu), each = B),
+                       size = 1 / 0.4), nrow = B)
+  A0 <- matrix(0, B, ncol(d$W)); A0[, 1] <- log(pmax(rowMeans(Yb), 0.1))
+  solver <- spiDE:::.newtonSolver(d$W, d$pen, d$nested)
+
+  out <- spiDE:::.polishBatch(Yb, d$W, A0, rep(0.4, B), d$pen, solver,
+                              ct_cols = d$ct_cols)
+  nf <- attr(out, "factorisations")
+  expect_type(nf, "integer")
+  expect_named(nf, c("pergene", "sync"))
+
+  # every gene is factorised at least once before its first step
+  expect_gte(nf[["pergene"]], B)
+  # and a shared factorisation can never build fewer than the per-gene policy
+  expect_gte(nf[["sync"]], nf[["pergene"]])
+})

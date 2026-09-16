@@ -82,6 +82,14 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
   psi0 <- rep_len(as.numeric(psi0), B)
   tW <- t(W)
   has_factor <- is.function(solver$factor)
+  # Factorisation accounting, for Phase 2e. The per-gene policy refreshes one
+  # gene's information matrix when THAT gene is stale; a single shared tensor
+  # factorisation cannot, and must refresh the whole active stack whenever any
+  # gene in it is stale. `sync` is what that would have cost, counted as the
+  # engine runs, so the design question is answered by measurement rather than
+  # by argument. One integer per refresh point; it changes no result.
+  n_fac <- 0L
+  n_fac_sync <- 0L
 
   # --- batched kernels -------------------------------------------------------
   # psi is length nrow(M): a matrix is column-major, so a per-gene vector
@@ -125,6 +133,8 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
           fac[[kk[j]]] <- if (has_factor) solver$factor(w) else w
         }
         stale[kk] <- 0L
+        n_fac <<- n_fac + length(kk)
+        n_fac_sync <<- n_fac_sync + length(act)
       }
 
       # the step is per gene: its own information, its own right-hand side
@@ -179,6 +189,8 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
           fac[[kk[j]]] <- if (has_factor) solver$factor(w) else w
         }
         stale[kk] <- 0L
+        n_fac <<- n_fac + length(kk)
+        n_fac_sync <<- n_fac_sync + length(act)
       }
       stop_now <- !ok & !retry                      # line search exhausted
 
@@ -330,7 +342,8 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
   iters[keep] <- it_total[keep]
   capped[keep] <- !conv[keep]
   polished[keep] <- TRUE
-  list(alpha = alpha, psi = psi, loglik = loglik, iterations = iters,
-       restarted = restarted, capped = capped, singular = singular,
-       psi_bound = psi_bound, polished = polished)
+  structure(list(alpha = alpha, psi = psi, loglik = loglik, iterations = iters,
+                 restarted = restarted, capped = capped, singular = singular,
+                 psi_bound = psi_bound, polished = polished),
+            factorisations = c(pergene = n_fac, sync = n_fac_sync))
 }
