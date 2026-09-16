@@ -271,3 +271,40 @@ test_that("a shared factorisation reaches the same optimum as the per-gene one",
   # the gate: the penalised log-likelihood is never worse
   expect_gt(min(shd$loglik - per$loglik), -1e-7 * max(abs(per$loglik)))
 })
+
+test_that(".polishBatch runs on tensors and agrees with the matrix path", {
+  # The point of the whole conversion. Exercised on CPU torch tensors, which is
+  # the same code the device runs -- only the placement differs. A shared
+  # factorisation is required here: the per-gene branch keeps a LIST of
+  # factorisations, which is exactly what cannot go to a device.
+  skip_if_not_installed("torch")
+  d <- toy_batch()
+  solver <- spiDE:::.newtonSolver(d$W, d$pen, d$nested)
+  set.seed(77)
+  B <- 9L
+  mu <- exp(d$W %*% c(1.3, 0.35, 0.25, rep(0, 6)))
+  Yb <- matrix(rnbinom(B * nrow(d$W), mu = rep(as.numeric(mu), each = B),
+                       size = 1 / 0.5), nrow = B)
+  A0 <- matrix(0, B, ncol(d$W)); A0[, 1] <- log(pmax(rowMeans(Yb), 0.1))
+  psi0 <- rep(0.5, B)
+
+  args <- list(A0 = A0, psi0 = psi0, pen = d$pen, solver = solver,
+               ct_cols = d$ct_cols, shared.factor = TRUE, nested = d$nested)
+  cpu <- do.call(spiDE:::.polishBatch, c(list(Yb, d$W), args))
+
+  tt <- function(x) torch::torch_tensor(x, dtype = torch::torch_float64())
+  targs <- args; targs$A0 <- tt(A0)
+  tor <- do.call(spiDE:::.polishBatch, c(list(tt(Yb), tt(d$W)), targs))
+
+  # the return is always host, whatever went in
+  expect_true(is.matrix(tor$alpha))
+  expect_type(tor$psi, "double")
+
+  expect_identical(tor$polished, cpu$polished)
+  expect_identical(tor$singular, cpu$singular)
+  expect_identical(tor$restarted, cpu$restarted)
+  expect_identical(tor$psi_bound, cpu$psi_bound)
+  expect_equal(tor$alpha, cpu$alpha, tolerance = 1e-8)
+  expect_equal(tor$psi, cpu$psi, tolerance = 1e-8)
+  expect_equal(tor$loglik, cpu$loglik, tolerance = 1e-8)
+})

@@ -585,6 +585,91 @@ NULL
   X %*% Y
 }
 
+#' @rdname batch-array-ops
+#' @noRd
+.rowsFinite <- function(X) {
+  if (SpaNorm::is_torch_tensor(X)) {
+    ok <- torch::torch_isfinite(X)$all(dim = 2)
+    return(as.logical(as.numeric(SpaNorm::toRMatrix(ok))))
+  }
+  apply(X, 1L, function(r) all(is.finite(r)))
+}
+
+#' @rdname batch-array-ops
+#' @noRd
+.rowMeansB <- function(X) {
+  if (SpaNorm::is_torch_tensor(X)) {
+    return(as.numeric(SpaNorm::toRMatrix(torch::torch_mean(X, dim = 2))))
+  }
+  rowMeans(X)
+}
+
+#' @rdname batch-array-ops
+#' @noRd
+.colsOf <- function(X, jj) {
+  if (SpaNorm::is_torch_tensor(X)) {
+    idx <- torch::torch_tensor(as.integer(jj), dtype = torch::torch_long(),
+                               device = X$device)
+    return(torch::torch_index_select(X, 2, idx))
+  }
+  X[, jj, drop = FALSE]
+}
+
+#' The smallest value in each row, over the masked entries only
+#'
+#' \code{degenerate()} asks for the smallest linear predictor among the cells
+#' with a POSITIVE count. A gene with no positive count has no such cell, and
+#' the answer there is \code{Inf} -- which is what makes it NOT degenerate,
+#' since the test is \code{min < -10}. Returning an empty minimum (base R's
+#' \code{min(numeric(0))} warns and returns \code{Inf}) or \code{NA} would
+#' both be wrong in ways that only show on an all-zero gene.
+#'
+#' @rdname batch-array-ops
+#' @noRd
+.maskedRowMin <- function(X, mask) {
+  if (SpaNorm::is_torch_tensor(X)) {
+    big <- torch::torch_full_like(X, Inf)
+    return(as.numeric(SpaNorm::toRMatrix(
+      torch::torch_where(mask, X, big)$amin(dim = 2))))
+  }
+  vapply(seq_len(nrow(X)), function(i) {
+    p <- mask[i, ]
+    if (!any(p)) Inf else min(X[i, p])
+  }, numeric(1))
+}
+
+#' @rdname batch-array-ops
+#' @noRd
+.rowMaxB <- function(X) {
+  if (SpaNorm::is_torch_tensor(X)) {
+    return(as.numeric(SpaNorm::toRMatrix(X$amax(dim = 2))))
+  }
+  apply(X, 1L, max)
+}
+
+#' The boundary back to the host
+#'
+#' \code{.polishBatch()} may take its counts and design as tensors, but it
+#' always RETURNS host matrices and vectors: \code{.polishFit()} reads
+#' \code{r$alpha[j, ]} per gene and \code{@polish} is a data frame. Keeping
+#' the returned coefficients on the host also costs nothing -- they are
+#' genes x columns, the one small array in the loop.
+#'
+#' @rdname batch-array-ops
+#' @noRd
+.asHostMat <- function(X) {
+  if (SpaNorm::is_torch_tensor(X)) return(as.matrix(SpaNorm::toRMatrix(X)))
+  X
+}
+
+#' @rdname batch-array-ops
+#' @noRd
+.asLike <- function(M, ref) {
+  if (!SpaNorm::is_torch_tensor(ref)) return(M)
+  if (SpaNorm::is_torch_tensor(M)) return(M)
+  torch::torch_tensor(as.matrix(M), dtype = ref$dtype, device = ref$device)
+}
+
 #' Restrict a batched factorisation state to a subset of its genes
 #'
 #' The active set only ever shrinks inside \code{newton()}, so a gene leaving

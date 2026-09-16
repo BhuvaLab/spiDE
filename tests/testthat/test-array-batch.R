@@ -68,3 +68,74 @@ test_that(".matmulB multiplies on either backend", {
   got <- spiDE:::.matmulB(tt(R), tt(W))
   expect_equal(as.matrix(SpaNorm::toRMatrix(got)), R %*% W, tolerance = 1e-12)
 })
+
+test_that(".rowsFinite flags rows carrying NA, NaN or Inf", {
+  X <- matrix(1:12 / 2, 3, 4)
+  X[2, 3] <- NA; X[3, 1] <- Inf
+  expect_identical(spiDE:::.rowsFinite(X), c(TRUE, FALSE, FALSE))
+
+  skip_if_not_installed("torch")
+  got <- spiDE:::.rowsFinite(torch::torch_tensor(X, dtype = torch::torch_float64()))
+  expect_identical(got, c(TRUE, FALSE, FALSE))
+})
+
+test_that(".rowMeansB returns host numbers on either backend", {
+  set.seed(8)
+  X <- matrix(stats::rnorm(20), 4, 5)
+  expect_equal(spiDE:::.rowMeansB(X), rowMeans(X))
+
+  skip_if_not_installed("torch")
+  got <- spiDE:::.rowMeansB(torch::torch_tensor(X, dtype = torch::torch_float64()))
+  expect_equal(got, rowMeans(X), tolerance = 1e-12)
+  expect_true(is.numeric(got))
+})
+
+test_that(".colsOf subsets columns on either backend", {
+  set.seed(9)
+  X <- matrix(stats::rnorm(20), 4, 5)
+  expect_equal(spiDE:::.colsOf(X, c(2L, 5L)), X[, c(2L, 5L), drop = FALSE])
+
+  skip_if_not_installed("torch")
+  got <- spiDE:::.colsOf(torch::torch_tensor(X, dtype = torch::torch_float64()),
+                         c(2L, 5L))
+  expect_equal(as.matrix(SpaNorm::toRMatrix(got)), X[, c(2L, 5L)], tolerance = 1e-12)
+})
+
+test_that(".maskedRowMin takes the minimum over the masked cells only", {
+  # degenerate() asks for the smallest linear predictor among cells with a
+  # POSITIVE count; a gene with no positive count has no such cell and must
+  # come back Inf rather than empty or NA
+  X <- rbind(c(1, -5, 3), c(2, 2, 2), c(-9, 0, 4))
+  mask <- rbind(c(TRUE, FALSE, TRUE), c(FALSE, FALSE, FALSE), c(TRUE, TRUE, TRUE))
+  expect_equal(spiDE:::.maskedRowMin(X, mask), c(1, Inf, -9))
+
+  skip_if_not_installed("torch")
+  tt <- function(x) torch::torch_tensor(x, dtype = torch::torch_float64())
+  got <- spiDE:::.maskedRowMin(tt(X), tt(mask * 1)$to(dtype = torch::torch_bool()))
+  expect_equal(got, c(1, Inf, -9), tolerance = 1e-12)
+})
+
+test_that(".asLike moves a host matrix onto the reference's backend", {
+  M <- matrix(1:6 / 3, 2, 3)
+  expect_identical(spiDE:::.asLike(M, matrix(0, 1, 1)), M)
+
+  skip_if_not_installed("torch")
+  ref <- torch::torch_tensor(matrix(0, 1, 1), dtype = torch::torch_float64())
+  got <- spiDE:::.asLike(M, ref)
+  expect_true(SpaNorm::is_torch_tensor(got))
+  expect_equal(as.matrix(SpaNorm::toRMatrix(got)), M, tolerance = 1e-12)
+})
+
+test_that(".rowMaxB and .asHostMat close the boundary back to the host", {
+  set.seed(12)
+  X <- matrix(stats::rnorm(20), 4, 5)
+  expect_equal(spiDE:::.rowMaxB(X), apply(X, 1L, max))
+  expect_identical(spiDE:::.asHostMat(X), X)
+
+  skip_if_not_installed("torch")
+  Xt <- torch::torch_tensor(X, dtype = torch::torch_float64())
+  expect_equal(spiDE:::.rowMaxB(Xt), apply(X, 1L, max), tolerance = 1e-12)
+  got <- spiDE:::.asHostMat(Xt)
+  expect_true(is.matrix(got))
+  expect_equal(got, X, tolerance = 1e-12)
+})

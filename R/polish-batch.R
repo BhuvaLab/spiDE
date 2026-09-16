@@ -238,7 +238,7 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
   B <- nrow(Yb)
   p <- ncol(W)
   psi0 <- rep_len(as.numeric(psi0), B)
-  tW <- t(W)
+  tW <- if (SpaNorm::is_torch_tensor(W)) W$transpose(1, 2) else t(W)
   has_factor <- is.function(solver$factor)
   # Factorisation accounting, for Phase 2e. The per-gene policy refreshes one
   # gene's information matrix when THAT gene is stale; a single shared tensor
@@ -262,7 +262,7 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
   # one definition of each kernel, shared with the tests and with the device
   # path; tW is kept because the base-R branch of .muBatch() transposes W and
   # this loop calls it thousands of times
-  mu_of <- function(A) pmax(exp(A %*% tW), .MU_FLOOR)
+  mu_of <- function(A) .muBatch(A, W)
   ll_of <- function(Y, M, ps, A) .nbLoglikBatch(Y, M, ps, A, pen)
 
   # --- the damped Newton, over a set of genes --------------------------------
@@ -272,11 +272,12 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
   # vector indexed by position within `rows`.
   newton <- function(rows, A, ps, maxit) {
     m <- length(rows)
-    Y <- Yb[rows, , drop = FALSE]
-    Ai <- A[rows, , drop = FALSE]
+    Y <- .rowsOf(Yb, rows)
+    Ai <- .rowsOf(A, rows)
     pi_ <- ps[rows]
     Mu <- mu_of(Ai)
-    ll <- ll_of(Y, Mu, pi_, Ai)
+    # the log-likelihood is length-genes bookkeeping and lives on the host
+    ll <- .asHost(ll_of(Y, Mu, pi_, Ai))
     it <- integer(m); conv <- logical(m); sing <- logical(m)
     stale <- integer(m); fac <- vector("list", m)
     st <- NULL; st_rows <- integer(0)
@@ -284,10 +285,10 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
 
     while (length(act)) {
       it[act] <- it[act] + 1L
-      Ya <- Y[act, , drop = FALSE]; Ma <- Mu[act, , drop = FALSE]
-      Aa <- Ai[act, , drop = FALSE]; pa <- pi_[act]
-      R <- (Ya - Ma) / (1 + pa * Ma)
-      S <- R %*% W - sweep(Aa, 2L, pen, `*`)
+      Ya <- .rowsOf(Y, act); Ma <- .rowsOf(Mu, act)
+      Aa <- .rowsOf(Ai, act); pa <- pi_[act]
+      R <- (Ya - Ma) / (1 + .mulRows(pa, Ma))
+      S <- .matmulB(R, W) - .scaleCols(Aa, pen)
 
       if (shared.factor) {
         # the stack is aligned to `act`; genes only ever LEAVE the active set,
@@ -297,7 +298,7 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
           st_rows <- act
         }
         if (is.null(st) || any(stale[act] >= 3L)) {
-          Wt <- Ma / (1 + pa * Ma)
+          Wt <- Ma / (1 + .mulRows(pa, Ma))
           st <- solverB$factor(Wt)
           st_rows <- act
           stale[act] <- 0L
@@ -307,8 +308,10 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
         D <- solverB$solve(st, S)
         # same verdict as the per-gene path's `!all(is.finite(d))`: NA from a
         # singular slice, but Inf and NaN too
-        bad <- !apply(D, 1L, function(r) all(is.finite(r)))
-        D[bad, ] <- 0
+        bad <- !.rowsFinite(D)
+        if (any(bad)) {
+          D <- .setRows(D, which(bad), .asLike(matrix(0, sum(bad), p), D))
+        }
       } else {
       refresh <- vapply(act, function(k) is.null(fac[[k]]), logical(1)) | stale[act] >= 3L
       if (any(refresh)) {
@@ -336,7 +339,7 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
         sing[act[bad]] <- TRUE
         act <- act[!bad]
         if (!length(act)) break
-        D <- D[!bad, , drop = FALSE]; S <- S[!bad, , drop = FALSE]
+        D <- .rowsOf(D, which(!bad)); S <- .rowsOf(S, which(!bad))
         if (shared.factor) {
           st <- .subsetState(st, which(!bad))
           st_rows <- act
@@ -346,19 +349,23 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
       # --- the line search, one trial round for every pending gene ----------
       na <- length(act)
       step <- rep(1, na); halv <- integer(na); ok <- logical(na)
-      A1 <- Ai[act, , drop = FALSE]; M1 <- Mu[act, , drop = FALSE]
+      A1 <- .rowsOf(Ai, act); M1 <- .rowsOf(Mu, act)
       L1 <- ll[act]
       pend <- seq_len(na)
       while (length(pend)) {
-        cand <- Ai[act[pend], , drop = FALSE] + step[pend] * D[pend, , drop = FALSE]
+        cand <- .rowsOf(Ai, act[pend]) +
+          .mulRows(step[pend], .rowsOf(D, pend))
         mu_c <- mu_of(cand)
-        ll_c <- ll_of(Yb[rows[act[pend]], , drop = FALSE], mu_c, pi_[act[pend]], cand)
+        # the one deliberate transfer per trial round: the accept test is
+        # host-side control flow over length-genes numbers
+        ll_c <- .asHost(ll_of(.rowsOf(Yb, rows[act[pend]]), mu_c,
+                              pi_[act[pend]], cand))
         ref <- ll[act[pend]]
         acc <- is.finite(ll_c) & ll_c >= ref - 1e-9 * abs(ref)
         if (any(acc)) {
           take <- pend[acc]
-          A1[take, ] <- cand[acc, , drop = FALSE]
-          M1[take, ] <- mu_c[acc, , drop = FALSE]
+          A1 <- .setRows(A1, take, .rowsOf(cand, which(acc)))
+          M1 <- .setRows(M1, take, .rowsOf(mu_c, which(acc)))
           L1[take] <- ll_c[acc]
           ok[take] <- TRUE
         }
@@ -376,7 +383,8 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
         kk <- act[retry]
         if (shared.factor) {
           # one stack: a retry for any gene rebuilds it for all of them
-          Wt <- Mu[act, , drop = FALSE] / (1 + pi_[act] * Mu[act, , drop = FALSE])
+          Ma2 <- .rowsOf(Mu, act)
+          Wt <- Ma2 / (1 + .mulRows(pi_[act], Ma2))
           st <- solverB$factor(Wt)
           st_rows <- act
           stale[act] <- 0L
@@ -397,8 +405,8 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
       if (any(ok)) {
         kk <- act[ok]
         gain <- L1[ok] - ll[kk]
-        Ai[kk, ] <- A1[ok, , drop = FALSE]
-        Mu[kk, ] <- M1[ok, , drop = FALSE]
+        Ai <- .setRows(Ai, kk, .rowsOf(A1, which(ok)))
+        Mu <- .setRows(Mu, kk, .rowsOf(M1, which(ok)))
         ll[kk] <- L1[ok]
         stale[kk] <- ifelse(halv[ok] > 2L, 3L, stale[kk] + 1L)
         # the convergence test reads the NEW log-likelihood, as the per-gene
@@ -420,32 +428,33 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
 
   # --- per-gene helpers, vectorised where they are shared --------------------
   sane_start <- function(rows) {
+    # built on the host -- it is genes x columns, the one small array here --
+    # and moved to the counts' backend on the way out
     A <- matrix(0, length(rows), p)
     ct <- if (is.null(ct_cols)) integer(0) else which(ct_cols)
     if (length(ct)) {
       for (j in ct) {
-        cells <- W[, j] != 0
-        A[, j] <- if (any(cells)) log(rowMeans(Yb[rows, cells, drop = FALSE]) + 1e-3) else 0
+        cells <- which(.asHost(.colsOf(W, j)) != 0)
+        A[, j] <- if (length(cells)) {
+          log(.rowMeansB(.colsOf(.rowsOf(Yb, rows), cells)) + 1e-3)
+        } else 0
       }
     } else {
-      A[, 1] <- log(rowMeans(Yb[rows, , drop = FALSE]) + 1e-3)
+      A[, 1] <- log(.rowMeansB(.rowsOf(Yb, rows)) + 1e-3)
     }
-    A
+    .asLike(A, Yb)
   }
   degenerate <- function(rows, A) {
     out <- logical(length(rows))
-    fin <- apply(A, 1L, function(a) all(is.finite(a)))
+    fin <- .rowsFinite(A)
     out[!fin] <- TRUE
     if (any(fin)) {
       kk <- which(fin)
-      Eta <- A[kk, , drop = FALSE] %*% tW
-      Yk <- Yb[rows[kk], , drop = FALSE]
-      pos <- Yk > 0
-      mins <- vapply(seq_along(kk), function(j) {
-        if (!any(pos[j, ])) return(Inf)
-        min(Eta[j, pos[j, ]])
-      }, numeric(1))
-      out[kk] <- mins < -10
+      Eta <- .matmulB(.rowsOf(A, kk), tW)
+      pos <- .rowsOf(Yb, rows[kk]) > 0
+      # a gene with no positive count has no such cell: Inf, hence not
+      # degenerate, which is the rule the per-gene engine applies
+      out[kk] <- .maskedRowMin(Eta, pos) < -10
     }
     out
   }
@@ -461,18 +470,20 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
   }
 
   # --- the flow, mirroring .polishGene() ------------------------------------
-  alpha <- A0; psi <- psi0
+  # inputs may be tensors; the RETURN is always host -- .polishFit() reads
+  # r$alpha[j, ] per gene and @polish is a data frame
+  alpha <- .asHostMat(A0); psi <- psi0
   loglik <- rep(NA_real_, B); iters <- integer(B)
   restarted <- capped <- singular <- psi_bound <- polished <- logical(B)
 
   if (warm) {
-    fin <- apply(A0, 1L, function(a) all(is.finite(a)))
+    fin <- .rowsFinite(A0)
     if (any(fin)) {
       rows <- which(fin)
       f <- newton(rows, A0, psi0, maxit)
-      good <- !f$singular & apply(f$A, 1L, function(a) all(is.finite(a))) & is.finite(f$ll)
+      good <- !f$singular & .rowsFinite(f$A) & is.finite(f$ll)
       kk <- rows[good]
-      alpha[kk, ] <- f$A[good, , drop = FALSE]
+      alpha[kk, ] <- .asHostMat(.rowsOf(f$A, which(good)))
       loglik[kk] <- f$ll[good]
       iters[kk] <- f$it[good]
       capped[kk] <- !f$converged[good]
@@ -487,25 +498,25 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
   A <- A0
   deg <- degenerate(seq_len(B), A)
   if (any(deg)) {
-    A[deg, ] <- sane_start(which(deg))
+    A <- .setRows(A, which(deg), sane_start(which(deg)))
     restarted[deg] <- TRUE
   }
   f <- newton(seq_len(B), A, psi0, maxit)
-  fin <- apply(f$A, 1L, function(a) all(is.finite(a)))
-  mx <- apply(f$Mu, 1L, max)
+  fin <- .rowsFinite(f$A)
+  mx <- .rowMaxB(f$Mu)
   need <- !restarted & (f$singular | !fin | mx > 1e10)
   if (any(need)) {
     rows <- which(need)
-    A[rows, ] <- sane_start(rows)
+    A <- .setRows(A, rows, sane_start(rows))
     restarted[rows] <- TRUE
     f2 <- newton(rows, A, psi0, maxit)
     # newton() indexes its result by POSITION within `rows`, not by gene id
-    f$A[rows, ] <- f2$A
-    f$Mu[rows, ] <- f2$Mu
+    f$A <- .setRows(f$A, rows, f2$A)
+    f$Mu <- .setRows(f$Mu, rows, f2$Mu)
     f$ll[rows] <- f2$ll; f$it[rows] <- f2$it
     f$converged[rows] <- f2$converged; f$singular[rows] <- f2$singular
   }
-  fin <- apply(f$A, 1L, function(a) all(is.finite(a)))
+  fin <- .rowsFinite(f$A)
   fell <- f$singular | !fin | !is.finite(f$ll)
   singular[fell] <- f$singular[fell]
   keep <- which(!fell)
@@ -521,21 +532,21 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
     live <- keep
     for (k in 1:2) {
       if (!length(live)) break
-      pm <- psi_ml(live, Mu[live, , drop = FALSE])
+      pm <- psi_ml(live, .rowsOf(Mu, live))
       hit <- pm$at_bound
       psi_bound[live[hit]] <- TRUE
       live <- live[!hit]
       if (!length(live)) break
-      ps[live] <- pm$psi[!hit]
+      ps[live] <- .asHost(pm$psi)[!hit]
       f2 <- newton(live, A, ps, 20L)
-      A[live, ] <- f2$A
-      Mu[live, ] <- f2$Mu
+      A <- .setRows(A, live, f2$A)
+      Mu <- .setRows(Mu, live, f2$Mu)
       ll[live] <- f2$ll
       it_total[live] <- it_total[live] + f2$it
       conv[live] <- conv[live] & f2$converged
     }
   }
-  alpha[keep, ] <- A[keep, , drop = FALSE]
+  alpha[keep, ] <- .asHostMat(.rowsOf(A, keep))
   psi[keep] <- ps[keep]
   loglik[keep] <- ll[keep]
   iters[keep] <- it_total[keep]
