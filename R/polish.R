@@ -695,18 +695,20 @@
   nw <- max(1L, BiocParallel::bpnworkers(BPPARAM))
   if (is.null(block.size)) block.size <- max(1L, min(2000L, ceiling(ng / nw)))
   blocks <- .chunkGenes(ng, block.size)
-  lo <- log(psi.range[1]); hi <- log(psi.range[2])
+  # One dispersion optimiser in the package, not two. This used to run its own
+  # per-gene optimize(), which would have OVERWRITTEN the batched engine's more
+  # accurate bisection at the last step of the default path -- discarding the
+  # change for production while keeping it in the engine's internals. Same
+  # kernel, same at_bound rule, and the rule's action is unchanged: a gene whose
+  # dispersion runs to a bound keeps the one it came in with.
   res <- .bplapplySingleBLAS(blocks, function(gi) {
     Yb <- as.matrix(Y[gi, , drop = FALSE])
-    vapply(seq_along(gi), function(i) {
-      y <- as.numeric(Yb[i, ])
-      mu <- pmax(as.numeric(exp(W %*% alpha[gi[i], ])), .MU_FLOOR)
-      o <- stats::optimize(function(lp) {
-        -sum(stats::dnbinom(y, size = 1 / exp(lp), mu = mu, log = TRUE))
-      }, c(lo, hi))
-      edge <- (o$minimum - lo) < 1e-3 * (hi - lo) || (hi - o$minimum) < 1e-3 * (hi - lo)
-      if (edge || !is.finite(o$objective)) psi[gi[i]] else exp(o$minimum)
-    }, numeric(1))
+    Mu <- .muBatch(alpha[gi, , drop = FALSE], W)
+    pm <- .psiProfileBatch(Yb, Mu, psi.range)
+    out <- pm$psi
+    keep <- pm$at_bound | !is.finite(out)
+    out[keep] <- psi[gi][keep]
+    out
   }, BPPARAM = BPPARAM)
   as.numeric(unlist(res))
 }

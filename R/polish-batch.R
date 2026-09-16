@@ -99,6 +99,96 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
     0.5 * as.numeric((A^2) %*% pen)
 }
 
+#' The profile dispersion, by fixed-iteration bisection on the score
+#'
+#' Replaces a per-gene \code{optimize()} with a batched bisection, and the
+#' reason is accuracy before it is speed. \code{optimize()}'s default tolerance
+#' is \code{.Machine$double.eps^0.25}, about 1.2e-4 ABSOLUTE on a log-interval
+#' of width \code{log(1e3) - log(1e-3) = 13.8}, so the dispersion the per-gene
+#' engine reports is only determined to ~1e-4. Fifty halvings take that to
+#' ~1e-14. Being fixed-iteration it also has no divergent control flow across a
+#' batch, which reproducing Brent would have.
+#'
+#' It bisects the SCORE rather than searching the objective: one
+#' \code{digamma} per cell per evaluation against \code{dnbinom}'s three
+#' \code{lgamma}. With \code{r = 1/psi},
+#'
+#'   dl/dr = sum_i digamma(y_i+r) - digamma(r) + log(r/(r+mu_i)) + 1 - (r+y_i)/(r+mu_i)
+#'
+#' and \code{dl/d log psi = -r dl/dr}, which is positive at the small-psi end
+#' of the range for overdispersed counts and negative at the large-psi end, so
+#' the root is bracketed. A gene whose optimum lies OUTSIDE the range does not
+#' bracket, and is clamped to the endpoint it ran past -- which is then flagged
+#' by the same \code{at_bound} rule the per-gene engine applies, verbatim,
+#' rather than by a second rule that would have to agree with it.
+#'
+#' @param Y counts, \code{genes x cells}.
+#' @param Mu the fitted means, \code{genes x cells}.
+#' @param psi.range the search interval for the dispersion.
+#' @param maxit bisection steps. 50 is ~1e-14 on the log interval.
+#' @return \code{list(psi, at_bound)}; \code{psi} matches the input's type,
+#'   \code{at_bound} is always a plain logical vector.
+#' @noRd
+.psiProfileBatch <- function(Y, Mu, psi.range = c(1e-3, 1e3), maxit = 50L) {
+  lo <- log(psi.range[1])
+  hi <- log(psi.range[2])
+  edge <- 1e-3 * (hi - lo)
+
+  if (SpaNorm::is_torch_tensor(Mu)) {
+    dt <- Mu$dtype
+    dev <- Mu$device
+    Yt <- if (SpaNorm::is_torch_tensor(Y)) Y else
+      torch::torch_tensor(as.matrix(Y), dtype = dt, device = dev)
+    b <- Mu$size(1)
+    score <- function(lp) {
+      r <- torch::torch_exp(-lp)$unsqueeze(2)
+      rm_ <- r + Mu
+      g <- torch::torch_sum(
+        torch::torch_digamma(Yt + r) - torch::torch_digamma(r) +
+          torch::torch_log(r / rm_) + 1 - (r + Yt) / rm_, dim = 2)
+      -torch::torch_exp(-lp) * g
+    }
+    a <- torch::torch_full(c(b), lo, dtype = dt, device = dev)
+    z <- torch::torch_full(c(b), hi, dtype = dt, device = dev)
+    Sa <- score(a)
+    Sz <- score(z)
+    for (i in seq_len(maxit)) {
+      m <- (a + z) / 2
+      pos <- score(m) > 0
+      a <- torch::torch_where(pos, m, a)
+      z <- torch::torch_where(pos, z, m)
+    }
+    lp <- (a + z) / 2
+    lp <- torch::torch_where(Sa <= 0, torch::torch_full_like(lp, lo), lp)
+    lp <- torch::torch_where(Sz >= 0, torch::torch_full_like(lp, hi), lp)
+    lpr <- as.numeric(SpaNorm::toRMatrix(lp))
+    return(list(psi = torch::torch_exp(lp),
+                at_bound = (lpr - lo) < edge | (hi - lpr) < edge))
+  }
+
+  b <- nrow(Mu)
+  score <- function(lp) {
+    r <- exp(-lp)
+    rm_ <- r + Mu
+    -r * rowSums(digamma(Y + r) - digamma(r) + log(r / rm_) + 1 -
+                   (r + Y) / rm_)
+  }
+  a <- rep(lo, b)
+  z <- rep(hi, b)
+  Sa <- score(a)
+  Sz <- score(z)
+  for (i in seq_len(maxit)) {
+    m <- (a + z) / 2
+    pos <- score(m) > 0
+    a <- ifelse(pos, m, a)
+    z <- ifelse(pos, z, m)
+  }
+  lp <- (a + z) / 2
+  lp[Sa <= 0] <- lo
+  lp[Sz >= 0] <- hi
+  list(psi = exp(lp), at_bound = (lp - lo) < edge | (hi - lp) < edge)
+}
+
 #' Genes per batched Newton, from a memory budget
 #'
 #' A gene block is sized to bound densification of the counts (2,000 genes); the
@@ -359,19 +449,15 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
     }
     out
   }
+  # The one deliberate numerical divergence from .polishGene(): a batched
+  # fixed-iteration bisection on the score instead of a per-gene optimize().
+  # More accurate, not less -- optimize()'s tolerance is ~1.2e-4 on a
+  # log-interval of width 13.8 -- and with no divergent control flow across the
+  # batch. .polishGene() keeps optimize(), so the two engines differ on psi by
+  # about optimize()'s own tolerance; the parity tests take psi out of the
+  # comparison with psi.method = "moderated" and measure the psi change alone.
   psi_ml <- function(rows, Mu) {
-    lo <- log(psi.range[1]); hi <- log(psi.range[2])
-    est <- numeric(length(rows)); bound <- logical(length(rows))
-    for (j in seq_along(rows)) {
-      y <- Yb[rows[j], ]; mu <- Mu[j, ]
-      o <- stats::optimize(function(lp) {
-        -sum(stats::dnbinom(y, size = 1 / exp(lp), mu = mu, log = TRUE))
-      }, c(lo, hi))
-      bound[j] <- (o$minimum - lo) < 1e-3 * (hi - lo) ||
-        (hi - o$minimum) < 1e-3 * (hi - lo)
-      est[j] <- exp(o$minimum)
-    }
-    list(psi = est, at_bound = bound)
+    .psiProfileBatch(Yb[rows, , drop = FALSE], Mu, psi.range)
   }
 
   # --- the flow, mirroring .polishGene() ------------------------------------

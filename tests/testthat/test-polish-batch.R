@@ -48,14 +48,29 @@ expect_same_fit <- function(b, g, tol = 1e-12, fields = c("alpha", "psi", "logli
   }
 }
 
+# The batched engine searches the dispersion by fixed-iteration bisection and
+# .polishGene() by optimize(), so under psi.method = "profile" the two differ by
+# about optimize()'s own tolerance. Loosening a tolerance is not a gate, so this
+# is the gate: the batched engine, searching the same objective more finely,
+# must never land on a WORSE penalised log-likelihood.
+expect_no_worse <- function(b, g) {
+  expect_true(all(b$loglik >= g$loglik - 1e-9 * abs(g$loglik)),
+              info = "batched loglik is worse than the per-gene loglik")
+}
+
 test_that("a batch of one reproduces .polishGene() exactly", {
   d <- toy_batch()
   solver <- spiDE:::.newtonSolver(d$W, d$pen, d$nested)
   set.seed(1)
   y <- matrix(rnbinom(ncol(d$W) * 0 + nrow(d$W), mu = 6, size = 3), nrow = 1)
   A0 <- matrix(0, 1, ncol(d$W)); A0[1, 1] <- log(mean(y))
-  b <- spiDE:::.polishBatch(y, d$W, A0, 0.4, d$pen, solver, ct_cols = d$ct_cols)
-  g <- gene_by_gene(y, d, A0, 0.4, solver)
+  # psi.method = "moderated" holds the dispersion fixed, which takes the one
+  # deliberate divergence (bisection against optimize()) out of the comparison
+  # and keeps this a STRICT test of the Newton machinery, which is what it is
+  # for. The psi search is gated on its own in test-psi-batch.R and below.
+  b <- spiDE:::.polishBatch(y, d$W, A0, 0.4, d$pen, solver, ct_cols = d$ct_cols,
+                            psi.method = "moderated")
+  g <- gene_by_gene(y, d, A0, 0.4, solver, psi.method = "moderated")
   expect_same_fit(b, g)
 })
 
@@ -68,8 +83,9 @@ test_that("a batch reproduces the same genes run one at a time", {
                nrow = B)
   A0 <- matrix(0, B, ncol(d$W)); A0[, 1] <- log(pmax(rowMeans(Yb), 0.1))
   psi0 <- rep(0.4, B)
-  b <- spiDE:::.polishBatch(Yb, d$W, A0, psi0, d$pen, solver, ct_cols = d$ct_cols)
-  g <- gene_by_gene(Yb, d, A0, psi0, solver)
+  b <- spiDE:::.polishBatch(Yb, d$W, A0, psi0, d$pen, solver, ct_cols = d$ct_cols,
+                            psi.method = "moderated")
+  g <- gene_by_gene(Yb, d, A0, psi0, solver, psi.method = "moderated")
   expect_same_fit(b, g)
 })
 
@@ -128,7 +144,15 @@ test_that("one batch holds genes taking every different path", {
   psi0 <- c(0.4, 0.2, 0.5, 0.3, 0.8)
   b <- spiDE:::.polishBatch(Yb, d$W, A0, psi0, d$pen, solver, ct_cols = d$ct_cols)
   g <- gene_by_gene(Yb, d, A0, psi0, solver)
-  expect_same_fit(b, g)
+  # This one keeps psi.method = "profile": a gene whose dispersion runs to a
+  # bound is one of the paths it exists to mix, and "moderated" would remove it.
+  # So the numeric fields are compared at the dispersion search's accuracy
+  # rather than at machine precision -- optimize()'s tolerance is ~1.2e-4 on the
+  # log interval, and the observed spread is ~3e-6 in psi and ~1e-7 in alpha.
+  # The FLAGS are still identical, which is what "flag for flag" meant, and the
+  # objective gate below is what makes the looser tolerance honest.
+  expect_same_fit(b, g, tol = 1e-4)
+  expect_no_worse(b, g)
   expect_identical(b$iterations, g$iterations)
   expect_true(any(g$restarted))           # the fixture must actually exercise it
   expect_true(any(g$psi_bound))
