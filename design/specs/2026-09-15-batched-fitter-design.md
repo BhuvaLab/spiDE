@@ -108,19 +108,26 @@ So Phase 2e is not "add a backend argument to `.polishBatch()`". It is:
    only*, with a batched factor/solve: `.absorbBatch()` for the stack, one
    batched Cholesky for the factorisation, one batched triangular solve for the
    step. `.polishGene()` keeps the closures; it is the reference implementation.
-2. Decide what staleness means when the factorisation is one tensor. Per-gene
-   staleness with a shared tensor means refreshing the whole stack whenever any
-   gene is stale, which throws away most of the memoisation the 3x in Phase 0b
-   came from. A batch-synchronous policy has the same fixed point but a
-   different path -- the same trade the spec already records for the line
-   search, and it needs the same treatment: measure it, and if the path differs,
-   say so rather than claiming equality.
+2. ~~Decide what staleness means when the factorisation is one tensor.~~
+   **Measured, and the prediction here was wrong** (FINDINGS, 2026-09-16, job
+   28511603). This paragraph said a shared tensor factorisation "throws away
+   most of the memoisation the 3x in Phase 0b came from" and that it had to be
+   settled before any code. It costs **11% more factorisations at a 128-gene
+   batch and 6% at 64**, on 400 genes of the top-5 bandwidth-30 checkpoint.
+   Refreshes cluster: genes in a block share the design and converge in similar
+   numbers of iterations, so the iterations where any gene is stale are largely
+   the iterations where most are. **Carry one shared factorisation for the
+   active stack** -- it is the simpler implementation and the cheaper one.
 3. The line search and the profile-psi bisection are already batch-shaped and
    are elementwise over genes x cells, which is what the device wants.
 
-Point 2 is the one to settle before any code: it decides whether
-`engine = "batch"` on CPU and on GPU are the same estimator or merely the same
-fixed point.
+What point 2 does NOT settle is the numerical path. A synchronous refresh gives
+genes that were not stale a fresher information matrix than they would have
+had. That cannot move the fixed point and a fresher matrix is not a worse
+Newton direction, but the batch/per-gene comparison stops being an equality
+test -- the same trade already recorded for the line search, and it is measured
+on the objective, not assumed. The ratio also has not been checked on the
+unrestricted arm (1,107 columns, 764 nested against 662/492 here).
 
 ## NEWS owed at merge
 
