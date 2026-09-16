@@ -159,6 +159,36 @@ test_that(".covBatchSize shrinks with design width and stays >= 1", {
   expect_gt(big, wide)
 })
 
+test_that(".gramBatch is invariant to the cell tile, on both branches", {
+  # The torch branch builds sqrt(w) * W as one (batch, ncells, p) tensor --
+  # ~8 GB at a 64-gene batch on the cohort's design, and unbounded by the gene
+  # sub-batch that is supposed to bound this stage. Accumulating over cell
+  # tiles bounds it by the tile instead; the answer must not move.
+  set.seed(11)
+  n <- 50; p <- 6; b <- 4
+  W <- matrix(stats::rnorm(n * p), n, p)
+  wt <- matrix(stats::runif(b * n, 0.2, 2), b, n)
+  pen <- stats::runif(p, 0, 0.5)
+
+  whole <- spiDE:::.gramBatch(W, wt, penalty_diag = pen)
+  for (tile in c(1L, 7L, 49L, 50L, 500L)) {
+    expect_equal(spiDE:::.gramBatch(W, wt, penalty_diag = pen, cell.tile = tile),
+                 whole, tolerance = 1e-12, info = sprintf("cell.tile = %d", tile))
+  }
+
+  skip_if_not_installed("torch")
+  Wt <- torch::torch_tensor(W, dtype = torch::torch_float64())
+  wtt <- torch::torch_tensor(wt, dtype = torch::torch_float64())
+  tor_whole <- spiDE:::.gramBatch(Wt, wtt, penalty_diag = pen)
+  expect_equal(as.array(tor_whole), whole, tolerance = 1e-10)
+  for (tile in c(1L, 7L, 50L)) {
+    expect_equal(as.array(spiDE:::.gramBatch(Wt, wtt, penalty_diag = pen,
+                                             cell.tile = tile)),
+                 whole, tolerance = 1e-10,
+                 info = sprintf("torch cell.tile = %d", tile))
+  }
+})
+
 test_that(".covBatchSize divides its budget among forked workers", {
   # The budget is a machine-wide figure, but .waldCauchyBlock() runs inside
   # bplapply(): every forked worker evaluates this independently and claims the
@@ -367,7 +397,7 @@ test_that("absorbing the nested block gives identical inference to the dense gra
   expect_true(any(nested))
   xi <- which(!nested)
   absorb <- list(solver = spiDE:::.newtonSolver(W_full, f@penalty, nested),
-                 sel_x = match(sel, xi))
+                 nested = nested, sel_x = match(sel, xi))
 
   args <- list(f@alpha[, cols_gene, drop = FALSE], Wsub, wt, scale_b,
                cov_niche, index_ct, uniq_index, W_full,
@@ -379,6 +409,30 @@ test_that("absorbing the nested block gives identical inference to the dense gra
   expect_equal(absorbed$t_stat, dense$t_stat, tolerance = 1e-8)
   expect_equal(absorbed$p.pos, dense$p.pos, tolerance = 1e-8)
   expect_equal(absorbed$se_pat, dense$se_pat, tolerance = 1e-8)
+
+  # The device path takes the BATCHED branch, which until now ignored the
+  # absorption and inverted the full design's gram -- 1,107 columns against 398
+  # on the cohort. Exercised here on CPU torch tensors, which is the same code.
+  skip_if_not_installed("torch")
+  Wt <- torch::torch_tensor(W_full, dtype = torch::torch_float64())
+  wtt <- torch::torch_tensor(wt, dtype = torch::torch_float64())
+  args_t <- list(f@alpha[, cols_gene, drop = FALSE], Wsub, wtt, scale_b,
+                 cov_niche, index_ct, uniq_index, Wt,
+                 W_full = W_full, penalty = f@penalty, sel = sel, df = f@df)
+  batched <- do.call(spiDE:::.waldCauchyBlock, c(args_t, list(absorb = absorb)))
+  expect_equal(batched$se, dense$se, tolerance = 1e-8)
+  expect_equal(batched$t_stat, dense$t_stat, tolerance = 1e-8)
+  expect_equal(batched$se_pat, dense$se_pat, tolerance = 1e-8)
+
+  # ...and equality alone cannot tell the two apart, because agreeing with the
+  # dense gram IS the absorption's contract: a branch that quietly ignored
+  # `absorb` would pass every assertion above. So require that the absorption
+  # is REACHED -- mark the intercept nested as well, which makes the indicator
+  # columns stop partitioning the cells, and demand the error.
+  bad <- absorb
+  bad$nested[1] <- TRUE
+  expect_error(do.call(spiDE:::.waldCauchyBlock, c(args_t, list(absorb = bad))),
+               "partition")
 })
 
 test_that(".bplapplySingleBLAS runs forked workers single-threaded and serial dispatch untouched", {
