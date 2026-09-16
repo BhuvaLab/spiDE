@@ -62,16 +62,41 @@
 #'   every slice's diagonal (mixed-effects only).
 #' @param backend the resolved backend (unused on the base-R path; kept for
 #'   signature symmetry with the other batched helpers).
+#' @param cell.tile cells per accumulation tile, or \code{NULL} for all of them
+#'   at once. The torch branch's weighted design is \code{batch x ncells x p} --
+#'   ~8 GB at a 64-gene batch on the cohort's design, and NOT bounded by the
+#'   gene sub-batch that is supposed to bound this stage, since it grows with
+#'   \code{ncells}. Accumulating \code{W' diag(w) W} over cell tiles bounds the
+#'   peak by the tile plus the \code{(batch, p, p)} stack instead. A Gram matrix
+#'   is a sum over cells, so this is exact: every tiling returns the same stack,
+#'   which \code{test-inference.R} pins on both branches.
 #' @return a \code{(batch, p, p)} array (or torch tensor).
 #' @noRd
-.gramBatch <- function(W, wt_block, penalty_diag = NULL, backend = "cpu") {
-  if (SpaNorm::is_torch_tensor(W)) {
-    # (batch, ncells, p) weighted design. Weighting both factors by sqrt(wt)
-    # (rather than one by wt) keeps the product exactly symmetric, which
-    # linalg_cholesky() in invert_mat_batched() relies on; the working
-    # weights 1/(1/mu + psi) are strictly positive, so the sqrt is safe.
-    Wg <- torch::torch_sqrt(wt_block)$unsqueeze(3) * W$unsqueeze(1)
-    info <- torch::torch_matmul(Wg$transpose(2, 3), Wg)
+.gramBatch <- function(W, wt_block, penalty_diag = NULL, backend = "cpu",
+                       cell.tile = NULL) {
+  is_t <- SpaNorm::is_torch_tensor(W)
+  n <- if (is_t) W$size(1) else nrow(W)
+  p <- if (is_t) W$size(2) else ncol(W)
+  b <- if (SpaNorm::is_torch_tensor(wt_block)) wt_block$size(1) else nrow(wt_block)
+  tile <- if (is.null(cell.tile)) n else max(1L, min(as.integer(cell.tile), n))
+  starts <- seq(1L, n, by = tile)
+
+  if (is_t) {
+    info <- NULL
+    for (s in starts) {
+      ii <- s:min(s + tile - 1L, n)
+      idx <- torch::torch_tensor(as.integer(ii), dtype = torch::torch_long(),
+                                 device = W$device)
+      Wi <- torch::torch_index_select(W, 1, idx)
+      wi <- torch::torch_index_select(wt_block, 2, idx)
+      # Weighting both factors by sqrt(wt) (rather than one by wt) keeps the
+      # product exactly symmetric, which linalg_cholesky() in
+      # invert_mat_batched() relies on; the working weights 1/(1/mu + psi) are
+      # strictly positive, so the sqrt is safe.
+      Wg <- torch::torch_sqrt(wi)$unsqueeze(3) * Wi$unsqueeze(1)
+      part <- torch::torch_matmul(Wg$transpose(2, 3), Wg)
+      info <- if (is.null(info)) part else info + part
+    }
     if (!is.null(penalty_diag)) {
       pen <- torch::torch_tensor(as.numeric(penalty_diag),
                                  dtype = info$dtype, device = info$device)
@@ -80,12 +105,15 @@
     return(info)
   }
 
-  p <- ncol(W)
-  b <- nrow(wt_block)
   pen_mat <- if (is.null(penalty_diag)) NULL else diag(penalty_diag, nrow = p)
   info <- array(0, dim = c(b, p, p))
   for (g in seq_len(b)) {
-    ig <- crossprod(W * wt_block[g, ], W)
+    ig <- matrix(0, p, p)
+    for (s in starts) {
+      ii <- s:min(s + tile - 1L, n)
+      Wi <- W[ii, , drop = FALSE]
+      ig <- ig + crossprod(Wi * wt_block[g, ii], Wi)
+    }
     if (!is.null(pen_mat)) ig <- ig + pen_mat
     info[g, , ] <- ig
   }
