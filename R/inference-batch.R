@@ -258,9 +258,17 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
 #' @param backend the resolved backend.
 #' @param gpu.mem.budget \code{NULL} (auto-detect) or a budget in bytes; only
 #'   consulted on the GPU path.
+#' @param nworkers how many workers will evaluate this concurrently. The budget
+#'   is a figure for the machine (or the device), but \code{.waldCauchyBlock()}
+#'   runs inside \code{bplapply()} and each forked worker claims it
+#'   independently: at 64 workers the CPU default of 2e9 is a 128 GB claim, in
+#'   a stage that has already been OOM-killed once at 503 GB MaxRSS. Dividing
+#'   here makes the documented budget the total it says it is. The GPU path
+#'   takes the same division -- one device, several processes.
 #' @return a single integer, genes per covariance sub-batch (at least 1).
 #' @noRd
-.covBatchSize <- function(ncells, p, backend, gpu.mem.budget = NULL) {
+.covBatchSize <- function(ncells, p, backend, gpu.mem.budget = NULL,
+                          nworkers = 1L) {
   gpu_active <- backend %in% c("gpu", "auto") && SpaNorm::checkGPU()
   budget <- if (gpu_active) {
     SpaNorm::getGPUMemoryBudget(gpu.mem.budget)
@@ -270,6 +278,7 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
   if (!is.finite(budget)) {
     budget <- SPIDE_COV_MEM_BUDGET_CPU
   }
+  budget <- budget / max(1L, as.integer(nworkers))
   bytes <- if (gpu_active) SpaNorm::gpuDtypeBytes() else 8
   ncells <- as.numeric(ncells)
   p <- as.numeric(p)
@@ -283,4 +292,118 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
     bytes * p^2 * SPIDE_TENSOR_MULT_COV
   }
   max(1L, as.integer(floor(budget * SPIDE_BUDGET_FRACTION / per_gene)))
+}
+
+#' Batched Schur absorption of a nested indicator block, on either backend
+#'
+#' The nested (sample x cell type) columns are a 0/1 partition of the cells, so
+#' \code{C = Z' diag(w) Z} is diagonal and the block can be absorbed exactly:
+#' the covariance restricted to the dense columns is \code{S^-1}, with
+#' \code{S = A - B C^-1 B'}. \code{.newtonSolver()}'s \code{parts()} does this
+#' one gene at a time in base R and is the oracle this is tested against
+#' (\code{test-absorb-batch.R}).
+#'
+#' Two things this adds. It is \strong{batched}, so the GPU inference path can
+#' absorb instead of falling back to a dense \code{p x p} gram -- 1,107 columns
+#' where 398 would do on the cohort's design, 7.7x the flops. And it is
+#' \strong{tiled over cells}: the weighted design that feeds both \code{A} and
+#' \code{B} is \code{batch x ncells x px}, ~8 GB at a 64-gene batch on that
+#' design, so it is accumulated a cell-tile at a time and the peak is the
+#' \code{(batch, px, px)} stack plus one tile, whatever \code{ncells} is.
+#'
+#' @param W the full design (cells x p), a matrix or a torch tensor.
+#' @param pen the length-\code{p} ridge penalty.
+#' @param nested logical, length \code{p}: the nested indicator columns.
+#' @param wt_block the batch's working weights, \code{batch x ncells}, matching
+#'   \code{W}'s type.
+#' @param cell.tile cells per accumulation tile; \code{NULL} is all of them.
+#'   Performance only -- every tiling returns the same stack, which
+#'   \code{test-absorb-batch.R} pins.
+#' @return a \code{(batch, px, px)} array or tensor of Schur complements, with
+#'   \code{px = sum(!nested)}.
+#' @noRd
+.absorbBatch <- function(W, pen, nested, wt_block, cell.tile = NULL) {
+  is_t <- SpaNorm::is_torch_tensor(W)
+  colsOf <- function(M, ii) {
+    if (SpaNorm::is_torch_tensor(M)) {
+      idx <- torch::torch_tensor(as.integer(ii), dtype = torch::torch_long(),
+                                 device = M$device)
+      return(torch::torch_index_select(M, 2, idx))
+    }
+    M[, ii, drop = FALSE]
+  }
+  tr2 <- function(M) if (SpaNorm::is_torch_tensor(M)) M$transpose(1, 2) else t(M)
+
+  xi <- which(!nested)
+  zi <- which(nested)
+  px <- length(xi)
+  G <- length(zi)
+  n <- if (is_t) W$size(1) else nrow(W)
+  b <- if (SpaNorm::is_torch_tensor(wt_block)) wt_block$size(1) else nrow(wt_block)
+  pen_x <- pen[xi]
+  pen_z <- pen[zi]
+
+  X <- colsOf(W, xi)
+  Zblk <- colsOf(W, zi)
+  # the absorption is exact only if every cell belongs to exactly one group
+  rs <- if (is_t) as.numeric(torch::torch_sum(Zblk, dim = 2)) else rowSums(Zblk)
+  if (anyNA(rs) || max(abs(rs - 1)) > 1e-8) {
+    stop("the nested random-effect columns are not 0/1 indicators partitioning ",
+         "the cells; .absorbBatch() cannot absorb them", call. = FALSE)
+  }
+  # round(), not as.integer(): a floating-point product of 7 can come back as
+  # 6.9999999, which as.integer() truncates to the WRONG group, silently
+  gidx <- if (is_t) {
+    sq <- torch::torch_tensor(as.numeric(seq_len(G)), dtype = Zblk$dtype,
+                              device = Zblk$device)
+    round(as.numeric(torch::torch_matmul(Zblk, sq)))
+  } else {
+    round(as.numeric(Zblk %*% seq_len(G)))
+  }
+
+  tile <- if (is.null(cell.tile)) n else max(1L, min(as.integer(cell.tile), n))
+  A <- if (is_t) torch::torch_zeros(c(b, px, px), dtype = X$dtype, device = X$device)
+       else array(0, c(b, px, px))
+  Bacc <- if (is_t) torch::torch_zeros(c(b, G, px), dtype = X$dtype, device = X$device)
+          else array(0, c(b, G, px))
+  cvec <- if (is_t) torch::torch_zeros(c(b, G), dtype = X$dtype, device = X$device)
+          else matrix(0, b, G)
+
+  for (s in seq(1L, n, by = tile)) {
+    ii <- s:min(s + tile - 1L, n)
+    Xt <- .rowsOf(X, ii)
+    wt <- colsOf(wt_block, ii)                       # batch x tile
+    gt <- gidx[ii]
+    A <- A + .gramBatch(Xt, wt)
+    cvec <- cvec + tr2(.segmentSum(tr2(wt), gt, G))  # batch x G
+    if (is_t) {
+      # (batch, tile, px): bounded by the tile, which is the whole point
+      M <- wt$unsqueeze(3) * Xt$unsqueeze(1)
+      idx <- torch::torch_tensor(as.integer(gt), dtype = torch::torch_long(),
+                                 device = M$device)
+      Bacc <- Bacc$index_add(2, idx, M)
+    } else {
+      for (g in seq_len(b)) {
+        Bacc[g, , ] <- Bacc[g, , ] + .segmentSum(Xt * wt[g, ], gt, G)
+      }
+    }
+  }
+
+  if (is_t) {
+    A <- A + torch::torch_diag(torch::torch_tensor(as.numeric(pen_x),
+                                                   dtype = A$dtype,
+                                                   device = A$device))$unsqueeze(1)
+    cvec <- cvec + torch::torch_tensor(as.numeric(pen_z), dtype = cvec$dtype,
+                                       device = cvec$device)$unsqueeze(1)
+    return(A - torch::torch_matmul(Bacc$transpose(2, 3),
+                                   Bacc / cvec$unsqueeze(3)))
+  }
+  pen_mat <- diag(pen_x, nrow = px)
+  cvec <- cvec + rep(pen_z, each = b)
+  S <- array(0, c(b, px, px))
+  for (g in seq_len(b)) {
+    Bg <- matrix(Bacc[g, , ], nrow = G, ncol = px)   # G x px
+    S[g, , ] <- A[g, , ] + pen_mat - crossprod(Bg, Bg / cvec[g, ])
+  }
+  S
 }

@@ -393,7 +393,15 @@
       if (!is.null(w_rc)) quadB[g] <- as.numeric(crossprod(w_rc, vcg %*% w_rc))
     }
   } else {
+    n_sub <- 0L
     for (ii in .chunkGenes(b, cov.batch)) {
+      # the (batch, p, p) Gram/inverse stack is this worker's peak and is dead
+      # by the end of each pass; a forked worker's heap does not shrink on its
+      # own, and the polish/inference stages have been seen growing ~15 GB per
+      # worker over a block. Collect between sub-batches, not per gene: at
+      # cov.batch = 1 on a wide design that would be a gc() per gene.
+      n_sub <- n_sub + 1L
+      if (n_sub > 1L) gc(verbose = FALSE, full = FALSE)
       info <- .gramBatch(Wgram, .rowsOf(wtb, ii), penalty_diag = penalty,
                          backend = backend)
       # Same singular-gene exposure as the direct path above, but batched: one
@@ -607,9 +615,12 @@
     }
     # genes per covariance sub-batch -- bounds the (batch, p, p) stack
     # independently of block.size, on both backends
+    # nworkers: this bound is evaluated once here but SPENT inside bplapply(),
+    # once per forked worker, so the budget has to be divided among them
     cov_batch <- .covBatchSize(nrow(W_full),
                                if (full_cov) ncol(W_full) else ncol(Wsub),
-                               backend, gpu.mem.budget)
+                               backend, gpu.mem.budget,
+                               nworkers = BiocParallel::bpnworkers(BPPARAM))
   }
 
   # Absorb the nested indicator block when there is one and we are on the CPU

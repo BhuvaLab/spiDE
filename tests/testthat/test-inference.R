@@ -159,6 +159,33 @@ test_that(".covBatchSize shrinks with design width and stays >= 1", {
   expect_gt(big, wide)
 })
 
+test_that(".covBatchSize divides its budget among forked workers", {
+  # The budget is a machine-wide figure, but .waldCauchyBlock() runs inside
+  # bplapply(): every forked worker evaluates this independently and claims the
+  # whole budget for itself. At 64 workers the documented 2e9 is a 128 GB
+  # claim, in a stage already OOM-killed once at 503 GB MaxRSS.
+  withr::with_options(list(spiDE.cov.mem.budget = 2e9), {
+    one <- spiDE:::.covBatchSize(20000, 500, "cpu", nworkers = 1L)
+    four <- spiDE:::.covBatchSize(20000, 500, "cpu", nworkers = 4L)
+    expect_gt(one, four)
+    expect_gte(one, 4L * four)
+    # one worker is still the default, so no existing call site changes
+    expect_equal(spiDE:::.covBatchSize(20000, 500, "cpu"), one)
+  })
+
+  # four workers on a budget B must behave exactly as one worker on B/4
+  four <- withr::with_options(
+    list(spiDE.cov.mem.budget = 2e9),
+    spiDE:::.covBatchSize(20000, 500, "cpu", nworkers = 4L))
+  quarter <- withr::with_options(
+    list(spiDE.cov.mem.budget = 5e8),
+    spiDE:::.covBatchSize(20000, 500, "cpu"))
+  expect_equal(four, quarter)
+
+  # and a batch of at least one survives any number of workers
+  expect_gte(spiDE:::.covBatchSize(20000, 5000, "cpu", nworkers = 1000L), 1L)
+})
+
 test_that(".subsetBatch and .batchDiag match base-array indexing", {
   set.seed(21)
   b <- 4
