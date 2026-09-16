@@ -517,6 +517,74 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
   out
 }
 
+#' The block operations newton() needs, on either backend
+#'
+#' \code{.polishBatch()}'s Newton is written once and runs on a matrix or a
+#' tensor, so the handful of array operations it does on \code{genes x cells}
+#' and \code{genes x columns} blocks get one signature each. Every base-R
+#' branch is plain indexing: converting the loop to these must not move the CPU
+#' path at all, which test-polish-batch.R's strict parity tests are what prove.
+#'
+#' The division of labour they encode: the \strong{arrays} go to the device,
+#' the \strong{bookkeeping} stays on the host. Which genes are active, which
+#' accepted their step, how many halvings each has taken -- those are
+#' length-\code{genes} integers and logicals, and pushing them to a device buys
+#' nothing and costs a synchronisation per branch. \code{.asHost()} is the one
+#' deliberate transfer per line-search round: the accept test needs the
+#' log-likelihoods as R numbers.
+#'
+#' @name batch-array-ops
+#' @noRd
+NULL
+
+#' @rdname batch-array-ops
+#' @noRd
+.setRows <- function(X, ii, V) {
+  if (SpaNorm::is_torch_tensor(X)) {
+    idx <- torch::torch_tensor(as.integer(ii), dtype = torch::torch_long(),
+                               device = X$device)
+    return(X$index_copy(1, idx, V))
+  }
+  X[ii, ] <- V
+  X
+}
+
+#' @rdname batch-array-ops
+#' @noRd
+.mulRows <- function(v, M) {
+  if (SpaNorm::is_torch_tensor(M)) {
+    vt <- if (SpaNorm::is_torch_tensor(v)) v else
+      torch::torch_tensor(as.numeric(v), dtype = M$dtype, device = M$device)
+    return(vt$unsqueeze(2) * M)
+  }
+  v * M
+}
+
+#' @rdname batch-array-ops
+#' @noRd
+.scaleCols <- function(A, s) {
+  if (SpaNorm::is_torch_tensor(A)) {
+    st <- if (SpaNorm::is_torch_tensor(s)) s else
+      torch::torch_tensor(as.numeric(s), dtype = A$dtype, device = A$device)
+    return(A * st$unsqueeze(1))
+  }
+  sweep(A, 2L, s, `*`)
+}
+
+#' @rdname batch-array-ops
+#' @noRd
+.asHost <- function(x) {
+  if (SpaNorm::is_torch_tensor(x)) return(as.numeric(SpaNorm::toRMatrix(x)))
+  x
+}
+
+#' @rdname batch-array-ops
+#' @noRd
+.matmulB <- function(X, Y) {
+  if (SpaNorm::is_torch_tensor(X)) return(torch::torch_matmul(X, Y))
+  X %*% Y
+}
+
 #' Restrict a batched factorisation state to a subset of its genes
 #'
 #' The active set only ever shrinks inside \code{newton()}, so a gene leaving
