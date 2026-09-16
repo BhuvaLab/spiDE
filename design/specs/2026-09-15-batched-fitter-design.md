@@ -122,6 +122,28 @@ Point 2 is the one to settle before any code: it decides whether
 `engine = "batch"` on CPU and on GPU are the same estimator or merely the same
 fixed point.
 
+## NEWS owed at merge
+
+The branch does not touch `NEWS.md` or `DESCRIPTION` -- Phase 1 shipped a new
+default engine without them, deliberately, since the version this lands under
+is a release decision and every edit there is merge-conflict surface. So the
+entries are recorded here instead, to be written once:
+
+- **`polishSpiDE(engine = "batch")` is the default** and converges a block of
+  genes together; `"gene"` is the per-gene reference implementation. 4.2x on
+  the production arm, 6.1x on the top-5 arm, alpha to 1.6e-13 and psi bit-
+  identical. `batch.size` and `options(spiDE.polish.mem.budget)` bound it.
+- **`spiDE()` forwards `engine` and `batch.size`**, so the reference engine is
+  reachable from the top-level entry point.
+- **The nested block is absorbed on the GPU too**, not only the CPU: the
+  covariance sub-batch inverts px x px rather than p x p (398 against 1,107 on
+  the cohort design).
+- **The covariance memory budget is divided among workers.** Behaviour change
+  for anyone running a wide design under many workers: sub-batches get smaller
+  and peak memory stops scaling with worker count.
+- Phase 0b, if it is mentioned at all, is 4% end to end and NOT 3x -- the
+  microbenchmark's 3x does not survive contention (FINDINGS, 2026-09-15).
+
 ## The hard part of Phase 1
 
 Every per-gene branch is a partition of the gene index set; batching turns
