@@ -121,6 +121,25 @@ So Phase 2e is not "add a backend argument to `.polishBatch()`". It is:
 3. The line search and the profile-psi bisection are already batch-shaped and
    are elementwise over genes x cells, which is what the device wants.
 
+**Both halves are now measured** (FINDINGS, 2026-09-16, jobs 28511603 and
+28527447), and they split the design cleanly:
+
+- *Numerically* the shared factorisation is free. On 300 real genes at batch 64
+  no gene's objective is worse (worst relative -6.5e-13), the convergence flags
+  are identical gene for gene, alpha agrees to 8e-6 and the iteration count
+  falls slightly, because a fresher information matrix is a marginally better
+  Newton direction.
+- *On the CPU it is 1.7x slower* (3.3 to 5.5 min). The shared state buys kernel
+  launches, and a CPU has none to buy: what is left is a per-slice Cholesky and
+  a per-gene right-hand side against a cached LU under Phase 0b's memoisation.
+
+So **`shared.factor` is device-only**. `engine = "batch"` on the CPU keeps the
+per-gene list; the device path takes the shared stack; and the two are the same
+estimator reaching the same optimum by different paths -- measured, not
+asserted. The remaining Phase 2e work is the rest of the loop (mu, the score,
+the line search's `dnbinom` column-sums, the profile-psi bisection) on tensors,
+with `shared.factor` switched on by the backend rather than by the caller.
+
 What point 2 does NOT settle is the numerical path. A synchronous refresh gives
 genes that were not stale a fresher information matrix than they would have
 had. That cannot move the fixed point and a fresher matrix is not a worse
