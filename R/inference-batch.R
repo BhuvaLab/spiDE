@@ -347,10 +347,19 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
 #' @param cell.tile cells per accumulation tile; \code{NULL} is all of them.
 #'   Performance only -- every tiling returns the same stack, which
 #'   \code{test-absorb-batch.R} pins.
+#' @param parts if \code{TRUE}, return the pieces the back-substitution needs
+#'   (\code{S}, \code{B}, \code{cvec}, \code{xi}, \code{zi}) rather than
+#'   \code{S} alone. The inference path only ever wants \code{S}, since
+#'   \code{S^-1} IS the covariance on the dense columns; the Newton step also
+#'   needs \code{B} and \code{cvec} to recover the nested coefficients.
+#'   \code{B} is carried as \code{(batch, G, px)}, the transpose of
+#'   \code{.newtonSolver()}'s \code{px x G}, because that is the orientation
+#'   both matmuls want.
 #' @return a \code{(batch, px, px)} array or tensor of Schur complements, with
-#'   \code{px = sum(!nested)}.
+#'   \code{px = sum(!nested)}; or, with \code{parts = TRUE}, a list.
 #' @noRd
-.absorbBatch <- function(W, pen, nested, wt_block, cell.tile = NULL) {
+.absorbBatch <- function(W, pen, nested, wt_block, cell.tile = NULL,
+                         parts = FALSE) {
   is_t <- SpaNorm::is_torch_tensor(W)
   colsOf <- function(M, ii) {
     if (SpaNorm::is_torch_tensor(M)) {
@@ -423,8 +432,9 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
                                                    device = A$device))$unsqueeze(1)
     cvec <- cvec + torch::torch_tensor(as.numeric(pen_z), dtype = cvec$dtype,
                                        device = cvec$device)$unsqueeze(1)
-    return(A - torch::torch_matmul(Bacc$transpose(2, 3),
-                                   Bacc / cvec$unsqueeze(3)))
+    S <- A - torch::torch_matmul(Bacc$transpose(2, 3), Bacc / cvec$unsqueeze(3))
+    if (!parts) return(S)
+    return(list(S = S, B = Bacc, cvec = cvec, xi = xi, zi = zi))
   }
   pen_mat <- diag(pen_x, nrow = px)
   cvec <- cvec + rep(pen_z, each = b)
@@ -433,5 +443,183 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
     Bg <- matrix(Bacc[g, , ], nrow = G, ncol = px)   # G x px
     S[g, , ] <- A[g, , ] + pen_mat - crossprod(Bg, Bg / cvec[g, ])
   }
-  S
+  if (!parts) return(S)
+  list(S = S, B = Bacc, cvec = cvec, xi = xi, zi = zi)
+}
+
+#' Per-slice Cholesky of a (batch, p, p) stack, with a per-slice verdict
+#'
+#' The trap this exists to avoid is the one \code{.waldCauchyBlock()} fell
+#' into: a batched Cholesky over a stack containing one singular slice fails
+#' the WHOLE stack, and the only recourse offered was telling the user to
+#' shrink the batch. A per-slice \code{ok} lets a singular gene drop to its
+#' fallback exactly as the per-gene engine does, leaving its neighbours alone.
+#'
+#' The Schur complement of a penalised information matrix is symmetric positive
+#' definite where the design has full rank, so Cholesky is the right
+#' factorisation and its failure IS the singularity test. \code{torch} reports
+#' it per slice through \code{linalg_cholesky_ex()}'s \code{info} without
+#' raising; base R needs a \code{tryCatch} per slice.
+#'
+#' @param S a \code{(batch, p, p)} array or tensor.
+#' @return \code{list(L, ok)}; \code{L} is upper-triangular \code{R} with
+#'   \code{S = R'R} on the base-R branch and lower-triangular \code{L} with
+#'   \code{S = LL'} on the torch branch, matching each backend's own
+#'   convention, and the solvers below respect that.
+#' @noRd
+.cholBatch <- function(S) {
+  if (SpaNorm::is_torch_tensor(S)) {
+    r <- torch::linalg_cholesky_ex(S)
+    info <- as.numeric(SpaNorm::toRMatrix(r[[2]]))
+    return(list(L = r[[1]], ok = info == 0))
+  }
+  b <- dim(S)[1]
+  p <- dim(S)[2]
+  L <- array(0, c(b, p, p))
+  ok <- logical(b)
+  for (g in seq_len(b)) {
+    cg <- tryCatch(chol(matrix(S[g, , ], p, p)), error = function(e) NULL)
+    if (!is.null(cg) && all(is.finite(cg))) {
+      L[g, , ] <- cg
+      ok[g] <- TRUE
+    }
+  }
+  list(L = L, ok = ok)
+}
+
+#' Solve a batch of Cholesky-factorised systems, NA where the slice is singular
+#'
+#' @param ch the \code{list(L, ok)} from \code{.cholBatch()}.
+#' @param rhs a \code{(batch, p)} matrix or tensor of right-hand sides.
+#' @return a \code{(batch, p)} matrix or tensor; rows for \code{!ok} slices
+#'   are \code{NA} (base R) or \code{NaN} (torch), which the caller reads as
+#'   "this gene falls back".
+#' @noRd
+.cholSolveBatch <- function(ch, rhs) {
+  if (SpaNorm::is_torch_tensor(ch$L)) {
+    out <- torch::torch_cholesky_solve(rhs$unsqueeze(3), ch$L)$squeeze(3)
+    if (!all(ch$ok)) {
+      bad <- which(!ch$ok)
+      idx <- torch::torch_tensor(as.integer(bad), dtype = torch::torch_long(),
+                                 device = out$device)
+      out <- out$index_fill(1, idx, NaN)
+    }
+    return(out)
+  }
+  b <- dim(ch$L)[1]
+  p <- dim(ch$L)[2]
+  out <- matrix(NA_real_, b, p)
+  for (g in seq_len(b)) {
+    if (!ch$ok[g]) next
+    R <- matrix(ch$L[g, , ], p, p)
+    out[g, ] <- backsolve(R, backsolve(R, rhs[g, ], transpose = TRUE))
+  }
+  out
+}
+
+#' A batched .newtonSolver(): one factorisation object for a block of genes
+#'
+#' \code{.newtonSolver()} returns closures over a single gene's weights and
+#' \code{.polishBatch()}'s \code{newton()} keeps a LIST of them, one per gene,
+#' refreshed under a per-gene staleness counter. That list is what cannot go to
+#' a device, and a per-gene \code{solve()} is a kernel launch per gene per
+#' iteration. This is the same mathematics with the state batched: one
+#' \code{(batch, px, px)} Cholesky for the whole block.
+#'
+#' Measured before it was written (FINDINGS, 2026-09-16): refreshing the whole
+#' active stack whenever any gene is stale costs 11% more factorisations at a
+#' 128-gene batch and 6% at 64, so a shared factorisation keeps essentially all
+#' of Phase 0b's memoisation. That is why this returns one object rather than
+#' trying to keep per-gene states on device.
+#'
+#' @param W the design (cells x p), a matrix or a torch tensor.
+#' @param pen the length-\code{p} ridge penalty.
+#' @param nested logical, length \code{p}: the nested indicator columns.
+#' @return \code{list(factor, solve, xcov)}. \code{factor(wt_block)} takes the
+#'   block's \code{batch x ncells} weights and returns a state carrying
+#'   \code{ok}; \code{solve(state, Sc)} takes a \code{batch x p} score and
+#'   returns the \code{batch x p} steps; \code{xcov(state)} returns the
+#'   \code{(batch, px, px)} covariance on the dense columns.
+#' @noRd
+.newtonSolverBatch <- function(W, pen, nested = NULL) {
+  if (is.null(nested)) nested <- rep(FALSE, ncol(W))
+  has_nested <- any(nested)
+  xi <- which(!nested)
+  zi <- which(nested)
+
+  colsOf <- function(M, ii) {
+    if (SpaNorm::is_torch_tensor(M)) {
+      idx <- torch::torch_tensor(as.integer(ii), dtype = torch::torch_long(),
+                                 device = M$device)
+      return(torch::torch_index_select(M, 2, idx))
+    }
+    M[, ii, drop = FALSE]
+  }
+
+  list(
+    factor = function(wt_block, cell.tile = NULL) {
+      if (!has_nested) {
+        S <- .gramBatch(W, wt_block, penalty_diag = pen, cell.tile = cell.tile)
+        ch <- .cholBatch(S)
+        return(list(S = S, L = ch$L, ok = ch$ok, xi = xi, zi = zi,
+                    B = NULL, cvec = NULL))
+      }
+      pr <- .absorbBatch(W, pen, nested, wt_block, cell.tile = cell.tile,
+                         parts = TRUE)
+      ch <- .cholBatch(pr$S)
+      c(pr, list(L = ch$L, ok = ch$ok))
+    },
+    solve = function(state, Sc) {
+      if (!length(state$zi)) return(.cholSolveBatch(state, Sc))
+      s_x <- colsOf(Sc, state$xi)
+      s_z <- colsOf(Sc, state$zi)
+      if (SpaNorm::is_torch_tensor(Sc)) {
+        sc <- s_z / state$cvec
+        rhs <- s_x - torch::torch_matmul(state$B$transpose(2, 3),
+                                         sc$unsqueeze(3))$squeeze(3)
+        dx <- .cholSolveBatch(state, rhs)
+        dz <- (s_z - torch::torch_matmul(state$B, dx$unsqueeze(3))$squeeze(3)) /
+          state$cvec
+        out <- torch::torch_zeros(c(Sc$size(1), Sc$size(2)), dtype = Sc$dtype,
+                                  device = Sc$device)
+        ix <- torch::torch_tensor(as.integer(state$xi),
+                                  dtype = torch::torch_long(), device = out$device)
+        iz <- torch::torch_tensor(as.integer(state$zi),
+                                  dtype = torch::torch_long(), device = out$device)
+        out <- out$index_copy(2, ix, dx)$index_copy(2, iz, dz)
+        return(out)
+      }
+      b <- nrow(Sc)
+      rhs <- matrix(0, b, length(state$xi))
+      for (g in seq_len(b)) {
+        Bg <- matrix(state$B[g, , ], nrow = length(state$zi),
+                     ncol = length(state$xi))          # G x px
+        rhs[g, ] <- s_x[g, ] - crossprod(Bg, s_z[g, ] / state$cvec[g, ])
+      }
+      dx <- .cholSolveBatch(state, rhs)
+      out <- matrix(NA_real_, b, ncol(Sc))
+      for (g in seq_len(b)) {
+        if (!state$ok[g]) next
+        Bg <- matrix(state$B[g, , ], nrow = length(state$zi),
+                     ncol = length(state$xi))
+        out[g, state$xi] <- dx[g, ]
+        out[g, state$zi] <- (s_z[g, ] - as.numeric(Bg %*% dx[g, ])) /
+          state$cvec[g, ]
+      }
+      out
+    },
+    xcov = function(state) {
+      if (SpaNorm::is_torch_tensor(state$L)) {
+        return(torch::torch_cholesky_inverse(state$L))
+      }
+      b <- dim(state$L)[1]
+      p <- dim(state$L)[2]
+      out <- array(NA_real_, c(b, p, p))
+      for (g in seq_len(b)) {
+        if (!state$ok[g]) next
+        out[g, , ] <- chol2inv(matrix(state$L[g, , ], p, p))
+      }
+      out
+    }
+  )
 }
