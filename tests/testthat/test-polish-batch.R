@@ -193,3 +193,22 @@ test_that(".polishBatch reports what a shared factorisation would cost", {
   # and a shared factorisation can never build fewer than the per-gene policy
   expect_gte(nf[["sync"]], nf[["pergene"]])
 })
+
+test_that("spiDE() can reach the reference polish engine", {
+  # The spec keeps .polishGene() in the tree "as the reference implementation
+  # and the test oracle, reachable through engine = 'gene'". polishSpiDE()
+  # exposes it; spiDE() did not forward it, so the top-level entry point could
+  # not reach the reference implementation at all -- which is why the
+  # deflation triage had to call the three stages by hand.
+  #
+  # The assertion is on the engine actually used: the polish says which it
+  # took, so the message is the observation. Equality of the two would not do
+  # -- they agree to 5e-13 by construction, so a silently ignored argument
+  # would pass.
+  spe <- buildNiches(.toySPE(n_genes = 6), sigma = 20)
+  args <- list(spe, condition = "condition", sigma = 20, random = "intercept",
+               re.maxit = 2L, fdr = 1, verbose = TRUE)
+  expect_message(do.call(spiDE, c(args, list(engine = "gene"))), "per gene")
+  expect_message(do.call(spiDE, c(args, list(engine = "batch"))),
+                 "in batches of")
+})

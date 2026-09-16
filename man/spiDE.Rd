@@ -30,6 +30,8 @@ spiDE(spe, condition = NULL, ...)
   dispersion = c("ql", "pearson"),
   block.size = NULL,
   gpu.mem.budget = NULL,
+  engine = c("batch", "gene"),
+  batch.size = NULL,
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
   ...
@@ -166,6 +168,13 @@ GPU backend).}
 \item{gpu.mem.budget}{a numeric, the GPU memory budget in bytes used to
 size inference blocks (NULL auto-detects; only relevant for the GPU
 backend).}
+
+\item{engine, batch.size}{passed to \code{\link[=polishSpiDE]{polishSpiDE()}}. \code{engine = "gene"}
+takes the per-gene reference implementation instead of the batched
+default; the two agree to ~5e-13 on the coefficients with identical
+convergence flags, and the reference is what the batched engine is tested
+against. Forwarded here so the reference is reachable from the top-level
+entry point, not only from \code{\link[=polishSpiDE]{polishSpiDE()}}.}
 
 \item{BPPARAM}{a BiocParallelParam for niche construction and inference.}
 
