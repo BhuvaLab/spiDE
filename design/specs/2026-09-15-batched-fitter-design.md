@@ -75,6 +75,7 @@ and the test oracle, reachable through `engine = "gene"`.
 | 0b | memoise the factorisation; symmetric gram | bit-identical / objective not worse ✅ |
 | 1 | `.polishBatch()`, batched on CPU | batched == unbatched to 1e-10; blocking invariance |
 | 2 | device path via `.gramBatch()`'s torch branch | CPU == GPU at `gpu_tol()` |
+| 2a-2d | the inference side of the device path | landed, see below |
 | 3+4 | one τ² loop; `fitNB` to starting values | the `longtests` τ² window and df anchors |
 | 5 | the between-sample reference df | the `lmerTest` and `S - 2` anchors |
 | 6 | revalidation and recalibration | benchmark + null grids |
@@ -83,6 +84,43 @@ Phase 3 is a verification rather than a phase: `.tau2Iterate()` already
 iterates to a tolerance with Steffensen acceleration (`polish.R:534-611`). What
 remains capped is the *fit's* loop (`re.maxit = 2L`), which dissolves when
 `fitNB` is demoted.
+
+## Phase 2, as built (2026-09-16)
+
+The inference half landed first because it needed no new numerics: the budget
+fix (`9a7e93d`), `.absorbBatch()` (`14652b5`), the guard flip in
+`.blockedInference()` (`6c5bdfc`) and the cell tile on `.gramBatch()`
+(`f9d6630`). The device path now absorbs the nested block instead of inverting
+a dense `p x p` gram, and both batched grams are bounded by a cell tile rather
+than by `ncells`.
+
+**The hard part of the remaining half is not the gram.** `.gramBatch()` and
+`.absorbBatch()` are already tensor-capable, so `.polishBatch()`'s information
+matrix is solved. What is not is its **factorisation state**: `newton()` keeps
+`fac`, a *list of per-gene factorisations*, refreshed per gene under a per-gene
+staleness counter, and calls `solver$solve(fac[[k]], S[k, ])` one gene at a
+time. That list is the thing that cannot go to a device -- it is R objects, one
+per gene, and the per-gene `solve()` is a kernel launch per gene per iteration.
+
+So Phase 2e is not "add a backend argument to `.polishBatch()`". It is:
+
+1. Replace `.newtonSolver()`'s per-gene closures, *inside the batched engine
+   only*, with a batched factor/solve: `.absorbBatch()` for the stack, one
+   batched Cholesky for the factorisation, one batched triangular solve for the
+   step. `.polishGene()` keeps the closures; it is the reference implementation.
+2. Decide what staleness means when the factorisation is one tensor. Per-gene
+   staleness with a shared tensor means refreshing the whole stack whenever any
+   gene is stale, which throws away most of the memoisation the 3x in Phase 0b
+   came from. A batch-synchronous policy has the same fixed point but a
+   different path -- the same trade the spec already records for the line
+   search, and it needs the same treatment: measure it, and if the path differs,
+   say so rather than claiming equality.
+3. The line search and the profile-psi bisection are already batch-shaped and
+   are elementwise over genes x cells, which is what the device wants.
+
+Point 2 is the one to settle before any code: it decides whether
+`engine = "batch"` on CPU and on GPU are the same estimator or merely the same
+fixed point.
 
 ## The hard part of Phase 1
 
