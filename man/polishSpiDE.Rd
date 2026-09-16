@@ -24,7 +24,9 @@ polishSpiDE(object, spe, ...)
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
   engine = c("batch", "gene"),
-  batch.size = NULL
+  batch.size = NULL,
+  backend = c("cpu", "auto", "gpu"),
+  gpu.mem.budget = NULL
 )
 }
 \arguments{
@@ -108,6 +110,15 @@ budget (\code{options(spiDE.polish.mem.budget = )}, bytes per worker),
 because the batched working set is gene x cell: at 77,454 cells a
 2,000-gene block would allocate over a terabyte, so the gene block size
 cannot be the batch size.}
+
+\item{backend}{\code{"cpu"} (the default), or \code{"gpu"}/\code{"auto"}
+to run the batched Newton on an accelerator when one is present. The
+device path requires \code{engine = "batch"} -- the per-gene engine keeps
+one factorisation object per gene, which is what cannot go to a device --
+and refuses a single-precision device outright. It is an accelerator,
+never a requirement: without one, \code{"gpu"} gives the CPU answer.}
+
+\item{gpu.mem.budget}{bytes for the device, or NULL to auto-detect.}
 }
 \value{
 the object with converged \code{alpha} and \code{psi}, per-gene

@@ -100,6 +100,7 @@ setMethod(
     if (polish) {
       res <- polishSpiDE(res, spe, assay = assay, block.size = block.size,
                          engine = engine, batch.size = batch.size,
+                         backend = backend, gpu.mem.budget = gpu.mem.budget,
                          BPPARAM = BPPARAM, verbose = verbose)
     }
 

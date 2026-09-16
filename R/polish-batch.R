@@ -32,6 +32,30 @@
 # it errs high.
 SPIDE_POLISH_GENE_CELL_MATS <- 6
 
+#' Refuse a single-precision device
+#'
+#' \code{SpaNorm::getBackendDtype()} is float64 on CUDA but float32 on MPS. A
+#' penalised Newton solve over hundreds of columns in single precision is not
+#' defensible -- the Cholesky of a near-singular information matrix is exactly
+#' where the last digits matter -- and the failure would be silent, looking
+#' like a convergence problem rather than a precision one. So it errors, with
+#' the lever in the message, rather than warning and proceeding.
+#'
+#' @param dtype the backend dtype, as a string or a torch dtype.
+#' @return invisibly TRUE, or an error.
+#' @noRd
+.requireFloat64 <- function(dtype = SpaNorm::getBackendDtype()) {
+  nm <- tolower(paste(as.character(dtype), collapse = " "))
+  if (!grepl("double|float64", nm)) {
+    stop("the polish stage refuses a single precision device (dtype ", nm,
+         ").\n  A penalised Newton solve over hundreds of columns in float32 ",
+         "is not defensible, and the failure would look like non-convergence ",
+         "rather than lost precision.\n  Use backend = \"cpu\", or a device ",
+         "with float64 (CUDA has it; MPS does not).", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 #' The batched mean, on either backend
 #'
 #' \code{exp(A W')} floored at \code{.MU_FLOOR}, for a block of genes at once.
