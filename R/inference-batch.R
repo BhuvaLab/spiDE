@@ -517,6 +517,37 @@ SPIDE_COV_MEM_BUDGET_CPU <- 2e9
   out
 }
 
+#' Restrict a batched factorisation state to a subset of its genes
+#'
+#' The active set only ever shrinks inside \code{newton()}, so a gene leaving
+#' it is a subset of the stack rather than a reason to refactorise. \code{xi}
+#' and \code{zi} are column indices, shared by every slice, and must not be
+#' touched.
+#'
+#' @param st a state from \code{.newtonSolverBatch()$factor()}.
+#' @param ii positions to keep, within the state's current order.
+#' @return the state restricted to \code{ii}.
+#' @noRd
+.subsetState <- function(st, ii) {
+  sub1 <- function(x) {
+    if (is.null(x)) return(NULL)
+    if (SpaNorm::is_torch_tensor(x)) {
+      idx <- torch::torch_tensor(as.integer(ii), dtype = torch::torch_long(),
+                                 device = x$device)
+      return(torch::torch_index_select(x, 1, idx))
+    }
+    if (is.array(x) && length(dim(x)) == 3L) return(x[ii, , , drop = FALSE])
+    if (is.matrix(x)) return(x[ii, , drop = FALSE])
+    x[ii]
+  }
+  st$S <- sub1(st$S)
+  st$L <- sub1(st$L)
+  st$B <- sub1(st$B)
+  st$cvec <- sub1(st$cvec)
+  st$ok <- st$ok[ii]
+  st
+}
+
 #' A batched .newtonSolver(): one factorisation object for a block of genes
 #'
 #' \code{.newtonSolver()} returns closures over a single gene's weights and

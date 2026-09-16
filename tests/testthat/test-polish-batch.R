@@ -212,3 +212,38 @@ test_that("spiDE() can reach the reference polish engine", {
   expect_message(do.call(spiDE, c(args, list(engine = "batch"))),
                  "in batches of")
 })
+
+test_that("a shared factorisation reaches the same optimum as the per-gene one", {
+  # Phase 2e's wiring. newton() keeps one factorisation for the active set
+  # instead of a list of per-gene ones, refreshing the whole stack when any
+  # active gene is stale. That is a different PATH -- a gene that was not stale
+  # gets a fresher information matrix than it would have had -- so this is not
+  # an equality test and must not pretend to be one. A fresher matrix cannot
+  # move the fixed point and is not a worse Newton direction, so the gate is
+  # the one Phase 0b used for the symmetric gram: the objective is never worse.
+  d <- toy_batch()
+  set.seed(21)
+  B <- 12L
+  mu <- exp(d$W %*% c(1.2, 0.4, 0.3, rep(0, 6)))
+  Yb <- matrix(rnbinom(B * nrow(d$W), mu = rep(as.numeric(mu), each = B),
+                       size = 1 / 0.4), nrow = B)
+  A0 <- matrix(0, B, ncol(d$W)); A0[, 1] <- log(pmax(rowMeans(Yb), 0.1))
+  solver <- spiDE:::.newtonSolver(d$W, d$pen, d$nested)
+
+  args <- list(Yb, d$W, A0, rep(0.4, B), d$pen, solver, ct_cols = d$ct_cols)
+  per <- do.call(spiDE:::.polishBatch, args)
+  shd <- do.call(spiDE:::.polishBatch,
+                 c(args, list(shared.factor = TRUE, nested = d$nested)))
+
+  # same genes polished, same failures
+  expect_identical(shd$polished, per$polished)
+  expect_identical(shd$singular, per$singular)
+  expect_identical(shd$capped, per$capped)
+
+  # the same optimum, to the convergence tolerance rather than to machine
+  expect_equal(shd$alpha, per$alpha, tolerance = 1e-5)
+  expect_equal(shd$psi, per$psi, tolerance = 1e-5)
+
+  # the gate: the penalised log-likelihood is never worse
+  expect_gt(min(shd$loglik - per$loglik), -1e-7 * max(abs(per$loglik)))
+})

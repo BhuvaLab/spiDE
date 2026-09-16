@@ -75,7 +75,8 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
 #' @noRd
 .polishBatch <- function(Yb, W, A0, psi0, pen, solver, maxit = 50L, tol = 1e-8,
                          ct_cols = NULL, psi.range = c(1e-3, 1e3),
-                         psi.method = c("profile", "moderated"), warm = FALSE) {
+                         psi.method = c("profile", "moderated"), warm = FALSE,
+                         shared.factor = FALSE, nested = NULL) {
   psi.method <- match.arg(psi.method)
   B <- nrow(Yb)
   p <- ncol(W)
@@ -90,6 +91,12 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
   # by argument. One integer per refresh point; it changes no result.
   n_fac <- 0L
   n_fac_sync <- 0L
+  # One factorisation for the active set instead of a list of per-gene ones:
+  # the state a device can hold. It is refreshed when ANY active gene is stale,
+  # which is a different path from per-gene staleness -- measured at 11% more
+  # factorisations at a 128-gene batch (FINDINGS, 2026-09-16) and gated on the
+  # objective, not on equality.
+  solverB <- if (shared.factor) .newtonSolverBatch(W, pen, nested) else NULL
 
   # --- batched kernels -------------------------------------------------------
   # psi is length nrow(M): a matrix is column-major, so a per-gene vector
@@ -115,6 +122,7 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
     ll <- ll_of(Y, Mu, pi_, Ai)
     it <- integer(m); conv <- logical(m); sing <- logical(m)
     stale <- integer(m); fac <- vector("list", m)
+    st <- NULL; st_rows <- integer(0)
     act <- seq_len(m)
 
     while (length(act)) {
@@ -124,6 +132,27 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
       R <- (Ya - Ma) / (1 + pa * Ma)
       S <- R %*% W - sweep(Aa, 2L, pen, `*`)
 
+      if (shared.factor) {
+        # the stack is aligned to `act`; genes only ever LEAVE the active set,
+        # so shrinkage is a subset of the stack rather than a rebuild
+        if (!is.null(st) && !identical(st_rows, act)) {
+          st <- .subsetState(st, match(act, st_rows))
+          st_rows <- act
+        }
+        if (is.null(st) || any(stale[act] >= 3L)) {
+          Wt <- Ma / (1 + pa * Ma)
+          st <- solverB$factor(Wt)
+          st_rows <- act
+          stale[act] <- 0L
+          n_fac <<- n_fac + length(act)
+          n_fac_sync <<- n_fac_sync + length(act)
+        }
+        D <- solverB$solve(st, S)
+        # same verdict as the per-gene path's `!all(is.finite(d))`: NA from a
+        # singular slice, but Inf and NaN too
+        bad <- !apply(D, 1L, function(r) all(is.finite(r)))
+        D[bad, ] <- 0
+      } else {
       refresh <- vapply(act, function(k) is.null(fac[[k]]), logical(1)) | stale[act] >= 3L
       if (any(refresh)) {
         kk <- act[refresh]
@@ -145,11 +174,16 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
         if (is.null(d) || !all(is.finite(d))) { bad[j] <- TRUE; next }
         D[j, ] <- d
       }
+      }
       if (any(bad)) {
         sing[act[bad]] <- TRUE
         act <- act[!bad]
         if (!length(act)) break
         D <- D[!bad, , drop = FALSE]; S <- S[!bad, , drop = FALSE]
+        if (shared.factor) {
+          st <- .subsetState(st, which(!bad))
+          st_rows <- act
+        }
       }
 
       # --- the line search, one trial round for every pending gene ----------
@@ -183,12 +217,20 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
       retry <- !ok & stale[act] > 0L
       if (any(retry)) {
         kk <- act[retry]
-        Wt <- Mu[kk, , drop = FALSE] / (1 + pi_[kk] * Mu[kk, , drop = FALSE])
-        for (j in seq_along(kk)) {
-          w <- Wt[j, ]
-          fac[[kk[j]]] <- if (has_factor) solver$factor(w) else w
+        if (shared.factor) {
+          # one stack: a retry for any gene rebuilds it for all of them
+          Wt <- Mu[act, , drop = FALSE] / (1 + pi_[act] * Mu[act, , drop = FALSE])
+          st <- solverB$factor(Wt)
+          st_rows <- act
+          stale[act] <- 0L
+        } else {
+          Wt <- Mu[kk, , drop = FALSE] / (1 + pi_[kk] * Mu[kk, , drop = FALSE])
+          for (j in seq_along(kk)) {
+            w <- Wt[j, ]
+            fac[[kk[j]]] <- if (has_factor) solver$factor(w) else w
+          }
+          stale[kk] <- 0L
         }
-        stale[kk] <- 0L
         n_fac <<- n_fac + length(kk)
         n_fac_sync <<- n_fac_sync + length(act)
       }
@@ -211,6 +253,10 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
 
       act <- setdiff(act, c(act[stop_now], leave_converged))
       act <- act[it[act] < maxit]
+      if (shared.factor && length(act) && !identical(st_rows, act)) {
+        st <- .subsetState(st, match(act, st_rows))
+        st_rows <- act
+      }
     }
     list(A = Ai, Mu = Mu, ll = ll, it = it, converged = conv, singular = sing)
   }
