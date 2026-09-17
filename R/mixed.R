@@ -180,7 +180,8 @@
                         re.maxit = 2L, re.tol = 1e-3, tau2.init = 1,
                         tau2.range = c(1e-8, 1e4), idx = NULL,
                         re.maxit.psi = 1L, df.method = "satterthwaite",
-                        cols_tested = NULL, mode = "condition", ...) {
+                        cols_tested = NULL, mode = "condition",
+                        coefmap = NULL, ...) {
   p <- ncol(W)
   groups <- unique(re_group[!is.na(re_group)])
   base <- if (length(lambda.a) == 1) rep(lambda.a, p) else lambda.a
@@ -318,7 +319,8 @@
     # status does not vary within a patient); the three-way niche terms are not
     # (the niche density varies cell to cell inside a group), which is why they
     # keep the larger df the anchor tests require.
-    df <- .boundPatientDF(df, W, re_group, tested, df_between)
+    df <- .boundPatientDF(df, W, re_group, tested, df_between,
+                          .patientsPerTested(W, re_group, coefmap, tested))
     # .satterthwaiteDF() returns NULL when the variance-parameter information is
     # singular (it warns there); degrade to the documented conservative scalar
     # rather than storing a NULL df that every downstream consumer must branch on
@@ -406,10 +408,18 @@
 #' @param W the design.
 #' @param re_group the random-effect group of each column.
 #' @param tested integer column positions the df belongs to.
-#' @param df_between the patient-level reference (S - 2).
+#' @param df_between the patient-level reference (S - 2), used where a
+#'   per-compartment count is unavailable.
+#' @param n_patients optional, the contributing patients for each tested
+#'   column, from \code{.patientsPerTested()}. A flat cap at \code{S - 2}
+#'   ties every violating compartment together and discards a real difference:
+#'   a compartment present in all 55 patients carries more information than one
+#'   present in 30. Where the count is known the bound is that compartment's
+#'   own, and \code{df_between} is the fallback.
 #' @return \code{df}, with the between-patient entries bounded.
 #' @noRd
-.boundPatientDF <- function(df, W, re_group, tested, df_between) {
+.boundPatientDF <- function(df, W, re_group, tested, df_between,
+                            n_patients = NULL) {
   if (is.null(df) || length(df) < 2L || !length(tested)) return(df)
   nested <- !is.na(re_group) & re_group == "SampleCellTypeInt"
   if (!any(nested)) return(df)
@@ -424,8 +434,56 @@
   s2 <- rowsum(Wt^2, g)
   wv <- s2 / ng - (s1 / ng)^2          # within-group variance per column
   between <- apply(wv, 2L, function(v) max(v, na.rm = TRUE)) <= 1e-10
-  if (any(between)) df[between] <- pmin(df[between], df_between)
+  if (!any(between)) return(df)
+  cap <- rep(df_between, length(df))
+  if (!is.null(n_patients) && length(n_patients) == length(df)) {
+    known <- is.finite(n_patients) & n_patients > 0
+    cap[known] <- pmax(n_patients[known] - 2, 1)
+  }
+  df[between] <- pmin(df[between], cap[between])
   df
+}
+
+#' Contributing patients for each tested column, per compartment
+#'
+#' The nested block carries one column per NON-EMPTY (patient x cell type)
+#' pair, so counting a compartment's nested columns counts the patients that
+#' actually have cells of it. That is the replication a between-patient
+#' contrast on that compartment has, and on this cohort it varies a lot: 55
+#' patients for Tumor against far fewer for the rare compartments.
+#'
+#' Returns \code{NA} for a tested column whose compartment cannot be resolved
+#' (no index, or a name that does not match a nested group), which
+#' \code{.boundPatientDF()} treats as "use the flat S - 2".
+#'
+#' @param W the design.
+#' @param re_group the random-effect group of each column.
+#' @param coefmap the fit's coefficient map (needs \code{index}).
+#' @param tested integer column positions the df belongs to.
+#' @return a numeric vector aligned to \code{tested}.
+#' @noRd
+.patientsPerTested <- function(W, re_group, coefmap, tested) {
+  nested <- !is.na(re_group) & re_group == "SampleCellTypeInt"
+  if (!any(nested) || is.null(coefmap$index)) {
+    return(rep(NA_real_, length(tested)))
+  }
+  # The nested columns are named SampleCellType<sample>.<cell type> with the
+  # RAW cell-type label, spaces and all ("...ytma471_1.B cell"), while
+  # coefmap$index carries the sanitised one ("B.cell"). Matching the two
+  # directly silently misses every compartment whose name contains a space --
+  # B cell, T cell, Smooth muscle cell on this cohort -- and a miss is not
+  # loud: it falls back to the flat S - 2, so the bound stays valid and the
+  # per-compartment refinement just quietly stops applying. Sanitise both sides.
+  #
+  # sub() takes the LAST dot: the separator is the final one because the cell
+  # type follows it, and the sample ids here use underscores.
+  suffix <- make.names(sub("^.*\\.", "", colnames(W)[nested]))
+  lab <- make.names(as.character(coefmap$index[tested]))
+  vapply(lab, function(k) {
+    if (is.na(k) || !nzchar(k)) return(NA_real_)
+    n <- sum(suffix == k)
+    if (n > 0) n else NA_real_
+  }, numeric(1), USE.NAMES = FALSE)
 }
 
 .satterthwaiteDF <- function(A, minv, pen, re_group, tau2, tested, ncells,

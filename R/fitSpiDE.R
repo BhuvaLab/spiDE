@@ -55,6 +55,7 @@
                        re.maxit.psi = re.maxit.psi,
                        df.method = df.method,
                        cols_tested = .testedCols(des$covtype, des$mode),
+                       coefmap = des$coefmap,
                        mode = des$mode,
                        ...)
     penalty <- fit$penalty

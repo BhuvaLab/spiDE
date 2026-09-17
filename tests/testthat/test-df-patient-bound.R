@@ -106,3 +106,66 @@ test_that("the bound survives the polish, which recomputes the df", {
   expect_gt(length(d), 0L)
   expect_lte(max(d), (S - 2) * 1.05)
 })
+
+test_that("the cap is per compartment, not a single flat value", {
+  # A flat cap at S - 2 ties every violating compartment together, discarding a
+  # real difference: a compartment present in all 16 patients carries more
+  # information than one present in 9. The contributing-patient count per
+  # compartment is recoverable from the nested (patient x cell type) groups --
+  # there is one such column per NON-EMPTY pair, so counting the groups of a
+  # compartment counts its patients.
+  set.seed(11)
+  spe <- buildNiches(spiDE:::.toyClustered(n_samples = 16, n_per = 60,
+                                           n_genes = 8, sd_patient = 0.20),
+                     sigma = 30)
+  # remove one cell type from half the patients entirely, so it is present in
+  # far fewer patients than the others
+  types <- levels(factor(spe$cell_type))
+  drop_in <- unique(spe$sample_id)[1:8]
+  gone <- spe$cell_type == types[1] & spe$sample_id %in% drop_in
+  spe <- spe[, !gone]
+
+  f <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+                re.celltype = TRUE, df.method = "satterthwaite",
+                verbose = FALSE, backend = "cpu")
+  ff <- fits(f)[[1]]
+  ct <- as.character(ff@covtype)
+  rc <- which(ct == "ResponseCellType")
+  d <- ff@df[names(ff@df) %in% ff@coefmap$covariate[rc]]
+  lab <- ff@coefmap$index[rc][match(names(d), ff@coefmap$covariate[rc])]
+
+  # patients per compartment, straight from the nested group names
+  nz <- which(!is.na(ff@re_group) & ff@re_group == "SampleCellTypeInt")
+  gnm <- colnames(ff@W)[nz]
+  per <- vapply(lab, function(k) sum(endsWith(gnm, paste0(".", k))), numeric(1))
+  expect_true(all(per > 0))
+  expect_gt(max(per) - min(per), 2)          # the fixture must be unbalanced
+
+  # the thinned compartment must be capped BELOW the others
+  thin <- which.min(per)
+  expect_lt(d[thin], max(d))
+  # and no compartment may exceed its own patients
+  expect_true(all(d <= pmax(per - 2, 1) * 1.05 + 1e-8),
+              info = paste(sprintf("%s: df %.1f vs patients %d", lab, d, per),
+                           collapse = " | "))
+})
+
+test_that(".patientsPerTested matches labels that contain spaces", {
+  # The nested columns carry the RAW cell-type label and coefmap$index the
+  # sanitised one, so "B cell" vs "B.cell" silently missed on the real cohort:
+  # three of thirteen compartments resolved to NA and quietly fell back to the
+  # flat S - 2. The bound stayed valid, which is why nothing failed -- the
+  # refinement just stopped refining.
+  W <- matrix(0, 6, 4,
+              dimnames = list(NULL, c("CellTypeB.cell:ResponseResponder",
+                                      "SampleCellTypeP1.B cell",
+                                      "SampleCellTypeP2.B cell",
+                                      "SampleCellTypeP3.T cell")))
+  W[1:2, 2] <- 1; W[3:4, 3] <- 1; W[5:6, 4] <- 1
+  re_group <- c(NA, rep("SampleCellTypeInt", 3))
+  coefmap <- data.frame(covariate = colnames(W),
+                        index = c("B.cell", NA, NA, NA),
+                        stringsAsFactors = FALSE)
+  got <- spiDE:::.patientsPerTested(W, re_group, coefmap, tested = 1L)
+  expect_equal(got, 2)          # B cell is in P1 and P2, not P3
+})
