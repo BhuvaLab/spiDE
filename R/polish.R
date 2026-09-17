@@ -842,7 +842,10 @@
                 "the conservative between-sample df ", format(f@df),
                 call. = FALSE)
       } else {
-        f@df <- df_new
+        # the same bound the fit applies: a between-patient contrast cannot
+        # out-run its patients, and this site would otherwise overwrite it
+        f@df <- .boundPatientDF(df_new, f@W, f@re_group, tested,
+                                .betweenDF(f@re_group, .fitMode(f), ncol(Yf)))
       }
     }
     # the warm passes held each gene's dispersion; one profile pass at the

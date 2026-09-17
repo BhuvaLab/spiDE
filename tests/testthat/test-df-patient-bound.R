@@ -79,3 +79,30 @@ test_that("a rarer compartment does not earn MORE degrees of freedom", {
               info = sprintf("Spearman cor(df, cells) = %.3f, sd(df) = %.3g",
                              rho, stats::sd(d[ok])))
 })
+
+test_that("the bound survives the polish, which recomputes the df", {
+  # The production path ALWAYS polishes, and .polishSpiDEFit() refreshes the
+  # reference df at the reported penalty after the tau2 loop -- calling
+  # .satterthwaiteDF() directly and assigning to @df. A bound applied only in
+  # .fitNBmixed() is therefore computed and then overwritten, i.e. inert
+  # exactly where it matters.
+  #
+  # This is the second time on this branch: .reprofilePsi() would have
+  # overwritten the dispersion bisection at the last step the same way. Any
+  # quantity the fit computes and the polish recomputes needs the correction at
+  # BOTH sites, or at one site both call.
+  spe <- buildNiches(spiDE:::.toyClustered(n_samples = 16, n_per = 30,
+                                           n_genes = 8, sd_patient = 0.20),
+                     sigma = 30)
+  f <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+                re.celltype = TRUE, df.method = "satterthwaite",
+                verbose = FALSE, backend = "cpu")
+  S <- sum(fits(f)[[1]]@re_group == "SampleInt", na.rm = TRUE)
+
+  fp <- polishSpiDE(f, spe, verbose = FALSE)
+  ff <- fits(fp)[[1]]
+  ct <- as.character(ff@covtype)
+  d <- ff@df[names(ff@df) %in% ff@coefmap$covariate[ct == "ResponseCellType"]]
+  expect_gt(length(d), 0L)
+  expect_lte(max(d), (S - 2) * 1.05)
+})

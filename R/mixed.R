@@ -318,26 +318,7 @@
     # status does not vary within a patient); the three-way niche terms are not
     # (the niche density varies cell to cell inside a group), which is why they
     # keep the larger df the anchor tests require.
-    if (!is.null(df) && length(df) > 1L && any(cols_tested)) {
-      nested_cols <- !is.na(re_group) & re_group == "SampleCellTypeInt"
-      if (any(nested_cols)) {
-        Zn <- W[, nested_cols, drop = FALSE]
-        grp <- round(as.numeric(Zn %*% seq_len(sum(nested_cols))))
-        keep <- grp >= 1                     # a cell outside every group
-        if (any(keep)) {
-          Wt <- as.matrix(W[keep, tested, drop = FALSE])
-          g <- grp[keep]
-          ng <- as.numeric(table(g))
-          s1 <- rowsum(Wt, g)
-          s2 <- rowsum(Wt^2, g)
-          wv <- s2 / ng - (s1 / ng)^2        # within-group variance per column
-          between <- apply(wv, 2L, function(v) max(v, na.rm = TRUE)) <= 1e-10
-          if (any(between)) {
-            df[between] <- pmin(df[between], df_between)
-          }
-        }
-      }
-    }
+    df <- .boundPatientDF(df, W, re_group, tested, df_between)
     # .satterthwaiteDF() returns NULL when the variance-parameter information is
     # singular (it warns there); degrade to the documented conservative scalar
     # rather than storing a NULL df that every downstream consumer must branch on
@@ -398,6 +379,55 @@
 #' d_j = (v_jj, g_j1, ..., g_jM) and g_jm = (pen_m / tau2_m) * sum_{k in m} M^{-1}_{jk}^2.
 #' Invariant to the per-gene dispersion phi (spec), hence one shared vector.
 #' @noRd
+#' Bound a between-patient contrast's df by the patients that carry it
+#'
+#' Whatever the Satterthwaite approximation returns, a contrast identified by
+#' patients cannot have more degrees of freedom than the patients supply. On
+#' the v11 cohort the approximation returned far more, and INVERSELY to the
+#' evidence: Tumor (27,764 cells) got df 306 while Smooth muscle (1,073 cells)
+#' got 34,544, Spearman cor(df, cells) = -0.978 across 13 compartments. A rare
+#' compartment's (patient x cell type) groups hold few cells, their random
+#' effects shrink, the variance-component gradients collapse, varse2 shrinks
+#' and \code{df = 2 vjj^2 / varse2} runs away toward the residual (cell) scale.
+#'
+#' Which columns it binds is decided structurally rather than from a list of
+#' covariate types: a column is between-patient when it is CONSTANT inside
+#' every (patient x cell type) group. \code{CellType_k:Responder} is, because
+#' responder status does not vary within a patient; the three-way niche terms
+#' are not, because niche density varies cell to cell inside a group.
+#'
+#' This lives in one function because BOTH the fit and the polish compute the
+#' reference df -- \code{.polishSpiDEFit()} refreshes it at the reported
+#' penalty after the tau2 loop -- so a correction applied at one site only is
+#' computed and then overwritten, which is inert exactly on the production
+#' path, which always polishes.
+#'
+#' @param df the named Satterthwaite df, aligned to \code{tested}.
+#' @param W the design.
+#' @param re_group the random-effect group of each column.
+#' @param tested integer column positions the df belongs to.
+#' @param df_between the patient-level reference (S - 2).
+#' @return \code{df}, with the between-patient entries bounded.
+#' @noRd
+.boundPatientDF <- function(df, W, re_group, tested, df_between) {
+  if (is.null(df) || length(df) < 2L || !length(tested)) return(df)
+  nested <- !is.na(re_group) & re_group == "SampleCellTypeInt"
+  if (!any(nested)) return(df)
+  Zn <- W[, nested, drop = FALSE]
+  grp <- round(as.numeric(Zn %*% seq_len(sum(nested))))
+  keep <- grp >= 1                     # a cell outside every group
+  if (!any(keep)) return(df)
+  Wt <- as.matrix(W[keep, tested, drop = FALSE])
+  g <- grp[keep]
+  ng <- as.numeric(table(g))
+  s1 <- rowsum(Wt, g)
+  s2 <- rowsum(Wt^2, g)
+  wv <- s2 / ng - (s1 / ng)^2          # within-group variance per column
+  between <- apply(wv, 2L, function(v) max(v, na.rm = TRUE)) <= 1e-10
+  if (any(between)) df[between] <- pmin(df[between], df_between)
+  df
+}
+
 .satterthwaiteDF <- function(A, minv, pen, re_group, tau2, tested, ncells,
                              tested_names) {
   vp <- .varParamCov(A, minv, pen, re_group, ncells)
