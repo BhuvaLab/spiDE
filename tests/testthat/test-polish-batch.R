@@ -230,8 +230,11 @@ test_that("spiDE() can reach the reference polish engine", {
   # -- they agree to 5e-13 by construction, so a silently ignored argument
   # would pass.
   spe <- buildNiches(.toySPE(n_genes = 6), sigma = 20)
+  # backend = "cpu": this is about which POLISH engine spiDE() reaches, and on
+  # a GPU node the default "auto" would send the fit to the device, where
+  # SpaNorm's NB fitter fails on this fixture (H100, job 28552404)
   args <- list(spe, condition = "condition", sigma = 20, random = "intercept",
-               re.maxit = 2L, fdr = 1, verbose = TRUE)
+               re.maxit = 2L, fdr = 1, verbose = TRUE, backend = "cpu")
   expect_message(do.call(spiDE, c(args, list(engine = "gene"))), "per gene")
   expect_message(do.call(spiDE, c(args, list(engine = "batch"))),
                  "in batches of")
@@ -299,6 +302,11 @@ test_that(".polishBatch runs on tensors and agrees with the matrix path", {
   # the return is always host, whatever went in
   expect_true(is.matrix(tor$alpha))
   expect_type(tor$psi, "double")
+
+  # the agreement is worthless if neither side did anything: pin that the
+  # matrix path actually polished every gene before comparing
+  expect_true(all(cpu$polished))
+  expect_true(all(is.finite(cpu$loglik)))
 
   expect_identical(tor$polished, cpu$polished)
   expect_identical(tor$singular, cpu$singular)

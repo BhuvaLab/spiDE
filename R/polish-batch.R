@@ -109,15 +109,28 @@ SPIDE_POLISH_GENE_CELL_MATS <- 6
       if (SpaNorm::is_torch_tensor(x)) x else
         torch::torch_tensor(as.numeric(x), dtype = dt, device = dev)
     }
-    r <- (1 / asT(psi))$unsqueeze(2)          # genes x 1, broadcast over cells
     Yt <- asT(Y)
+    psi_t <- asT(psi)
+    # psi = 0 is size = 1/psi = Inf, which dnbinom() treats as POISSON. The
+    # written-out log-pmf does not get that for free: r = Inf gives
+    # lgamma(y + Inf) - lgamma(Inf) = Inf - Inf = NaN and r log(r/(r+mu)) =
+    # Inf log(1) = NaN, so every gene's likelihood comes back NaN and the
+    # engine -- which drops a gene whose loglik is not finite -- polishes
+    # NOTHING, silently. fitSpiDE() returns psi = 0 on the toy fixture, so this
+    # is the common case on small data, not a corner.
+    pois <- psi_t == 0
+    # clamped so the NB branch stays finite where it will be discarded
+    r <- (1 / torch::torch_clamp(psi_t, min = 1e-300))$unsqueeze(2)
     rm_ <- r + M
-    ll <- torch::torch_lgamma(Yt + r) - torch::torch_lgamma(r) -
-      torch::torch_lgamma(Yt + 1) +
-      r * torch::torch_log(r / rm_) + Yt * torch::torch_log(M / rm_)
+    ll_nb <- torch::torch_sum(
+      torch::torch_lgamma(Yt + r) - torch::torch_lgamma(r) -
+        torch::torch_lgamma(Yt + 1) +
+        r * torch::torch_log(r / rm_) + Yt * torch::torch_log(M / rm_), dim = 2)
+    ll_pois <- torch::torch_sum(
+      Yt * torch::torch_log(M) - M - torch::torch_lgamma(Yt + 1), dim = 2)
+    ll <- torch::torch_where(pois, ll_pois, ll_nb)
     pen_t <- asT(pen)
-    return(torch::torch_sum(ll, dim = 2) -
-             0.5 * torch::torch_matmul(asT(A)$pow(2), pen_t))
+    return(ll - 0.5 * torch::torch_matmul(asT(A)$pow(2), pen_t))
   }
   rowSums(stats::dnbinom(Y, size = 1 / psi, mu = M, log = TRUE)) -
     0.5 * as.numeric((A^2) %*% pen)

@@ -70,3 +70,47 @@ test_that(".nbLoglikBatch handles an all-zero gene and a large count", {
   expect_equal(got, .llRef(f, M), tolerance = 1e-10)
   expect_true(all(is.finite(got)))
 })
+
+test_that(".nbLoglikBatch handles a zero dispersion, which is the Poisson limit", {
+  # psi = 0 means size = 1/psi = Inf, and dnbinom() treats that as Poisson.
+  # The written-out log-pmf does not get that for free: r = Inf gives
+  # lgamma(y + Inf) - lgamma(Inf) = Inf - Inf = NaN and r*log(r/(r+mu)) =
+  # Inf*log(1) = NaN, so every likelihood comes back NaN and -- since the
+  # engine drops a gene whose loglik is not finite -- NOTHING is polished,
+  # silently.
+  #
+  # This is not hypothetical. fitSpiDE() on the toy fixture returns psi = 0 for
+  # every gene, so the whole device path returned "polished: FALSE" for all of
+  # them (H100, job 28555677). Every unit fixture here used psi = 0.4 or 0.5
+  # and missed it.
+  f <- .nbFixture()
+  f$psi <- rep(0, nrow(f$Y))
+  M <- .muRef(f)
+  ref <- .llRef(f, M)                       # dnbinom(size = Inf) = Poisson
+  expect_true(all(is.finite(ref)))
+
+  got <- spiDE:::.nbLoglikBatch(f$Y, M, f$psi, f$A, f$pen)
+  expect_equal(got, ref, tolerance = 1e-10)
+
+  skip_if_not_installed("torch")
+  tt <- function(x) torch::torch_tensor(x, dtype = torch::torch_float64())
+  gt <- spiDE:::.nbLoglikBatch(tt(f$Y), tt(M), f$psi, tt(f$A), f$pen)
+  gt <- as.numeric(SpaNorm::toRMatrix(gt))
+  expect_true(all(is.finite(gt)))
+  expect_equal(gt, ref, tolerance = 1e-9)
+})
+
+test_that(".nbLoglikBatch handles a mix of zero and non-zero dispersions", {
+  # the batch is the point: one Poisson gene among NB ones must not take the
+  # others with it
+  skip_if_not_installed("torch")
+  f <- .nbFixture()
+  f$psi[c(2L, 4L)] <- 0
+  M <- .muRef(f)
+  ref <- .llRef(f, M)
+  tt <- function(x) torch::torch_tensor(x, dtype = torch::torch_float64())
+  gt <- as.numeric(SpaNorm::toRMatrix(
+    spiDE:::.nbLoglikBatch(tt(f$Y), tt(M), f$psi, tt(f$A), f$pen)))
+  expect_true(all(is.finite(gt)))
+  expect_equal(gt, ref, tolerance = 1e-9)
+})

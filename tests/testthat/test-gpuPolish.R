@@ -6,10 +6,18 @@
 # device rather than warning and proceeding -- test-polish-backend.R pins the
 # refusal itself, which needs no device at all.
 
+# backend = "cpu" on the FIT is deliberate. These tests are about the POLISH
+# stage's backend, and fitSpiDE() defaults to "auto", so on a GPU node the fit
+# would go to the device too -- where SpaNorm:::fitNBGivenPsi() dies on this
+# fixture ("NAs are not allowed in subscripted assignments", H100, job
+# 28552404: a nested mixed fit over six genes). That is the fit stage's
+# fragility, upstream of anything here, and letting it into the fixture would
+# mean these tests never reach the polish at all.
 .mixedFit <- function(sigma = 20) {
   spe <- buildNiches(.toySPE(n_genes = 6), sigma = sigma)
   res <- fitSpiDE(spe, "condition", sigma = sigma, random = "intercept",
-                  re.celltype = TRUE, re.maxit = 2L, verbose = FALSE)
+                  re.celltype = TRUE, re.maxit = 2L, verbose = FALSE,
+                  backend = "cpu")
   list(spe = spe, res = res)
 }
 
@@ -40,6 +48,14 @@ test_that("the device path isolates to the device, not to the policy", {
     SpaNorm::toGPUMatrix(f@alpha, backend = "gpu"),
     f@psi, pen, solver, ct_cols = ct_cols, shared.factor = TRUE,
     nested = nested)
+
+  # FIRST: something must actually have been polished. Without this the test
+  # passes when BOTH sides polish nothing -- which is exactly what happened
+  # (H100, job 28555677): psi = 0 made every likelihood NaN on the tensor path,
+  # every gene was dropped as non-finite, and "dev agrees with host" was
+  # perfectly true and perfectly useless.
+  expect_true(all(host$polished))
+  expect_true(all(is.finite(host$loglik)))
 
   expect_equal(dev$alpha, host$alpha, tolerance = gpu_tol())
   expect_equal(dev$psi, host$psi, tolerance = gpu_tol())
