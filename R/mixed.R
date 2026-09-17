@@ -302,6 +302,42 @@
     df <- if (df_fallback) NULL else
       .satterthwaiteDF(A, minv, pen, re_group, tau2, tested, ncol(Y),
                        colnames(W)[tested])
+    # A BETWEEN-PATIENT contrast cannot have more degrees of freedom than the
+    # patients that carry it, whatever the Satterthwaite approximation returns.
+    # On the v11 cohort it returned far more, and inversely to the evidence:
+    # Tumor (27,764 cells) got df 306 while Smooth muscle (1,073) got 34,544,
+    # Spearman cor(df, cells) = -0.978 over 13 compartments. The mechanism is
+    # that a rare compartment's (patient x cell type) groups hold few cells, so
+    # their random effects shrink, the variance-component gradients collapse,
+    # varse2 shrinks and df = 2 vjj^2 / varse2 runs away toward the residual
+    # (cell) scale -- anti-conservative exactly where the data is thinnest.
+    #
+    # The test for "between-patient" is structural rather than a list of
+    # covariate types: a column is between-patient when it is CONSTANT inside
+    # every (patient x cell type) group. CellType_k:Responder is (responder
+    # status does not vary within a patient); the three-way niche terms are not
+    # (the niche density varies cell to cell inside a group), which is why they
+    # keep the larger df the anchor tests require.
+    if (!is.null(df) && length(df) > 1L && any(cols_tested)) {
+      nested_cols <- !is.na(re_group) & re_group == "SampleCellTypeInt"
+      if (any(nested_cols)) {
+        Zn <- W[, nested_cols, drop = FALSE]
+        grp <- round(as.numeric(Zn %*% seq_len(sum(nested_cols))))
+        keep <- grp >= 1                     # a cell outside every group
+        if (any(keep)) {
+          Wt <- as.matrix(W[keep, tested, drop = FALSE])
+          g <- grp[keep]
+          ng <- as.numeric(table(g))
+          s1 <- rowsum(Wt, g)
+          s2 <- rowsum(Wt^2, g)
+          wv <- s2 / ng - (s1 / ng)^2        # within-group variance per column
+          between <- apply(wv, 2L, function(v) max(v, na.rm = TRUE)) <= 1e-10
+          if (any(between)) {
+            df[between] <- pmin(df[between], df_between)
+          }
+        }
+      }
+    }
     # .satterthwaiteDF() returns NULL when the variance-parameter information is
     # singular (it warns there); degrade to the documented conservative scalar
     # rather than storing a NULL df that every downstream consumer must branch on
