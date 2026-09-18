@@ -24,7 +24,7 @@ spiDE(spe, condition = NULL, ...)
   name = "Niche",
   fdr = 0.05,
   combine = c("cauchy", "brown"),
-  df.method = c("satterthwaite", "between"),
+  df.method = c("between", "satterthwaite"),
   re.celltype = TRUE,
   polish = TRUE,
   dispersion = c("ql", "pearson"),
@@ -117,9 +117,12 @@ on the accelerator, forcing a serial \code{BPPARAM} in the process).}
 \item{combine}{one of "cauchy" (default) or "brown", the within-gene combiner
 for the correlated niche p-values (passed to \code{\link[=testSpiDE]{testSpiDE()}}).}
 
-\item{df.method}{one of "satterthwaite" (default) or "between"; only used
-when \code{random != "none"}. "satterthwaite" derives a separate df per
-tested column from the shared variance-component fit, distinguishing
+\item{df.method}{one of "between" (default) or "satterthwaite"; only used
+when \code{random != "none"}. "between" is the scalar reference df of a
+between-patient contrast, \code{S - 2} patients, applied per tested
+compartment as that compartment\'s own patient count minus two.
+"satterthwaite" instead derives a separate df per tested column from the
+shared variance-component fit, which in principle distinguishes
 between-sample contrasts (Response: small df, close to "between") from
 within-sample contrasts (ResponseNiche: larger df, more power) rather than
 applying \code{S - 2} to both; \code{@df} is then a named per-column

@@ -68,7 +68,7 @@ setMethod(
                         winsor = 4, lambda.a = 0,
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         fdr = 0.05, combine = c("cauchy", "brown"),
-                        df.method = c("satterthwaite", "between"),
+                        df.method = c("between", "satterthwaite"),
                         re.celltype = TRUE, polish = TRUE,
                         dispersion = c("ql", "pearson"),
                         block.size = NULL, gpu.mem.budget = NULL,

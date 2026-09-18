@@ -39,10 +39,15 @@ test_that("a between-patient contrast's df is bounded by the patients", {
   # the bound, with a little slack for the Satterthwaite approximation itself
   expect_lte(max(d), (S - 2) * 1.05)
 
-  # and the within-patient layer must NOT be capped with it: the niche varies
-  # inside a patient, so it legitimately carries more information
+  # The three-way niche terms are bounded too. They are a between-patient
+  # comparison OF a within-patient slope: each patient contributes one slope,
+  # and more cells per patient sharpen it without creating more of them. On the
+  # v11 arm they ran to a median df of 27,345 against a residual df of 76,347,
+  # with cor(df, cells of the index compartment) = -0.722 -- the same inversion
+  # as the two-way layer, which a genuinely within-patient quantity would not
+  # show.
   dn <- ff@df[names(ff@df) %in% ff@coefmap$covariate[ct == "ResponseNiche"]]
-  if (length(dn)) expect_gt(stats::median(dn), stats::median(d))
+  if (length(dn)) expect_lte(max(dn), (S - 2) * 1.05)
 })
 
 test_that("a rarer compartment does not earn MORE degrees of freedom", {
@@ -168,4 +173,52 @@ test_that(".patientsPerTested matches labels that contain spaces", {
                         stringsAsFactors = FALSE)
   got <- spiDE:::.patientsPerTested(W, re_group, coefmap, tested = 1L)
   expect_equal(got, 2)          # B cell is in P1 and P2, not P3
+})
+
+# ---------------------------------------------------------------------------
+# The default reference df (2026-09-18, phase 6).
+#
+# Satterthwaite was the default because it promised a per-column df that
+# distinguished between-patient contrasts from within-patient ones. On this
+# design it does not: every tested column is a Response term, the patient
+# bound caps all of them at their own compartment's n - 2, and on the cohort
+# design the bound binds on 168 of 168 columns. A per-column vector that is
+# the bound everywhere carries nothing the scalar does not, while costing a
+# variance-parameter covariance per gene and inviting callers to read
+# structure into it. "between" is the default; satterthwaite stays available
+# and is now bounded too, so the arm cannot mislead.
+# ---------------------------------------------------------------------------
+
+test_that("df.method defaults to between at every public entry point", {
+  # source-level: all three signatures must agree, or a caller that goes
+  # through spiDE() gets a different default from one that calls fitSpiDE()
+  # the methods dispatch on spe = "ANY", and S4 rematching hides the real
+  # formals inside .local(), so deparse the whole method rather than reading
+  # formals() off the generic
+  for (fn in c("fitSpiDE", "spiDE")) {
+    # deparse wraps long signatures, so collapse runs of whitespace before
+    # matching or the default reads as c("between",  "satterthwaite")
+    src <- gsub("[[:space:]]+", " ", paste(deparse(getMethod(fn, "ANY")), collapse = " "))
+    expect_true(grepl('df.method = c("between", "satterthwaite")', src, fixed = TRUE),
+                info = paste(fn, "signature:", 
+                             paste(regmatches(src, gregexpr("df\\.method = [^,)]*", src))[[1]],
+                                   collapse = " ;; ")))
+  }
+  expect_identical(eval(formals(spiDE:::.fitNBmixed)$df.method), "between")
+})
+
+test_that("a mixed fit returns the scalar df by default and the vector on request", {
+  spe <- buildNiches(spiDE:::.toyClustered(n_samples = 8, n_per = 30, n_genes = 6),
+                     sigma = 30, verbose = FALSE)
+  f_def <- fits(fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+                         verbose = FALSE))[[1]]
+  f_sat <- fits(fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+                         df.method = "satterthwaite", verbose = FALSE))[[1]]
+  n_patients <- length(unique(as.character(spe$sample_id)))
+  expect_length(f_def@df, 1L)
+  expect_equal(unname(f_def@df), n_patients - 2)
+  # and the opt-in arm still produces one per tested column, all bounded
+  expect_gt(length(f_sat@df), 1L)
+  expect_true(all(f_sat@df <= n_patients - 2))
+  expect_true(all(is.finite(f_sat@df)))
 })

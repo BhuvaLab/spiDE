@@ -30,8 +30,25 @@ test_that("df.method='satterthwaite' anchors the between-sample contrast at S-2"
   expect_gt(length(resp_name), 0L)
   expect_equal(unname(stats::median(ds[resp_name])), 14, tolerance = 0.20)
 
+  # RE-ANCHORED 2026-09-18. This asserted median(ResponseNiche) >
+  # median(ResponseCellType), on the reasoning that "a between-sample contrast
+  # gets df ~ S - 2, a within-sample one gets more" -- i.e. that the three-way
+  # term is a within-sample contrast. It is not. It compares the niche slope
+  # between RESPONDERS and NON-RESPONDERS, and responder status is a property
+  # of the patient, so each patient contributes one slope and more cells per
+  # patient sharpen it without creating more of them.
+  #
+  # The measurement that settles it: on the v11 cohort the three-way df ran to
+  # a median of 27,345 against a residual df of 76,347, with Spearman
+  # cor(df, cells of the index compartment) = -0.722. A within-sample quantity
+  # does not degrade as the index compartment gets rarer; that inversion is the
+  # same one the two-way layer showed at -0.978.
+  #
+  # Both layers are now bounded by the patients that carry them, so they no
+  # longer separate. What is still asserted is the bound itself.
   rn_names <- cm$covariate[ct == "ResponseNiche"]
-  expect_gt(stats::median(ds[rn_names]), stats::median(ds[resp_name]))
+  expect_lte(max(ds[rn_names]), 14 * 1.05)
+  expect_lte(max(ds[resp_name]), 14 * 1.05)
 })
 
 test_that("df.method='between' reproduces the scalar S-2 reference exactly", {

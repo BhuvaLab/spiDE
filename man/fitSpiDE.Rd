@@ -28,7 +28,7 @@ fitSpiDE(spe, condition = NULL, ...)
   re.prop = 1,
   re.maxit.psi = 1L,
   re.min.cells = 100L,
-  df.method = c("satterthwaite", "between"),
+  df.method = c("between", "satterthwaite"),
   re.celltype = TRUE,
   block.size = NULL,
   BPPARAM = BiocParallel::SerialParam(),
@@ -161,9 +161,12 @@ the redundant re-estimation of the barely-moving dispersion each iteration.}
 
 \item{re.min.cells}{the per-stratum floor for \code{re.prop} subsampling.}
 
-\item{df.method}{one of "satterthwaite" (default) or "between"; only used
-when \code{random != "none"}. "satterthwaite" derives a separate df per
-tested column from the shared variance-component fit, distinguishing
+\item{df.method}{one of "between" (default) or "satterthwaite"; only used
+when \code{random != "none"}. "between" is the scalar reference df of a
+between-patient contrast, \code{S - 2} patients, applied per tested
+compartment as that compartment\'s own patient count minus two.
+"satterthwaite" instead derives a separate df per tested column from the
+shared variance-component fit, which in principle distinguishes
 between-sample contrasts (Response: small df, close to "between") from
 within-sample contrasts (ResponseNiche: larger df, more power) rather than
 applying \code{S - 2} to both; \code{@df} is then a named per-column

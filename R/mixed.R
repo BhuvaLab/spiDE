@@ -160,9 +160,10 @@
 #'   (NULL = all cells). The final fit always uses all cells.
 #' @param re.maxit.psi dispersion iterations (\code{maxit.psi}) for the inner
 #'   loop fits; the final fit uses full dispersion.
-#' @param df.method one of "satterthwaite" (the default: a per-tested-column df
-#'   vector via \code{.satterthwaiteDF()}) or "between" (a scalar \code{S - 2}
-#'   residual df, the back-compatible behaviour).
+#' @param df.method one of "between" (the default: a scalar \code{S - 2}
+#'   residual df, bounded per tested compartment by its own patient count) or
+#'   "satterthwaite" (a per-tested-column df vector via
+#'   \code{.satterthwaiteDF()}, bounded the same way).
 #' @param cols_tested a logical over \code{colnames(W)} marking the
 #'   Response/ResponseNiche columns needing a df (only used when
 #'   \code{df.method == "satterthwaite"}).
@@ -179,9 +180,9 @@
 .fitNBmixed <- function(Y, W, re_group, lambda.a, winsor, backend, verbose,
                         re.maxit = 2L, re.tol = 1e-3, tau2.init = 1,
                         tau2.range = c(1e-8, 1e4), idx = NULL,
-                        re.maxit.psi = 1L, df.method = "satterthwaite",
+                        re.maxit.psi = 1L, df.method = "between",
                         cols_tested = NULL, mode = "condition",
-                        coefmap = NULL, ...) {
+                        coefmap = NULL, covtype = NULL, ...) {
   p <- ncol(W)
   groups <- unique(re_group[!is.na(re_group)])
   base <- if (length(lambda.a) == 1) rep(lambda.a, p) else lambda.a
@@ -313,14 +314,25 @@
     # varse2 shrinks and df = 2 vjj^2 / varse2 runs away toward the residual
     # (cell) scale -- anti-conservative exactly where the data is thinnest.
     #
-    # The test for "between-patient" is structural rather than a list of
-    # covariate types: a column is between-patient when it is CONSTANT inside
-    # every (patient x cell type) group. CellType_k:Responder is (responder
-    # status does not vary within a patient); the three-way niche terms are not
-    # (the niche density varies cell to cell inside a group), which is why they
-    # keep the larger df the anchor tests require.
+    # Which columns it binds: every tested column that carries the CONDITION
+    # factor. An earlier version asked instead whether a column is CONSTANT
+    # inside every (patient x cell type) group, which bound the two-way
+    # CellType_k:Responder but not the three-way
+    # CellType_k:Responder:Niche_n, on the reasoning that niche density varies
+    # cell to cell within a group. That reasoning is about how the REGRESSOR
+    # varies, not about what replicates the CONTRAST. Responder status is a
+    # property of the patient, so a three-way term still compares groups of
+    # patients and is still replicated by patients; leaving it unbounded left
+    # the niche layer anti-conservative on the null grids while the cell-type
+    # layer was calibrated (2026-09-18).
+    #
+    # In mode = "niche" there is no condition factor -- the tested columns are
+    # pure niche slopes, which are within-patient contrasts -- so nothing
+    # matches and the bound correctly does not apply.
+    patient_level <- grepl("Response", as.character(covtype)[tested])
     df <- .boundPatientDF(df, W, re_group, tested, df_between,
-                          .patientsPerTested(W, re_group, coefmap, tested))
+                          .patientsPerTested(W, re_group, coefmap, tested),
+                          patient_level)
     # .satterthwaiteDF() returns NULL when the variance-parameter information is
     # singular (it warns there); degrade to the documented conservative scalar
     # rather than storing a NULL df that every downstream consumer must branch on
@@ -392,11 +404,24 @@
 #' effects shrink, the variance-component gradients collapse, varse2 shrinks
 #' and \code{df = 2 vjj^2 / varse2} runs away toward the residual (cell) scale.
 #'
-#' Which columns it binds is decided structurally rather than from a list of
-#' covariate types: a column is between-patient when it is CONSTANT inside
-#' every (patient x cell type) group. \code{CellType_k:Responder} is, because
-#' responder status does not vary within a patient; the three-way niche terms
-#' are not, because niche density varies cell to cell inside a group.
+#' Which columns it binds: every tested column that carries the CONDITION
+#' factor. Responder status is a property of the patient, so any contrast
+#' involving it -- the two-way \code{CellType_k:Responder} and equally the
+#' three-way \code{CellType_k:Responder:Niche_n} -- compares groups of
+#' PATIENTS, and patients are what replicate it.
+#'
+#' An earlier version bound only columns CONSTANT inside every (patient x cell
+#' type) group, which excluded the three-way terms because niche density varies
+#' cell to cell inside a group. That was the wrong test. The three-way term is a
+#' between-patient comparison OF a within-patient slope: each patient
+#' contributes one slope, and more cells per patient sharpen that slope without
+#' creating more of them, so the df must asymptote to the patient count rather
+#' than grow with cells. Measured on the v11 arm it did the opposite -- median
+#' df 27,345 against a residual df of 76,347, and Spearman cor(df, cells of the
+#' index compartment) = -0.722, the same inversion as the two-way layer.
+#'
+#' In \code{mode = "niche"} the tested columns are pure niche slopes with no
+#' condition factor in them. Those ARE within-patient and are not bounded.
 #'
 #' This lives in one function because BOTH the fit and the polish compute the
 #' reference df -- \code{.polishSpiDEFit()} refreshes it at the reported
@@ -419,21 +444,10 @@
 #' @return \code{df}, with the between-patient entries bounded.
 #' @noRd
 .boundPatientDF <- function(df, W, re_group, tested, df_between,
-                            n_patients = NULL) {
+                            n_patients = NULL, patient_level = NULL) {
   if (is.null(df) || length(df) < 2L || !length(tested)) return(df)
-  nested <- !is.na(re_group) & re_group == "SampleCellTypeInt"
-  if (!any(nested)) return(df)
-  Zn <- W[, nested, drop = FALSE]
-  grp <- round(as.numeric(Zn %*% seq_len(sum(nested))))
-  keep <- grp >= 1                     # a cell outside every group
-  if (!any(keep)) return(df)
-  Wt <- as.matrix(W[keep, tested, drop = FALSE])
-  g <- grp[keep]
-  ng <- as.numeric(table(g))
-  s1 <- rowsum(Wt, g)
-  s2 <- rowsum(Wt^2, g)
-  wv <- s2 / ng - (s1 / ng)^2          # within-group variance per column
-  between <- apply(wv, 2L, function(v) max(v, na.rm = TRUE)) <= 1e-10
+  if (!any(!is.na(re_group) & re_group == "SampleCellTypeInt")) return(df)
+  between <- if (is.null(patient_level)) rep(TRUE, length(df)) else patient_level
   if (!any(between)) return(df)
   cap <- rep(df_between, length(df))
   if (!is.null(n_patients) && length(n_patients) == length(df)) {

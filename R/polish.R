@@ -847,7 +847,8 @@
         f@df <- .boundPatientDF(df_new, f@W, f@re_group, tested,
                                 .betweenDF(f@re_group, .fitMode(f), ncol(Yf)),
                                 .patientsPerTested(f@W, f@re_group, f@coefmap,
-                                                   tested))
+                                                   tested),
+                                grepl("Response", as.character(f@covtype)[tested]))
       }
     }
     # the warm passes held each gene's dispersion; one profile pass at the

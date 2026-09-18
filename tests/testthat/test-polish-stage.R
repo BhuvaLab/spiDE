@@ -38,9 +38,23 @@ test_that("polishSpiDE() re-estimates the variance components from the converged
   expect_gt(after, 0.25)
   expect_lt(after, 0.9)
   expect_equal(unname(f@penalty[f@re_group %in% "SampleInt"]), rep(1 / after, sum(f@re_group %in% "SampleInt")))
-  # the reference df follows the new components
+  # The reference df is RECOMPUTED by the polish, not carried over. It no
+  # longer DIFFERS from the fit's, and that is the point: every tested column
+  # on this design is a between-patient contrast (ResponseCellType or
+  # ResponseNiche), the patient bound caps those at n_patients - 2, and the cap
+  # does not depend on the variance components -- so both sites land on 6 here
+  # even though tau2 moved. Asserting inequality would be asserting the
+  # pre-bound behaviour. Instead: corrupt the input fit's df and require the
+  # polish to produce the bound anyway, which a copy could not do.
   expect_true(is.numeric(f@df) && !is.null(names(f@df)))
-  expect_false(isTRUE(all.equal(f@df, fits(cl$fit)[[1]]@df)))
+  n_patients <- length(unique(as.character(cl$spe$sample_id)))
+  expect_equal(unname(f@df), rep(n_patients - 2, length(f@df)))
+  expect_true(all(as.character(f@covtype)[match(names(f@df), colnames(f@W))] %in%
+                    c("ResponseCellType", "ResponseNiche")))
+  poisoned <- cl$fit          # no fits<- replacement method; set the slot
+  poisoned@fits[[1]]@df <- stats::setNames(rep(999, length(f@df)), names(f@df))
+  redone <- fits(polishSpiDE(poisoned, cl$spe, verbose = FALSE))[[1]]
+  expect_equal(unname(redone@df), rep(n_patients - 2, length(f@df)))
   # and the stage can be told to leave them alone
   keep <- fits(polishSpiDE(cl$fit, cl$spe, tau2 = FALSE, verbose = FALSE))[[1]]
   expect_equal(keep@tau2, fits(cl$fit)[[1]]@tau2)

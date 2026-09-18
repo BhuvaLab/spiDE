@@ -100,6 +100,9 @@ test_that("re.prop is validated", {
 # The Long Tests builder runs them weekly with a 6-hour budget.
 
 test_that("re.celltype yields its own variance component and keeps per-column df", {
+  # The df shape follows df.method, and the default is "between" (scalar) as
+  # of 2026-09-18, so the per-column claim is asserted on the arm that makes
+  # the per-column vector rather than on whichever method is the default.
   spe <- buildNiches(.toySPE(n_genes = 8, n_per = 40), sigma = 30)
   f <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
                 re.maxit = 1L, verbose = FALSE)
@@ -111,9 +114,16 @@ test_that("re.celltype yields its own variance component and keeps per-column df
   nested <- which(fit@re_group == "SampleCellTypeInt")
   expect_true(all(abs(fit@penalty[nested] -
                         1 / fit@tau2[["SampleCellTypeInt"]]) < 1e-8))
-  # df is still one per tested column
-  expect_gt(length(fit@df), 1L)
+  # under the default the reference df is the scalar between-patient value
+  expect_length(fit@df, 1L)
   expect_true(all(is.finite(fit@df)))
+  # and the nested component does not break the per-column arm
+  fs <- fits(fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+                      re.maxit = 1L, df.method = "satterthwaite",
+                      verbose = FALSE))[[1]]
+  expect_setequal(names(fs@tau2), c("SampleInt", "SampleCellTypeInt"))
+  expect_gt(length(fs@df), 1L)
+  expect_true(all(is.finite(fs@df)))
 })
 
 test_that("re.celltype = FALSE keeps the single variance component", {
