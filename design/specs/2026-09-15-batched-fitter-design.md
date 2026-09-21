@@ -77,8 +77,8 @@ and the test oracle, reachable through `engine = "gene"`.
 | 2 | device path via `.gramBatch()`'s torch branch | CPU == GPU at `gpu_tol()` |
 | 2a-2d | the inference side of the device path | landed, see below |
 | 3+4 | one τ² loop; `fitNB` to starting values | the `longtests` τ² window and df anchors |
-| 5 | the between-sample reference df | the `lmerTest` and `S - 2` anchors |
-| 6 | revalidation and recalibration | benchmark + null grids |
+| 5 | the between-sample reference df | the `lmerTest` and `S - 2` anchors ✅ |
+| 6 | revalidation and recalibration | benchmark + null grids ✅ |
 
 Phase 3 is a verification rather than a phase: `.tau2Iterate()` already
 iterates to a tolerance with Steffensen acceleration (`polish.R:534-611`). What
@@ -148,6 +148,60 @@ test -- the same trade already recorded for the line search, and it is measured
 on the objective, not assumed. The ratio also has not been checked on the
 unrestricted arm (1,107 columns, 764 nested against 662/492 here).
 
+## Phases 5 and 6, as built (2026-09-18/21)
+
+**Phase 5 found an inversion, not a scale error.** The Satterthwaite df for a
+between-patient contrast was not merely too large, it was anticorrelated with
+the evidence: Spearman cor(df, cells) = **-0.978** over the 13 compartments,
+Tumor (27,764 cells) getting df 306 where Smooth muscle (1,073) got 34,544. A
+rare compartment's (patient x cell type) groups hold few cells, their random
+effects shrink toward the pooled ones, the variance-component gradients
+collapse, `varse2` shrinks, and `df = 2 vjj^2 / varse2` runs away toward the
+cell scale -- anti-conservative exactly where the data is thinnest.
+
+The fix is `.boundPatientDF()` with `.patientsPerTested()`: no between-patient
+contrast may exceed that compartment's OWN patient count minus two. It is
+applied at the fit site AND the polish site, because the polish recomputes
+every quantity the fit computed and a correction applied at one site only is
+inert where it matters (1d046e9).
+
+**Which columns it binds was wrong at first, and the grids caught it.** The
+first version asked whether a column is CONSTANT inside every (patient x cell
+type) group -- true of `CellType_k:Responder`, false of
+`CellType_k:Responder:Niche_n` because niche density varies cell to cell inside
+a group. That question is about how the REGRESSOR varies, not about what
+replicates the CONTRAST. Responder status is a property of the patient either
+way, so the three-way term compares groups of patients exactly as the two-way
+one does. The `_dfb` grids showed the consequence directly: cell-type layer
+calibrated (FDP 0.288 -> 0.280), niche layer still anti-conservative. The bound
+now covers every tested column carrying the condition factor (8d2f4c9).
+
+**That made `satterthwaite` the wrong default.** Once every tested column is
+condition-bearing and every one of them is capped, the per-column vector IS the
+bound -- it binds on 168 of 168 columns on the cohort design -- so it carries
+nothing the scalar does not, while costing a variance-parameter covariance per
+gene and inviting callers to read structure into a constant. `df.method`
+defaults to `"between"`; `"satterthwaite"` remains available and is bounded the
+same way, so that arm cannot mislead either.
+
+Three tests were re-anchored rather than relaxed, and the re-anchors assert
+mechanism so they cannot pass vacuously: `test-polish-stage.R` used to require
+that the polish CHANGES `@df`, which it no longer does because both sites land
+on the same cap, so it now poisons the input `@df` and requires the polish to
+reproduce the bound -- which a copy could not; `test-mixedEffects.R` moved its
+per-column claim onto an explicit `satterthwaite` fit; the longtest df anchors
+moved to the bound.
+
+**Phase 6 recalibrated on two null axes, not one.** The harness driver gained a
+`SPIDE_SHUF=perm` mode (a patient-level permutation of the condition), so the
+block shuffle (niche association destroyed, condition kept) and the response
+permutation (condition destroyed, niche kept) come out of one chain. Reported
+side by side, because a layer whose FDP differs sharply between them is riding
+on the axis the other null preserved. On the 22 x 8 fine arm: block FDP
+0.300 / 0.254 / 0.273 by layer against permutation 0.672 / 0.702 / 0.673. The
+gap is a property of a 55-patient 25/30 cohort -- v11 already measured 0.624
+and 0.835 -- not of the estimator.
+
 ## NEWS owed at merge
 
 The branch does not touch `NEWS.md` or `DESCRIPTION` -- Phase 1 shipped a new
@@ -169,6 +223,19 @@ entries are recorded here instead, to be written once:
   and peak memory stops scaling with worker count.
 - Phase 0b, if it is mentioned at all, is 4% end to end and NOT 3x -- the
   microbenchmark's 3x does not survive contention (FINDINGS, 2026-09-15).
+- **`df.method` now defaults to `"between"`.** USER-VISIBLE BEHAVIOUR CHANGE:
+  `@df` comes back a scalar where it used to be a named per-tested-column
+  vector, so any caller indexing it by name must be checked. The reason is in
+  the bound below -- once every tested column is capped, the vector is the
+  bound everywhere and carries nothing the scalar does not.
+- **A between-patient contrast is capped at its own compartment's patient
+  count minus two**, at the fit site and again at the polish site, under BOTH
+  `df.method` values. This covers every tested column carrying the condition
+  factor, the three-way `CellType:Response:Niche` terms included. Without it
+  the Satterthwaite df was anticorrelated with the evidence (Spearman -0.978
+  against cell count) and anti-conservative where the data is thinnest.
+- The `.satterthwaiteDF()` arm is kept and documented, bounded the same way,
+  so an opt-in user is not misled either.
 
 ## The hard part of Phase 1
 
