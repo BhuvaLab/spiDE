@@ -82,11 +82,34 @@ test_that("spiGSEA recovers a planted gene-set signal", {
   expect_true(all(c("geneset", "ct_index", "ct_niche", "z", "Direction",
                     "fdr.geneset", "fdr.index", "fdr.niche") %in% names(out)))
   expect_true(all(out$size >= 3))
-  # the planted set must be the strongest row for the B niche in index A
-  ba <- out[out$ct_niche == "B" & out$ct_index == "A", , drop = FALSE]
-  if (nrow(ba)) {
-    expect_equal(ba$geneset[which.max(abs(ba$z))], "planted")
-  }
+
+  # The SET-LEVEL ranking is no longer asserted, and the reason is the patient
+  # bound rather than a weaker estimator (2026-09-21). toySpiDE has 6 samples,
+  # so a between-patient contrast now gets S - 2 = 4 reference df where it
+  # previously got the cell-level ~459. The per-gene estimate is untouched --
+  # G1 keeps coef 1.982 and t 6.489, bit-identical to the pre-bound tree, with
+  # tau2 and psi unchanged -- but on 4 df its p-value grows, and spiGSEA builds
+  # z from p-values. The "planted" set is one real gene padded with five nulls,
+  # so once G1's contribution shrinks the nulls carry the sign and the set z
+  # goes from +1.26 to -0.23. Both sets sit at fdr.geneset 0.965: the old
+  # assertion compared two UNDETECTED sets, and a 6-patient fixture cannot
+  # support a set-level ranking under honest df.
+  #
+  # What is still a real claim, and is asserted instead: the planted GENE is
+  # recovered, which is what "recovers a planted signal" means upstream of any
+  # aggregation. Competitive and self-contained set power is established where
+  # the sample size can carry it, on the 1,500-gene simulation benchmark
+  # (research/, scenario `gsea`), not here.
+  ab <- as.data.frame(results(
+    spiDE(spe, condition = "condition", sigma = c(20, 40), fdr = 1, verbose = FALSE)
+  ))
+  ab <- ab[ab$ct_index == "A" & ab$ct_niche == "B", , drop = FALSE]
+  expect_gt(nrow(ab), 0L)
+  top <- ab[which.max(abs(ab$t)), ]
+  expect_identical(top$gene, "G1")          # the planted gene, not a decoy
+  expect_gt(top$coef, 1)                    # and in the planted direction
+  expect_gt(abs(top$t), 5)
+  expect_lt(top$fdr.niche, 0.05)
 })
 
 test_that("spiGSEA errors informatively on an un-tested object", {
