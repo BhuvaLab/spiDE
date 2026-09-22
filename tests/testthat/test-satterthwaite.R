@@ -117,7 +117,7 @@ test_that(".varParamCov matches a brute-force n x n REML information (2 RE group
 # Contract assertions against PRECOMPUTED fits (data-raw/make_test_fixtures.R).
 #
 # The numerical claims these replace -- df ~ S-2 for a between-sample contrast,
-# the exact scalar under "between", satterthwaite being the default -- need
+# the exact scalar under "between", and which method is the default -- need
 # live fits and now live in longtests/test-mixed-numerics.R. Each of them cost
 # minutes, and Bioconductor allows 10 for the whole check.
 #

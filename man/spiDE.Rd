@@ -24,12 +24,14 @@ spiDE(spe, condition = NULL, ...)
   name = "Niche",
   fdr = 0.05,
   combine = c("cauchy", "brown"),
-  df.method = c("satterthwaite", "between"),
+  df.method = c("between", "satterthwaite"),
   re.celltype = TRUE,
   polish = TRUE,
   dispersion = c("ql", "pearson"),
   block.size = NULL,
   gpu.mem.budget = NULL,
+  engine = c("batch", "gene"),
+  batch.size = NULL,
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
   ...
@@ -115,9 +117,12 @@ on the accelerator, forcing a serial \code{BPPARAM} in the process).}
 \item{combine}{one of "cauchy" (default) or "brown", the within-gene combiner
 for the correlated niche p-values (passed to \code{\link[=testSpiDE]{testSpiDE()}}).}
 
-\item{df.method}{one of "satterthwaite" (default) or "between"; only used
-when \code{random != "none"}. "satterthwaite" derives a separate df per
-tested column from the shared variance-component fit, distinguishing
+\item{df.method}{one of "between" (default) or "satterthwaite"; only used
+when \code{random != "none"}. "between" is the scalar reference df of a
+between-patient contrast, \code{S - 2} patients, applied per tested
+compartment as that compartment\'s own patient count minus two.
+"satterthwaite" instead derives a separate df per tested column from the
+shared variance-component fit, which in principle distinguishes
 between-sample contrasts (Response: small df, close to "between") from
 within-sample contrasts (ResponseNiche: larger df, more power) rather than
 applying \code{S - 2} to both; \code{@df} is then a named per-column
@@ -166,6 +171,13 @@ GPU backend).}
 \item{gpu.mem.budget}{a numeric, the GPU memory budget in bytes used to
 size inference blocks (NULL auto-detects; only relevant for the GPU
 backend).}
+
+\item{engine, batch.size}{passed to \code{\link[=polishSpiDE]{polishSpiDE()}}. \code{engine = "gene"}
+takes the per-gene reference implementation instead of the batched
+default; the two agree to ~5e-13 on the coefficients with identical
+convergence flags, and the reference is what the batched engine is tested
+against. Forwarded here so the reference is reachable from the top-level
+entry point, not only from \code{\link[=polishSpiDE]{polishSpiDE()}}.}
 
 \item{BPPARAM}{a BiocParallelParam for niche construction and inference.}
 

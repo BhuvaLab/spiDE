@@ -25,7 +25,7 @@
                              verbose, sample_id = "sample_id", random = "none",
                              re.maxit = 2L, re.tol = 1e-3, tau2.init = 1,
                              re.prop = 1, re.maxit.psi = 1L,
-                             re.min.cells = 100L, df.method = "satterthwaite",
+                             re.min.cells = 100L, df.method = "between",
                              re.celltype = TRUE,
                              block.size = NULL,
                              BPPARAM = BiocParallel::SerialParam(), ...) {
@@ -55,6 +55,7 @@
                        re.maxit.psi = re.maxit.psi,
                        df.method = df.method,
                        cols_tested = .testedCols(des$covtype, des$mode),
+                       coefmap = des$coefmap, covtype = des$covtype,
                        mode = des$mode,
                        ...)
     penalty <- fit$penalty
@@ -218,9 +219,12 @@
 #'   final all-cell fit always uses full dispersion). \code{1} (default) skips
 #'   the redundant re-estimation of the barely-moving dispersion each iteration.
 #' @param re.min.cells the per-stratum floor for \code{re.prop} subsampling.
-#' @param df.method one of "satterthwaite" (default) or "between"; only used
-#'   when \code{random != "none"}. "satterthwaite" derives a separate df per
-#'   tested column from the shared variance-component fit, distinguishing
+#' @param df.method one of "between" (default) or "satterthwaite"; only used
+#'   when \code{random != "none"}. "between" is the scalar reference df of a
+#'   between-patient contrast, \code{S - 2} patients, applied per tested
+#'   compartment as that compartment\'s own patient count minus two.
+#'   "satterthwaite" instead derives a separate df per tested column from the
+#'   shared variance-component fit, which in principle distinguishes
 #'   between-sample contrasts (Response: small df, close to "between") from
 #'   within-sample contrasts (ResponseNiche: larger df, more power) rather than
 #'   applying \code{S - 2} to both; \code{@df} is then a named per-column
@@ -295,7 +299,7 @@ setMethod(
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         re.maxit = 2L, re.tol = 1e-3, tau2.init = 1,
                         re.prop = 1, re.maxit.psi = 1L, re.min.cells = 100L,
-                        df.method = c("satterthwaite", "between"),
+                        df.method = c("between", "satterthwaite"),
                         re.celltype = TRUE, block.size = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)

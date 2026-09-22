@@ -22,7 +22,11 @@ polishSpiDE(object, spe, ...)
   tol = 1e-08,
   block.size = NULL,
   BPPARAM = BiocParallel::SerialParam(),
-  verbose = TRUE
+  verbose = TRUE,
+  engine = c("batch", "gene"),
+  batch.size = NULL,
+  backend = c("cpu", "auto", "gpu"),
+  gpu.mem.budget = NULL
 )
 }
 \arguments{
@@ -92,6 +96,29 @@ count, and oversubscribing the cores that way costs an order of
 magnitude per gene); the parent process is left as it was.}
 
 \item{verbose}{report progress.}
+
+\item{engine}{\code{"batch"} (the default) converges a block of genes
+together, so the design is read once per batch rather than once per gene;
+\code{"gene"} is the original per-gene loop, kept as the reference
+implementation. The two agree to ~5e-13 on the coefficients with identical
+convergence flags and iteration counts, but \code{"batch"} is not
+invariant to the batch boundary at machine precision -- BLAS blocks a
+many-row product differently from a one-row one.}
+
+\item{batch.size}{genes per batched Newton. The default comes from a memory
+budget (\code{options(spiDE.polish.mem.budget = )}, bytes per worker),
+because the batched working set is gene x cell: at 77,454 cells a
+2,000-gene block would allocate over a terabyte, so the gene block size
+cannot be the batch size.}
+
+\item{backend}{\code{"cpu"} (the default), or \code{"gpu"}/\code{"auto"}
+to run the batched Newton on an accelerator when one is present. The
+device path requires \code{engine = "batch"} -- the per-gene engine keeps
+one factorisation object per gene, which is what cannot go to a device --
+and refuses a single-precision device outright. It is an accelerator,
+never a requirement: without one, \code{"gpu"} gives the CPU answer.}
+
+\item{gpu.mem.budget}{bytes for the device, or NULL to auto-detect.}
 }
 \value{
 the object with converged \code{alpha} and \code{psi}, per-gene

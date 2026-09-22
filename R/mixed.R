@@ -160,9 +160,10 @@
 #'   (NULL = all cells). The final fit always uses all cells.
 #' @param re.maxit.psi dispersion iterations (\code{maxit.psi}) for the inner
 #'   loop fits; the final fit uses full dispersion.
-#' @param df.method one of "satterthwaite" (the default: a per-tested-column df
-#'   vector via \code{.satterthwaiteDF()}) or "between" (a scalar \code{S - 2}
-#'   residual df, the back-compatible behaviour).
+#' @param df.method one of "between" (the default: a scalar \code{S - 2}
+#'   residual df, bounded per tested compartment by its own patient count) or
+#'   "satterthwaite" (a per-tested-column df vector via
+#'   \code{.satterthwaiteDF()}, bounded the same way).
 #' @param cols_tested a logical over \code{colnames(W)} marking the
 #'   Response/ResponseNiche columns needing a df (only used when
 #'   \code{df.method == "satterthwaite"}).
@@ -179,8 +180,9 @@
 .fitNBmixed <- function(Y, W, re_group, lambda.a, winsor, backend, verbose,
                         re.maxit = 2L, re.tol = 1e-3, tau2.init = 1,
                         tau2.range = c(1e-8, 1e4), idx = NULL,
-                        re.maxit.psi = 1L, df.method = "satterthwaite",
-                        cols_tested = NULL, mode = "condition", ...) {
+                        re.maxit.psi = 1L, df.method = "between",
+                        cols_tested = NULL, mode = "condition",
+                        coefmap = NULL, covtype = NULL, ...) {
   p <- ncol(W)
   groups <- unique(re_group[!is.na(re_group)])
   base <- if (length(lambda.a) == 1) rep(lambda.a, p) else lambda.a
@@ -302,6 +304,35 @@
     df <- if (df_fallback) NULL else
       .satterthwaiteDF(A, minv, pen, re_group, tau2, tested, ncol(Y),
                        colnames(W)[tested])
+    # A BETWEEN-PATIENT contrast cannot have more degrees of freedom than the
+    # patients that carry it, whatever the Satterthwaite approximation returns.
+    # On the v11 cohort it returned far more, and inversely to the evidence:
+    # Tumor (27,764 cells) got df 306 while Smooth muscle (1,073) got 34,544,
+    # Spearman cor(df, cells) = -0.978 over 13 compartments. The mechanism is
+    # that a rare compartment's (patient x cell type) groups hold few cells, so
+    # their random effects shrink, the variance-component gradients collapse,
+    # varse2 shrinks and df = 2 vjj^2 / varse2 runs away toward the residual
+    # (cell) scale -- anti-conservative exactly where the data is thinnest.
+    #
+    # Which columns it binds: every tested column that carries the CONDITION
+    # factor. An earlier version asked instead whether a column is CONSTANT
+    # inside every (patient x cell type) group, which bound the two-way
+    # CellType_k:Responder but not the three-way
+    # CellType_k:Responder:Niche_n, on the reasoning that niche density varies
+    # cell to cell within a group. That reasoning is about how the REGRESSOR
+    # varies, not about what replicates the CONTRAST. Responder status is a
+    # property of the patient, so a three-way term still compares groups of
+    # patients and is still replicated by patients; leaving it unbounded left
+    # the niche layer anti-conservative on the null grids while the cell-type
+    # layer was calibrated (2026-09-18).
+    #
+    # In mode = "niche" there is no condition factor -- the tested columns are
+    # pure niche slopes, which are within-patient contrasts -- so nothing
+    # matches and the bound correctly does not apply.
+    patient_level <- grepl("Response", as.character(covtype)[tested])
+    df <- .boundPatientDF(df, W, re_group, tested, df_between,
+                          .patientsPerTested(W, re_group, coefmap, tested),
+                          patient_level)
     # .satterthwaiteDF() returns NULL when the variance-parameter information is
     # singular (it warns there); degrade to the documented conservative scalar
     # rather than storing a NULL df that every downstream consumer must branch on
@@ -362,6 +393,113 @@
 #' d_j = (v_jj, g_j1, ..., g_jM) and g_jm = (pen_m / tau2_m) * sum_{k in m} M^{-1}_{jk}^2.
 #' Invariant to the per-gene dispersion phi (spec), hence one shared vector.
 #' @noRd
+#' Bound a between-patient contrast's df by the patients that carry it
+#'
+#' Whatever the Satterthwaite approximation returns, a contrast identified by
+#' patients cannot have more degrees of freedom than the patients supply. On
+#' the v11 cohort the approximation returned far more, and INVERSELY to the
+#' evidence: Tumor (27,764 cells) got df 306 while Smooth muscle (1,073 cells)
+#' got 34,544, Spearman cor(df, cells) = -0.978 across 13 compartments. A rare
+#' compartment's (patient x cell type) groups hold few cells, their random
+#' effects shrink, the variance-component gradients collapse, varse2 shrinks
+#' and \code{df = 2 vjj^2 / varse2} runs away toward the residual (cell) scale.
+#'
+#' Which columns it binds: every tested column that carries the CONDITION
+#' factor. Responder status is a property of the patient, so any contrast
+#' involving it -- the two-way \code{CellType_k:Responder} and equally the
+#' three-way \code{CellType_k:Responder:Niche_n} -- compares groups of
+#' PATIENTS, and patients are what replicate it.
+#'
+#' An earlier version bound only columns CONSTANT inside every (patient x cell
+#' type) group, which excluded the three-way terms because niche density varies
+#' cell to cell inside a group. That was the wrong test. The three-way term is a
+#' between-patient comparison OF a within-patient slope: each patient
+#' contributes one slope, and more cells per patient sharpen that slope without
+#' creating more of them, so the df must asymptote to the patient count rather
+#' than grow with cells. Measured on the v11 arm it did the opposite -- median
+#' df 27,345 against a residual df of 76,347, and Spearman cor(df, cells of the
+#' index compartment) = -0.722, the same inversion as the two-way layer.
+#'
+#' In \code{mode = "niche"} the tested columns are pure niche slopes with no
+#' condition factor in them. Those ARE within-patient and are not bounded.
+#'
+#' This lives in one function because BOTH the fit and the polish compute the
+#' reference df -- \code{.polishSpiDEFit()} refreshes it at the reported
+#' penalty after the tau2 loop -- so a correction applied at one site only is
+#' computed and then overwritten, which is inert exactly on the production
+#' path, which always polishes.
+#'
+#' @param df the named Satterthwaite df, aligned to \code{tested}.
+#' @param W the design.
+#' @param re_group the random-effect group of each column.
+#' @param tested integer column positions the df belongs to.
+#' @param df_between the patient-level reference (S - 2), used where a
+#'   per-compartment count is unavailable.
+#' @param n_patients optional, the contributing patients for each tested
+#'   column, from \code{.patientsPerTested()}. A flat cap at \code{S - 2}
+#'   ties every violating compartment together and discards a real difference:
+#'   a compartment present in all 55 patients carries more information than one
+#'   present in 30. Where the count is known the bound is that compartment's
+#'   own, and \code{df_between} is the fallback.
+#' @return \code{df}, with the between-patient entries bounded.
+#' @noRd
+.boundPatientDF <- function(df, W, re_group, tested, df_between,
+                            n_patients = NULL, patient_level = NULL) {
+  if (is.null(df) || length(df) < 2L || !length(tested)) return(df)
+  if (!any(!is.na(re_group) & re_group == "SampleCellTypeInt")) return(df)
+  between <- if (is.null(patient_level)) rep(TRUE, length(df)) else patient_level
+  if (!any(between)) return(df)
+  cap <- rep(df_between, length(df))
+  if (!is.null(n_patients) && length(n_patients) == length(df)) {
+    known <- is.finite(n_patients) & n_patients > 0
+    cap[known] <- pmax(n_patients[known] - 2, 1)
+  }
+  df[between] <- pmin(df[between], cap[between])
+  df
+}
+
+#' Contributing patients for each tested column, per compartment
+#'
+#' The nested block carries one column per NON-EMPTY (patient x cell type)
+#' pair, so counting a compartment's nested columns counts the patients that
+#' actually have cells of it. That is the replication a between-patient
+#' contrast on that compartment has, and on this cohort it varies a lot: 55
+#' patients for Tumor against far fewer for the rare compartments.
+#'
+#' Returns \code{NA} for a tested column whose compartment cannot be resolved
+#' (no index, or a name that does not match a nested group), which
+#' \code{.boundPatientDF()} treats as "use the flat S - 2".
+#'
+#' @param W the design.
+#' @param re_group the random-effect group of each column.
+#' @param coefmap the fit's coefficient map (needs \code{index}).
+#' @param tested integer column positions the df belongs to.
+#' @return a numeric vector aligned to \code{tested}.
+#' @noRd
+.patientsPerTested <- function(W, re_group, coefmap, tested) {
+  nested <- !is.na(re_group) & re_group == "SampleCellTypeInt"
+  if (!any(nested) || is.null(coefmap$index)) {
+    return(rep(NA_real_, length(tested)))
+  }
+  # The nested columns are named SampleCellType<sample>.<cell type> with the
+  # RAW cell-type label, spaces and all ("...ytma471_1.B cell"), while
+  # coefmap$index carries the sanitised one ("B.cell"). Matching the two
+  # directly silently misses every compartment whose name contains a space --
+  # B cell, T cell, Smooth muscle cell on this cohort -- and a miss is not
+  # loud: it falls back to the flat S - 2, so the bound stays valid and the
+  # per-compartment refinement just quietly stops applying. Sanitise both sides.
+  #
+  # sub() takes the LAST dot: the separator is the final one because the cell
+  # type follows it, and the sample ids here use underscores.
+  suffix <- make.names(sub("^.*\\.", "", colnames(W)[nested]))
+  lab <- make.names(as.character(coefmap$index[tested]))
+  vapply(lab, function(k) {
+    if (is.na(k) || !nzchar(k)) return(NA_real_)
+    n <- sum(suffix == k)
+    if (n > 0) n else NA_real_
+  }, numeric(1), USE.NAMES = FALSE)
+}
+
 .satterthwaiteDF <- function(A, minv, pen, re_group, tau2, tested, ncells,
                              tested_names) {
   vp <- .varParamCov(A, minv, pen, re_group, ncells)

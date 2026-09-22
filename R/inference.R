@@ -393,9 +393,25 @@
       if (!is.null(w_rc)) quadB[g] <- as.numeric(crossprod(w_rc, vcg %*% w_rc))
     }
   } else {
+    n_sub <- 0L
     for (ii in .chunkGenes(b, cov.batch)) {
-      info <- .gramBatch(Wgram, .rowsOf(wtb, ii), penalty_diag = penalty,
-                         backend = backend)
+      # the (batch, p, p) Gram/inverse stack is this worker's peak and is dead
+      # by the end of each pass; a forked worker's heap does not shrink on its
+      # own, and the polish/inference stages have been seen growing ~15 GB per
+      # worker over a block. Collect between sub-batches, not per gene: at
+      # cov.batch = 1 on a wide design that would be a gc() per gene.
+      n_sub <- n_sub + 1L
+      if (n_sub > 1L) gc(verbose = FALSE, full = FALSE)
+      wt_sub <- .rowsOf(wtb, ii)
+      # Absorb the nested block here too when there is one. The dense gram and
+      # the absorbed one give the same answer -- that is the absorption's
+      # contract -- so this is a cost change, not a result change: px x px
+      # instead of p x p, 398 against 1,107 on the cohort's design.
+      info <- if (!is.null(absorb)) {
+        .absorbBatch(Wgram, penalty, absorb$nested, wt_sub)
+      } else {
+        .gramBatch(Wgram, wt_sub, penalty_diag = penalty, backend = backend)
+      }
       # Same singular-gene exposure as the direct path above, but batched: one
       # bad gene fails the whole Cholesky for its sub-batch. A per-gene fallback
       # here would have to reproduce the torch/base split of .gramBatch(), which
@@ -409,7 +425,12 @@
              "offending genes, or set backend = 'cpu', which takes the ",
              "per-gene path that drops singular genes as NA instead of failing.",
              call. = FALSE))
-      if (!is.null(W_full)) {
+      if (!is.null(absorb)) {
+        # S^-1 IS the covariance restricted to the dense columns, so the tested
+        # columns are indexed within that block rather than within the full
+        # design
+        vc <- .subsetBatch(vc, absorb$sel_x)
+      } else if (!is.null(W_full)) {
         vc <- .subsetBatch(vc, sel)
       }
       diagB[ii, ] <- SpaNorm::toRMatrix(.batchDiag(vc))
@@ -607,22 +628,32 @@
     }
     # genes per covariance sub-batch -- bounds the (batch, p, p) stack
     # independently of block.size, on both backends
+    # nworkers: this bound is evaluated once here but SPENT inside bplapply(),
+    # once per forked worker, so the budget has to be divided among them
     cov_batch <- .covBatchSize(nrow(W_full),
                                if (full_cov) ncol(W_full) else ncol(Wsub),
-                               backend, gpu.mem.budget)
+                               backend, gpu.mem.budget,
+                               nworkers = BiocParallel::bpnworkers(BPPARAM))
   }
 
-  # Absorb the nested indicator block when there is one and we are on the CPU
-  # (the absorption uses rowsum(), which has no tensor equivalent here).
+  # Absorb the nested indicator block when there is one -- on either backend.
+  # This was CPU-only because "the absorption uses rowsum(), which has no
+  # tensor equivalent here"; .segmentSum() retired that, and .absorbBatch()
+  # does the absorption batched, so the device path no longer inverts a dense
+  # p x p gram where a px x px one would do.
   absorb <- NULL
-  if (full_cov && !gpu_active && !is.null(fit@re_group)) {
+  if (full_cov && !is.null(fit@re_group)) {
     nested_cols <- !is.na(fit@re_group) & fit@re_group == "SampleCellTypeInt"
     if (any(nested_cols)) {
       xi <- which(!nested_cols)
       # every tested column is a fixed effect, so it lies in the dense block
       stopifnot(all(sel %in% xi))
-      absorb <- list(solver = .newtonSolver(W_full, penalty, nested_cols),
-                     sel_x = match(sel, xi))
+      absorb <- list(nested = nested_cols, sel_x = match(sel, xi),
+                     # the per-gene CPU path's closure; the batched path works
+                     # from `nested` directly and does not need it built
+                     solver = if (!gpu_active) {
+                       .newtonSolver(W_full, penalty, nested_cols)
+                     })
     }
   }
 

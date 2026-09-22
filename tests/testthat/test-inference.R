@@ -159,6 +159,63 @@ test_that(".covBatchSize shrinks with design width and stays >= 1", {
   expect_gt(big, wide)
 })
 
+test_that(".gramBatch is invariant to the cell tile, on both branches", {
+  # The torch branch builds sqrt(w) * W as one (batch, ncells, p) tensor --
+  # ~8 GB at a 64-gene batch on the cohort's design, and unbounded by the gene
+  # sub-batch that is supposed to bound this stage. Accumulating over cell
+  # tiles bounds it by the tile instead; the answer must not move.
+  set.seed(11)
+  n <- 50; p <- 6; b <- 4
+  W <- matrix(stats::rnorm(n * p), n, p)
+  wt <- matrix(stats::runif(b * n, 0.2, 2), b, n)
+  pen <- stats::runif(p, 0, 0.5)
+
+  whole <- spiDE:::.gramBatch(W, wt, penalty_diag = pen)
+  for (tile in c(1L, 7L, 49L, 50L, 500L)) {
+    expect_equal(spiDE:::.gramBatch(W, wt, penalty_diag = pen, cell.tile = tile),
+                 whole, tolerance = 1e-12, info = sprintf("cell.tile = %d", tile))
+  }
+
+  skip_if_not_installed("torch")
+  Wt <- torch::torch_tensor(W, dtype = torch::torch_float64())
+  wtt <- torch::torch_tensor(wt, dtype = torch::torch_float64())
+  tor_whole <- spiDE:::.gramBatch(Wt, wtt, penalty_diag = pen)
+  expect_equal(as.array(tor_whole), whole, tolerance = 1e-10)
+  for (tile in c(1L, 7L, 50L)) {
+    expect_equal(as.array(spiDE:::.gramBatch(Wt, wtt, penalty_diag = pen,
+                                             cell.tile = tile)),
+                 whole, tolerance = 1e-10,
+                 info = sprintf("torch cell.tile = %d", tile))
+  }
+})
+
+test_that(".covBatchSize divides its budget among forked workers", {
+  # The budget is a machine-wide figure, but .waldCauchyBlock() runs inside
+  # bplapply(): every forked worker evaluates this independently and claims the
+  # whole budget for itself. At 64 workers the documented 2e9 is a 128 GB
+  # claim, in a stage already OOM-killed once at 503 GB MaxRSS.
+  withr::with_options(list(spiDE.cov.mem.budget = 2e9), {
+    one <- spiDE:::.covBatchSize(20000, 500, "cpu", nworkers = 1L)
+    four <- spiDE:::.covBatchSize(20000, 500, "cpu", nworkers = 4L)
+    expect_gt(one, four)
+    expect_gte(one, 4L * four)
+    # one worker is still the default, so no existing call site changes
+    expect_equal(spiDE:::.covBatchSize(20000, 500, "cpu"), one)
+  })
+
+  # four workers on a budget B must behave exactly as one worker on B/4
+  four <- withr::with_options(
+    list(spiDE.cov.mem.budget = 2e9),
+    spiDE:::.covBatchSize(20000, 500, "cpu", nworkers = 4L))
+  quarter <- withr::with_options(
+    list(spiDE.cov.mem.budget = 5e8),
+    spiDE:::.covBatchSize(20000, 500, "cpu"))
+  expect_equal(four, quarter)
+
+  # and a batch of at least one survives any number of workers
+  expect_gte(spiDE:::.covBatchSize(20000, 5000, "cpu", nworkers = 1000L), 1L)
+})
+
 test_that(".subsetBatch and .batchDiag match base-array indexing", {
   set.seed(21)
   b <- 4
@@ -340,7 +397,7 @@ test_that("absorbing the nested block gives identical inference to the dense gra
   expect_true(any(nested))
   xi <- which(!nested)
   absorb <- list(solver = spiDE:::.newtonSolver(W_full, f@penalty, nested),
-                 sel_x = match(sel, xi))
+                 nested = nested, sel_x = match(sel, xi))
 
   args <- list(f@alpha[, cols_gene, drop = FALSE], Wsub, wt, scale_b,
                cov_niche, index_ct, uniq_index, W_full,
@@ -352,6 +409,30 @@ test_that("absorbing the nested block gives identical inference to the dense gra
   expect_equal(absorbed$t_stat, dense$t_stat, tolerance = 1e-8)
   expect_equal(absorbed$p.pos, dense$p.pos, tolerance = 1e-8)
   expect_equal(absorbed$se_pat, dense$se_pat, tolerance = 1e-8)
+
+  # The device path takes the BATCHED branch, which until now ignored the
+  # absorption and inverted the full design's gram -- 1,107 columns against 398
+  # on the cohort. Exercised here on CPU torch tensors, which is the same code.
+  skip_if_not_installed("torch")
+  Wt <- torch::torch_tensor(W_full, dtype = torch::torch_float64())
+  wtt <- torch::torch_tensor(wt, dtype = torch::torch_float64())
+  args_t <- list(f@alpha[, cols_gene, drop = FALSE], Wsub, wtt, scale_b,
+                 cov_niche, index_ct, uniq_index, Wt,
+                 W_full = W_full, penalty = f@penalty, sel = sel, df = f@df)
+  batched <- do.call(spiDE:::.waldCauchyBlock, c(args_t, list(absorb = absorb)))
+  expect_equal(batched$se, dense$se, tolerance = 1e-8)
+  expect_equal(batched$t_stat, dense$t_stat, tolerance = 1e-8)
+  expect_equal(batched$se_pat, dense$se_pat, tolerance = 1e-8)
+
+  # ...and equality alone cannot tell the two apart, because agreeing with the
+  # dense gram IS the absorption's contract: a branch that quietly ignored
+  # `absorb` would pass every assertion above. So require that the absorption
+  # is REACHED -- mark the intercept nested as well, which makes the indicator
+  # columns stop partitioning the cells, and demand the error.
+  bad <- absorb
+  bad$nested[1] <- TRUE
+  expect_error(do.call(spiDE:::.waldCauchyBlock, c(args_t, list(absorb = bad))),
+               "partition")
 })
 
 test_that(".bplapplySingleBLAS runs forked workers single-threaded and serial dispatch untouched", {
@@ -376,4 +457,31 @@ test_that(".bplapplySingleBLAS runs forked workers single-threaded and serial di
   # extra arguments reach FUN
   expect_equal(unlist(spiDE:::.bplapplySingleBLAS(1:2, function(i, k) i * k, BPPARAM = bp,
                                                   k = 10L)), c(10L, 20L))
+})
+
+test_that(".segmentSum agrees with rowsum on both backends", {
+  # The claim this exists to retire: "rowsum(), which has no tensor equivalent
+  # here" (.blockedInference()), which is why the nested absorption is CPU-only
+  # and the GPU path pays for a dense p x p gram instead of an absorbed one.
+  set.seed(7)
+  n <- 200L; k <- 5L; G <- 9L
+  M <- matrix(rnorm(n * k), n, k)
+  gidx <- sample.int(G, n, replace = TRUE)
+  ref <- rowsum(M, group = factor(gidx, levels = seq_len(G)), reorder = TRUE)
+  got <- spiDE:::.segmentSum(M, gidx, G)
+  expect_equal(unname(got), unname(ref), tolerance = 1e-12)
+
+  # a group with no rows must come back as zeros, not be dropped: the caller
+  # indexes the result positionally, so a short matrix silently misaligns every
+  # group after the gap
+  gidx2 <- gidx; gidx2[gidx2 == 4L] <- 5L
+  got2 <- spiDE:::.segmentSum(M, gidx2, G)
+  expect_equal(nrow(got2), G)
+  expect_true(all(got2[4, ] == 0))
+
+  skip_if_not_installed("torch")
+  Mt <- torch::torch_tensor(M, dtype = torch::torch_float64())
+  gott <- spiDE:::.segmentSum(Mt, gidx, G)
+  expect_equal(as.matrix(gott$cpu()), unname(ref), tolerance = 1e-12)
+  expect_equal(dim(as.matrix(gott$cpu())), c(G, k))
 })

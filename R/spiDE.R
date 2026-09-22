@@ -21,6 +21,12 @@
 #' @param re.celltype logical; add a nested (sample x cell type) random
 #'   intercept so the tested niche slopes are within-group. Default
 #'   \code{TRUE}. See [fitSpiDE()].
+#' @param engine,batch.size passed to [polishSpiDE()]. \code{engine = "gene"}
+#'   takes the per-gene reference implementation instead of the batched
+#'   default; the two agree to ~5e-13 on the coefficients with identical
+#'   convergence flags, and the reference is what the batched engine is tested
+#'   against. Forwarded here so the reference is reachable from the top-level
+#'   entry point, not only from [polishSpiDE()].
 #' @param polish logical; run the polish stage ([polishSpiDE()]) between the
 #'   fit and the test: converge each gene, set its dispersion and re-estimate
 #'   the variance components from the converged fit. Default \code{TRUE};
@@ -62,13 +68,15 @@ setMethod(
                         winsor = 4, lambda.a = 0,
                         backend = c("auto", "cpu", "gpu"), name = "Niche",
                         fdr = 0.05, combine = c("cauchy", "brown"),
-                        df.method = c("satterthwaite", "between"),
+                        df.method = c("between", "satterthwaite"),
                         re.celltype = TRUE, polish = TRUE,
                         dispersion = c("ql", "pearson"),
                         block.size = NULL, gpu.mem.budget = NULL,
+                        engine = c("batch", "gene"), batch.size = NULL,
                         BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     backend <- match.arg(backend)
     random <- match.arg(random)
+    engine <- match.arg(engine)
     combine <- match.arg(combine)
     dispersion <- match.arg(dispersion)
     df.method <- match.arg(df.method)
@@ -91,6 +99,8 @@ setMethod(
                     BPPARAM = BPPARAM, verbose = verbose, ...)
     if (polish) {
       res <- polishSpiDE(res, spe, assay = assay, block.size = block.size,
+                         engine = engine, batch.size = batch.size,
+                         backend = backend, gpu.mem.budget = gpu.mem.budget,
                          BPPARAM = BPPARAM, verbose = verbose)
     }
 

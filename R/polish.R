@@ -62,23 +62,39 @@
 #' @param pen the per-column ridge penalty.
 #' @param nested a logical over the columns of \code{W} marking the indicator
 #'   block; all-FALSE (or \code{NULL}) selects the plain dense path.
-#' @return a list with \code{solve(w, s)} (the Newton step over all columns) and
-#'   \code{xcov(w)} (the X-block of the penalised covariance). Either returns
-#'   \code{NULL} on a singular system.
+#' @return a list with \code{factor(w)} (the penalised information at those
+#'   weights, as an opaque state), \code{solve(w, s)} (the Newton step over all
+#'   columns) and \code{xcov(w)} (the X-block of the penalised covariance).
+#'   \code{solve()} and \code{xcov()} take either a weight vector or a state
+#'   from \code{factor()}; the first two return \code{NULL} on a singular
+#'   system.
+#'
+#' Why \code{factor()} is separate: the caller already knows when the weights
+#' change. \code{.polishGene()} refreshes them only every third Newton step, but
+#' until 2026-09-15 it still paid for a full rebuild on every step, because
+#' \code{solve()} recomputed the information from the (unchanged) weights it was
+#' handed -- the gram, the group sums and the Schur complement, which the
+#' documentation below calls "essentially the whole cost of an iteration".
+#' Splitting the two lets a caller reuse a factorisation it has already paid
+#' for. It is exactly reproducible: the state is built from the same weights
+#' \code{solve()} would have used, and the step is the same \code{solve(S, rhs)}.
 #' @noRd
 .newtonSolver <- function(W, pen, nested = NULL) {
   if (is.null(nested)) nested <- rep(FALSE, ncol(W))
   if (!any(nested)) {
+    factor_dense <- function(w) {
+      info <- crossprod(W * sqrt(w))
+      diag(info) <- diag(info) + pen
+      structure(list(info = info), class = "spiDE_nfac")
+    }
+    as_fac <- function(x) if (inherits(x, "spiDE_nfac")) x else factor_dense(x)
     return(list(
+      factor = factor_dense,
       solve = function(w, s) {
-        info <- crossprod(W * sqrt(w))
-        diag(info) <- diag(info) + pen
-        tryCatch(solve(info, s), error = function(e) NULL)
+        tryCatch(solve(as_fac(w)$info, s), error = function(e) NULL)
       },
       xcov = function(w) {
-        info <- crossprod(W * sqrt(w))
-        diag(info) <- diag(info) + pen
-        tryCatch(solve(info), error = function(e) NULL)
+        tryCatch(solve(as_fac(w)$info), error = function(e) NULL)
       }
     ))
   }
@@ -104,21 +120,43 @@
   gf <- factor(gidx, levels = seq_along(zi))
 
   parts <- function(w) {
-    # ONE weighted copy of X, reused for both the gram and the group sums.
-    # Writing it as crossprod(X * sqrt(w)) plus rowsum(cbind(w, X * w), ...)
-    # allocates two full n x ncol(X) temporaries, and at realistic sizes the
-    # memory traffic -- not the flop count -- is what this stage costs.
-    Xw <- X * w
-    A <- crossprod(X, Xw)
+    # The gram is formed SYMMETRICALLY, crossprod(X * sqrt(w)) rather than
+    # crossprod(X, X * w). This reverses an earlier decision, and the
+    # measurement is the reason (FINDINGS.md, 2026-09-15, at the cohort shape
+    # n = 77,454, px = 398):
+    #
+    #                       1 BLAS thread   8 BLAS threads
+    #   crossprod(X, X*w)       0.426 s         2.436 s
+    #   crossprod(X*sqrt(w))    0.247 s         0.149 s
+    #
+    # The old comment was right that the memory traffic, not the flop count, is
+    # what this costs -- and wrong about which form pays it. dsyrk halves the
+    # flops and, more to the point, SCALES with threads where the dgemm form
+    # degrades: 0.43 -> 2.44 s as threads are added, against 0.25 -> 0.15 s.
+    # That is the mechanism behind the recorded "one worker gains only 1.5x
+    # from four BLAS threads", and it is why the polish has been run 64 workers
+    # x 1 thread. It also makes the gram exactly symmetric, which the Cholesky
+    # downstream assumes.
+    #
+    # The sqrt-weighted copy is then re-weighted in place to give X * w for the
+    # group sums, so the peak is the same two n x px temporaries the previous
+    # form reached through `Xw` plus the rowsum's own copy.
+    sw <- sqrt(w)
+    Xw <- X * sw
+    A <- crossprod(Xw)
     diag(A) <- diag(A) + pen_x
+    Xw <- Xw * sw                                    # now X * w
     cvec <- as.numeric(rowsum(w, group = gf, reorder = TRUE)) + pen_z
     B <- t(rowsum(Xw, group = gf, reorder = TRUE))   # ncol(X) x G
-    list(S = A - B %*% (t(B) / cvec), B = B, cvec = cvec)
+    structure(list(S = A - B %*% (t(B) / cvec), B = B, cvec = cvec),
+              class = "spiDE_nfac")
   }
+  as_fac <- function(x) if (inherits(x, "spiDE_nfac")) x else parts(x)
 
   list(
+    factor = parts,
     solve = function(w, s) {
-      p <- parts(w)
+      p <- as_fac(w)
       rhs <- s[xi] - as.numeric(p$B %*% (s[zi] / p$cvec))
       dx <- tryCatch(solve(p$S, rhs), error = function(e) NULL)
       if (is.null(dx)) return(NULL)
@@ -129,7 +167,7 @@
       out
     },
     xcov = function(w) {
-      tryCatch(solve(parts(w)$S), error = function(e) NULL)
+      tryCatch(solve(as_fac(w)$S), error = function(e) NULL)
     }
   )
 }
@@ -206,14 +244,22 @@
     converged <- FALSE
     stale <- 0L
     w <- NULL
+    fac <- NULL
     while (it < maxit) {
       it <- it + 1L
       s <- as.numeric(crossprod(W, (y - mu) / (1 + psi * mu))) - pen * a
       if (is.null(w) || stale >= 3L) {
         w <- mu / (1 + psi * mu)
+        # Factor here and only here: the weights are what the information
+        # depends on, and between refreshes the same factorisation is exact.
+        # A solver without $factor() -- the two-function contract this used to
+        # have, which callers and test stubs may still implement -- keeps
+        # working: $solve() accepts the weights directly and factors them
+        # itself, which is what every step used to do.
+        fac <- if (is.function(solver$factor)) solver$factor(w) else w
         stale <- 0L
       }
-      d <- solver$solve(w, s)
+      d <- solver$solve(fac, s)
       # solve() only ERRORS below rcond ~1e-7; between that and well-conditioned
       # it returns a finite but numerically meaningless answer, which the line
       # search can accept because a badly scaled step in roughly the right
@@ -243,6 +289,7 @@
         # before giving up
         if (stale > 0L) {
           w <- mu / (1 + psi * mu)
+          fac <- if (is.function(solver$factor)) solver$factor(w) else w
           stale <- 0L
           next
         }
@@ -372,7 +419,27 @@
 .polishFit <- function(Y, W, alpha, psi, pen, re_group = NULL, covtype = NULL,
                        maxit = 50L, tol = 1e-8, block.size = NULL,
                        BPPARAM = BiocParallel::SerialParam(), verbose = FALSE,
-                       psi.method = "profile", warm = FALSE) {
+                       psi.method = "profile", warm = FALSE,
+                       engine = c("batch", "gene"), batch.size = NULL,
+                       backend = c("cpu", "auto", "gpu"), gpu.mem.budget = NULL) {
+  engine <- match.arg(engine)
+  backend <- match.arg(backend)
+  # short-circuits before checkGPU() probes, as .blockedInference() does
+  gpu_active <- backend %in% c("gpu", "auto") && SpaNorm::checkGPU()
+  if (gpu_active) {
+    .requireFloat64()
+    if (engine != "batch") {
+      stop("backend = \"", backend, "\" needs engine = \"batch\": the per-gene ",
+           "engine keeps one factorisation object per gene, which is what ",
+           "cannot go to a device.", call. = FALSE)
+    }
+    if (BiocParallel::bpnworkers(BPPARAM) > 1L) {
+      warning("GPU backend active (", SpaNorm::getBackendDevice(), "); forcing ",
+              "serial dispatch for the polish, since forked workers contend ",
+              "for one device", call. = FALSE)
+      BPPARAM <- BiocParallel::SerialParam()
+    }
+  }
   ng <- nrow(alpha)
   if (!length(pen) %in% c(1L, ncol(W))) {
     stop("'lambda.a' must be a single value or one per design column (",
@@ -406,6 +473,8 @@
     !is.na(re_group) & re_group == "SampleCellTypeInt"
   }
   solver <- .newtonSolver(W, pen, nested)
+  # the design goes to the device once, outside the gene blocks
+  W_use <- if (gpu_active) SpaNorm::toGPUMatrix(W, backend = backend) else W
 
   # .chunkGenes(ng, NULL) is ONE block, which would hand every gene to a single
   # worker however many BPPARAM has -- a silent loss of the parallelism the
@@ -425,9 +494,13 @@
   }
   blocks <- .chunkGenes(ng, block.size)
   single_blas <- .singleBLAS(BPPARAM)
+  bsize <- if (engine == "batch") {
+    if (is.null(batch.size)) .polishBatchSize(nrow(W)) else batch.size
+  } else NA_integer_
   if (verbose) {
-    message(sprintf("  %s %d genes per gene (%d block%s%s)",
+    message(sprintf("  %s %d genes %s (%d block%s%s)",
                     if (warm) "re-polishing" else "converging", ng,
+                    if (engine == "batch") sprintf("in batches of %d", bsize) else "per gene",
                     length(blocks), if (length(blocks) == 1L) "" else "s",
                     if (single_blas) ", one BLAS thread per worker" else ""))
   }
@@ -445,12 +518,37 @@
     # WHOLE matrix is never densified, not that a block is never densified --
     # .blockedInference() does exactly the same).
     Yb <- as.matrix(Y[gi, , drop = FALSE])
-    out <- lapply(seq_along(gi), function(i) {
-      g <- gi[[i]]
-      .polishGene(as.numeric(Yb[i, ]), W, alpha[g, ], psi[[g]], pen, solver,
-                  maxit = maxit, tol = tol, ct_cols = ct_cols,
-                  psi.method = psi.method, warm = warm)
-    })
+    out <- if (engine == "batch") {
+      # a block bounds densification of the counts; the batched Newton's
+      # working set is gene x cell and is bounded separately, so a block is
+      # walked in sub-batches rather than handed over whole
+      unlist(lapply(.chunkGenes(length(gi), bsize), function(ii) {
+        Yblk <- Yb[ii, , drop = FALSE]
+        Ablk <- alpha[gi[ii], , drop = FALSE]
+        if (gpu_active) {
+          Yblk <- SpaNorm::toGPUMatrix(Yblk, backend = backend)
+          Ablk <- SpaNorm::toGPUMatrix(Ablk, backend = backend)
+        }
+        r <- .polishBatch(Yblk, W_use, Ablk,
+                          psi[gi[ii]], pen, solver, maxit = maxit, tol = tol,
+                          ct_cols = ct_cols, psi.method = psi.method, warm = warm,
+                          shared.factor = gpu_active, nested = nested)
+        # back to the per-gene shape the merge below and @polish expect
+        lapply(seq_along(ii), function(j) {
+          list(alpha = r$alpha[j, ], psi = r$psi[[j]], loglik = r$loglik[[j]],
+               iterations = r$iterations[[j]], restarted = r$restarted[[j]],
+               capped = r$capped[[j]], singular = r$singular[[j]],
+               psi_bound = r$psi_bound[[j]], polished = r$polished[[j]])
+        })
+      }), recursive = FALSE)
+    } else {
+      lapply(seq_along(gi), function(i) {
+        g <- gi[[i]]
+        .polishGene(as.numeric(Yb[i, ]), W, alpha[g, ], psi[[g]], pen, solver,
+                    maxit = maxit, tol = tol, ct_cols = ct_cols,
+                    psi.method = psi.method, warm = warm)
+      })
+    }
     if (verbose && (b %% step == 0L || b == nb)) {
       message(sprintf("    block %d/%d (%.1f min elapsed)", b, nb,
                       as.numeric(difftime(Sys.time(), t0, units = "mins"))))
@@ -624,18 +722,20 @@
   nw <- max(1L, BiocParallel::bpnworkers(BPPARAM))
   if (is.null(block.size)) block.size <- max(1L, min(2000L, ceiling(ng / nw)))
   blocks <- .chunkGenes(ng, block.size)
-  lo <- log(psi.range[1]); hi <- log(psi.range[2])
+  # One dispersion optimiser in the package, not two. This used to run its own
+  # per-gene optimize(), which would have OVERWRITTEN the batched engine's more
+  # accurate bisection at the last step of the default path -- discarding the
+  # change for production while keeping it in the engine's internals. Same
+  # kernel, same at_bound rule, and the rule's action is unchanged: a gene whose
+  # dispersion runs to a bound keeps the one it came in with.
   res <- .bplapplySingleBLAS(blocks, function(gi) {
     Yb <- as.matrix(Y[gi, , drop = FALSE])
-    vapply(seq_along(gi), function(i) {
-      y <- as.numeric(Yb[i, ])
-      mu <- pmax(as.numeric(exp(W %*% alpha[gi[i], ])), .MU_FLOOR)
-      o <- stats::optimize(function(lp) {
-        -sum(stats::dnbinom(y, size = 1 / exp(lp), mu = mu, log = TRUE))
-      }, c(lo, hi))
-      edge <- (o$minimum - lo) < 1e-3 * (hi - lo) || (hi - o$minimum) < 1e-3 * (hi - lo)
-      if (edge || !is.finite(o$objective)) psi[gi[i]] else exp(o$minimum)
-    }, numeric(1))
+    Mu <- .muBatch(alpha[gi, , drop = FALSE], W)
+    pm <- .psiProfileBatch(Yb, Mu, psi.range)
+    out <- pm$psi
+    keep <- pm$at_bound | !is.finite(out)
+    out[keep] <- psi[gi][keep]
+    out
   }, BPPARAM = BPPARAM)
   as.numeric(unlist(res))
 }
@@ -648,7 +748,12 @@
                             verbose = TRUE, psi.method = "profile",
                             tau2 = TRUE, tau2.maxit = 10L, tau2.tol = 1e-2,
                             tau2.accelerate = TRUE,
-                            tau2.range = c(1e-8, 1e4)) {
+                            tau2.range = c(1e-8, 1e4),
+                            engine = c("batch", "gene"), batch.size = NULL,
+                            backend = c("cpu", "auto", "gpu"),
+                            gpu.mem.budget = NULL) {
+  engine <- match.arg(engine)
+  backend <- match.arg(backend)
   f <- updateObject(f)
   Yf <- Y[rownames(f@alpha), , drop = FALSE]
   pen <- .polishPenalty(f@penalty, lambda.a, ncol(f@W))
@@ -657,7 +762,8 @@
                covtype = as.character(f@covtype),
                maxit = maxit, tol = tol, block.size = block.size,
                BPPARAM = BPPARAM, verbose = verbose, psi.method = psi.method,
-               warm = warm)
+               warm = warm, engine = engine, batch.size = batch.size,
+               backend = backend, gpu.mem.budget = gpu.mem.budget)
   }
   pol <- run_polish(f@alpha, f@psi, pen)
   alpha <- pol$alpha
@@ -736,7 +842,13 @@
                 "the conservative between-sample df ", format(f@df),
                 call. = FALSE)
       } else {
-        f@df <- df_new
+        # the same bound the fit applies: a between-patient contrast cannot
+        # out-run its patients, and this site would otherwise overwrite it
+        f@df <- .boundPatientDF(df_new, f@W, f@re_group, tested,
+                                .betweenDF(f@re_group, .fitMode(f), ncol(Yf)),
+                                .patientsPerTested(f@W, f@re_group, f@coefmap,
+                                                   tested),
+                                grepl("Response", as.character(f@covtype)[tested]))
       }
     }
     # the warm passes held each gene's dispersion; one profile pass at the
@@ -805,6 +917,25 @@
 #'   gene (the \code{converge.maxit} / \code{converge.tol} of [fitSpiDE()]).
 #' @param block.size genes per block; \code{NULL} splits one block per
 #'   \code{BPPARAM} worker.
+#' @param engine \code{"batch"} (the default) converges a block of genes
+#'   together, so the design is read once per batch rather than once per gene;
+#'   \code{"gene"} is the original per-gene loop, kept as the reference
+#'   implementation. The two agree to ~5e-13 on the coefficients with identical
+#'   convergence flags and iteration counts, but \code{"batch"} is not
+#'   invariant to the batch boundary at machine precision -- BLAS blocks a
+#'   many-row product differently from a one-row one.
+#' @param backend \code{"cpu"} (the default), or \code{"gpu"}/\code{"auto"}
+#'   to run the batched Newton on an accelerator when one is present. The
+#'   device path requires \code{engine = "batch"} -- the per-gene engine keeps
+#'   one factorisation object per gene, which is what cannot go to a device --
+#'   and refuses a single-precision device outright. It is an accelerator,
+#'   never a requirement: without one, \code{"gpu"} gives the CPU answer.
+#' @param gpu.mem.budget bytes for the device, or NULL to auto-detect.
+#' @param batch.size genes per batched Newton. The default comes from a memory
+#'   budget (\code{options(spiDE.polish.mem.budget = )}, bytes per worker),
+#'   because the batched working set is gene x cell: at 77,454 cells a
+#'   2,000-gene block would allocate over a terabyte, so the gene block size
+#'   cannot be the batch size.
 #' @param BPPARAM a BiocParallelParam; the stage is blocked over genes. With
 #'   more than one worker, each worker runs its BLAS single-threaded when
 #'   RhpcBLASctl is installed (forked workers inherit the parent's thread
@@ -875,9 +1006,14 @@ setMethod(
                         tau2.maxit = 10L, tau2.tol = 1e-2,
                         tau2.accelerate = TRUE, lambda.a = 0,
                         maxit = 50L, tol = 1e-8, block.size = NULL,
-                        BPPARAM = BiocParallel::SerialParam(), verbose = TRUE) {
+                        BPPARAM = BiocParallel::SerialParam(), verbose = TRUE,
+                        engine = c("batch", "gene"), batch.size = NULL,
+                        backend = c("cpu", "auto", "gpu"),
+                        gpu.mem.budget = NULL) {
     object <- updateObject(object)
     psi <- match.arg(psi)
+    engine <- match.arg(engine)
+    backend <- match.arg(backend)
     if (!length(object@fits)) {
       stop("nothing to polish: the object carries no per-gene GLM fit", call. = FALSE)
     }
@@ -896,7 +1032,9 @@ setMethod(
                       psi.method = psi, tau2 = tau2, tau2.maxit = tau2.maxit,
                       tau2.tol = tau2.tol, tau2.accelerate = tau2.accelerate,
                       maxit = maxit, tol = tol, block.size = block.size,
-                      BPPARAM = BPPARAM, verbose = verbose)
+                      BPPARAM = BPPARAM, verbose = verbose,
+                      engine = engine, batch.size = batch.size,
+                      backend = backend, gpu.mem.budget = gpu.mem.budget)
     })
     names(object@fits) <- names(updateObject(object)@fits)
     # cross-bandwidth combination and the results table are stale too
