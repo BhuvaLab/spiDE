@@ -79,8 +79,124 @@
 #' for. It is exactly reproducible: the state is built from the same weights
 #' \code{solve()} would have used, and the step is the same \code{solve(S, rhs)}.
 #' @noRd
+#' Normalise an absorption specification into a per-column block id
+#'
+#' Returns an integer vector, \code{NA} for a column that stays in the dense
+#' block and otherwise the id of the block of \code{C = Z' diag(w) Z} the
+#' column belongs to.
+#' @noRd
+.absorbBlocks <- function(nested, p) {
+  if (is.null(nested)) return(rep(NA_integer_, p))
+  if (length(nested) != p) {
+    stop("`nested` must have one entry per column of W", call. = FALSE)
+  }
+  if (is.logical(nested)) {
+    out <- rep(NA_integer_, p)
+    out[which(nested)] <- which(nested)   # each absorbed column its own block
+    return(out)
+  }
+  out <- rep(NA_integer_, p)
+  keep <- !is.na(nested)
+  if (any(keep)) out[keep] <- as.integer(factor(as.character(nested[keep])))
+  out
+}
+
+#' Schur absorption of a random block that is block-diagonal, not diagonal
+#'
+#' Same identity as the scalar path, with \code{C^-1} a per-block solve. The
+#' blocks must be mutually orthogonal under any weight, which holds iff no cell
+#' loads on two blocks -- checked here rather than assumed, because a violated
+#' assumption would not error, it would return a wrong step.
+#' @noRd
+.newtonSolverBlocked <- function(W, pen, blk, xi, zi, X, pen_x, pen_z) {
+  bid <- blk[zi]
+  cols <- split(seq_along(zi), bid)              # positions WITHIN zi
+  Z <- W[, zi, drop = FALSE]
+
+  # No cell may load on two blocks. Counting hits per cell is O(n x p_z), the
+  # same order as the gram that follows, and it is done once per solver.
+  hits <- integer(nrow(W))
+  for (cc in cols) {
+    hits <- hits + (rowSums(abs(Z[, cc, drop = FALSE])) > 0)
+  }
+  if (max(hits) > 1) {
+    stop("the absorbed random-effect columns are not block-orthogonal: ",
+         sum(hits > 1), " cells load on more than one block, so ",
+         "C = Z'WZ is not block-diagonal and .newtonSolver() cannot absorb it",
+         call. = FALSE)
+  }
+
+  parts <- function(w) {
+    sw <- sqrt(w)
+    Xw <- X * sw
+    A <- crossprod(Xw)
+    diag(A) <- diag(A) + pen_x
+    Zw <- Z * sw
+    B <- crossprod(Xw, Zw)                       # px x p_z
+    # one dense C block per group, Cholesky-factorised once per weight vector
+    fac <- lapply(cols, function(cc) {
+      Cb <- crossprod(Zw[, cc, drop = FALSE])
+      diag(Cb) <- diag(Cb) + pen_z[cc]
+      tryCatch(chol(Cb), error = function(e) NULL)
+    })
+    if (any(vapply(fac, is.null, logical(1)))) return(NULL)
+    S <- A
+    for (k in seq_along(cols)) {
+      Bb <- B[, cols[[k]], drop = FALSE]
+      S <- S - Bb %*% chol2inv(fac[[k]]) %*% t(Bb)
+    }
+    structure(list(S = S, B = B, fac = fac, cols = cols), class = "spiDE_nfac")
+  }
+  as_fac <- function(x) if (inherits(x, "spiDE_nfac")) x else parts(x)
+  # C^-1 v, block by block
+  cinv <- function(p, v) {
+    out <- numeric(length(v))
+    for (k in seq_along(p$cols)) {
+      cc <- p$cols[[k]]
+      out[cc] <- backsolve(p$fac[[k]],
+                           backsolve(p$fac[[k]], v[cc], transpose = TRUE))
+    }
+    out
+  }
+
+  list(
+    factor = parts,
+    solve = function(w, s) {
+      p <- as_fac(w)
+      if (is.null(p)) return(NULL)
+      rhs <- s[xi] - as.numeric(p$B %*% cinv(p, s[zi]))
+      dx <- tryCatch(solve(p$S, rhs), error = function(e) NULL)
+      if (is.null(dx)) return(NULL)
+      dz <- cinv(p, s[zi] - as.numeric(crossprod(p$B, dx)))
+      out <- numeric(ncol(W))
+      out[xi] <- dx
+      out[zi] <- dz
+      out
+    },
+    xcov = function(w) {
+      p <- as_fac(w)
+      if (is.null(p)) return(NULL)
+      tryCatch(solve(p$S), error = function(e) NULL)
+    }
+  )
+}
+
 .newtonSolver <- function(W, pen, nested = NULL) {
-  if (is.null(nested)) nested <- rep(FALSE, ncol(W))
+  # `nested` says which columns are absorbed and, now, how they BLOCK.
+  #   NULL / all-FALSE  -> nothing absorbed, dense solve
+  #   logical           -> each TRUE column is its own 1x1 block. This is the
+  #                        nested (sample x cell type) intercept: 0/1 indicators
+  #                        partitioning the cells, so C is diagonal.
+  #   integer/factor/character with NA for the dense columns
+  #                     -> columns sharing a level form ONE dense block of C.
+  #                        Random slopes need this: a sample's slope columns are
+  #                        indicator x covariate, so they are not orthogonal to
+  #                        each other nor to that sample's intercept, and C is
+  #                        block-diagonal by sample rather than diagonal.
+  # The absorption identity is the same either way; only C^-1 changes, from a
+  # reciprocal to a per-block solve.
+  blk <- .absorbBlocks(nested, ncol(W))
+  nested <- !is.na(blk)
   if (!any(nested)) {
     factor_dense <- function(w) {
       info <- crossprod(W * sqrt(w))
@@ -104,6 +220,10 @@
   X <- W[, xi, drop = FALSE]
   pen_x <- pen[xi]
   pen_z <- pen[zi]
+  # A block carrying more than one column cannot use the reciprocal path.
+  if (anyDuplicated(blk[zi])) {
+    return(.newtonSolverBlocked(W, pen, blk, xi, zi, X, pen_x, pen_z))
+  }
   # The indicator each cell belongs to. The columns are 0/1 and partition the
   # cells, so this dot product recovers the group index -- via round(), not
   # as.integer(): a floating-point product of 7 can come back as 6.9999999,
