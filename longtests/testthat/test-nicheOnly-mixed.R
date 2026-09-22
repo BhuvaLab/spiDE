@@ -23,8 +23,17 @@ test_that("condition-free mixed fits run with a random intercept", {
   expect_false(is.null(f@tau2))
   expect_false(is.null(f@penalty))
   expect_true(all(f@df > 0))
-  # satterthwaite (the default) gives one df per tested column
-  expect_equal(length(f@df), sum(spiDE:::.testedCols(f@covtype, "niche")))
+  # The default is "between" (2026-09-18), so the unqualified fit carries the
+  # scalar. In NICHE mode there is no condition factor, so no tested column is
+  # a between-patient contrast and the patient bound correctly never applies;
+  # the per-column arm is therefore still asked for explicitly here, which is
+  # where one df per tested column can be asserted.
+  expect_length(f@df, 1L)
+  fsat <- fits(fitSpiDE(spe_mix, condition = NULL, sigma = 20,
+                        random = "intercept", df.method = "satterthwaite",
+                        verbose = FALSE))[[1]]
+  expect_equal(length(fsat@df), sum(spiDE:::.testedCols(fsat@covtype, "niche")))
+  expect_true(all(is.finite(fsat@df)))
 })
 
 test_that("condition-free mixed fits run with random slopes", {

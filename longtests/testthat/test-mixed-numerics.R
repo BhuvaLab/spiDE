@@ -63,19 +63,29 @@ test_that("df.method='between' reproduces the scalar S-2 reference exactly", {
   expect_false(any(is.na(tb@p.combined.pos)))
 })
 
-test_that("satterthwaite is the df.method default on an unqualified mixed fit", {
-  # guards the 0.99.7 behaviour change. Must be a live fit: the point is what
-  # fitSpiDE() does when df.method is NOT supplied, which a stored object
-  # cannot demonstrate.
+test_that("between is the df.method default on an unqualified mixed fit", {
+  # Guards the DEFAULT, whichever it is; it was satterthwaite from 0.99.7 and
+  # became "between" on 2026-09-18, when the patient bound was extended to
+  # every condition-bearing column and the per-column vector became the bound
+  # everywhere -- carrying nothing the scalar does not. Must be a live fit:
+  # the point is what fitSpiDE() does when df.method is NOT supplied, which a
+  # stored object cannot demonstrate.
   spe <- buildNiches(
     spiDE:::.toyClustered(n_samples = 12, n_per = 30, n_genes = 20,
                           sd_patient = 0.7), sigma = 30)
   fd <- fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
                  verbose = FALSE)
   ff <- fits(fd)[[1]]
-  expect_gt(length(ff@df), 1L)
-  expect_equal(length(ff@df), sum(grepl("Response", as.character(ff@covtype))))
+  expect_length(ff@df, 1L)
+  expect_equal(unname(ff@df), 10)          # 12 samples -> S - 2
   expect_true(all(is.finite(ff@df)))
+  # and the opt-in arm still returns one bounded df per tested column, so the
+  # assertion cannot pass merely because the satterthwaite path broke
+  fs <- fits(fitSpiDE(spe, "condition", sigma = 30, random = "intercept",
+                      df.method = "satterthwaite", verbose = FALSE))[[1]]
+  expect_equal(length(fs@df), sum(grepl("Response", as.character(fs@covtype))))
+  expect_true(all(is.finite(fs@df)))
+  expect_true(all(fs@df <= 10))            # every one of them is bounded
 })
 
 test_that("the polished fit recovers the planted between-sample variance", {
