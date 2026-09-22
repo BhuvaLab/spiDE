@@ -529,6 +529,65 @@ five-grid average), so most of the extreme tail is **not** a stable gene propert
 costs **no power** (FDP falls 0.05–0.07, TPR moves in the third decimal, worst loss 0.011). At 1.5x
 it does not remove the need to fix the variance estimator.
 
+
+### The nulls on three public cohorts (2026-09-22): C2 confirmed, C1 not clean
+
+The first calibration evidence for spiDE measured off YTMA, on the shipped 0.99.21 defaults:
+GSE250346 (Xenium, lung PF, 343 genes, 1.52 M cells, S = 35), GSE282639 (CosMx, lung IPF, 974
+genes, 105 k cells, S = 28) and GSE289194 (CosMx, lymph node, 1,000 genes, 359 k cells,
+**S = 44** — 74 cases deposited, three of six slides dropped for a signal-to-background of 0.9–5.6
+against 15.5–17.5, spec §2.2). Three nulls at the mid-point of each cohort's bandwidth grid, 5
+seeds each; seed spread of the median is ±0.005–0.035 on `free`/`block` and up to ±0.124 on
+`perm`. **Every figure is the primary contrast only** — GSE282639 has a second condition and two
+cohorts have a condition-free niche-mode arm, and pooling them describes a mixture (that bug
+reached three documents on 2026-09-22 before an audit caught it; `12_score.R`'s band block now
+keeps `condition` in its `by=`). Full record: `research/public/FINDINGS.md`.
+
+**The nested (sample × cell type) intercept is necessary off YTMA — C2 confirmed.** On the
+`block` null, median per-gene `sd(t)` without the block against with it: **1.696 → 1.249**
+(GSE250346), **1.097 → 1.033** (GSE282639), **2.314 → 1.385** (GSE289194); in the top-5%
+expression band 3.16 → 1.95, 1.80 → 1.32, 5.26 → 2.87; cascade false calls at nominal .05 cut
+2.3–2.4×. The synthetic benchmark *cannot* show this (its simulator plants no between-sample
+composition effect) and until now only YTMA's shuffle grids did. It is necessary in all three and
+sufficient in none.
+
+**Null inflation is monotone in expression in every cohort and every null, without exception.**
+The per-gene finding transfers as a *gradient*, not a level: the dim half sits at or below 1.0
+almost everywhere and the brightest 5% carries the excess. Score by band —
+**the overall median hides it**, and two arms pass the overall criterion while failing the band
+one (GSE289194 `free` 0.993 overall, bands 0.936–1.087; GSE282639 `free` 1.021, top band 1.115).
+No arm passes the band criterion, and the gradient holds in all 18 arm groups.
+
+**Rank the nulls by how much real niche structure they leave standing**, because that is the order
+they inflate in: `free` (structure destroyed) 1.021 / 0.993 / 1.115 → `block` (structure preserved)
+1.033 / 1.385 / 1.249 → `perm` (niche field untouched, condition label permuted per patient)
+1.091 / 1.694 / **2.182**, reaching 4.87 in GSE250346's top band. Consistent with the standing
+caveat that spiDE does not model spatial autocorrelation in the niche covariate, and much larger
+here than YTMA's 1.10–1.21.
+
+**`perm` being the worst null is new** — it was never run on YTMA, and it is the null that tests
+the *condition* axis. The reading the ordering supports is that **the fit models no
+between-patient variance in the niche slopes**: the three-way coefficient contrasts a niche slope
+between condition groups, which is a between-patient contrast because condition is constant within
+a patient, and `random = "intercept"` carries per-sample and per-(sample × cell type) intercepts
+but no per-sample *slope* on the niche bases — so the SE is formed as if every patient shared one
+slope. The reference df is a **symptom of the same assumption, not the cause**: it sets the
+reference distribution and cannot change the spread of `t`. It shows the assumption starkly, far
+more so than the pilot's 25,388 — median three-way Satterthwaite df **7,020 / 73,794 / 778,949**
+(GSE282639 / GSE289194 / GSE250346), the last with a maximum of 1,492,345, essentially that
+cohort's cell count, against 3,279 / 184 / 164 for the two-way `CellType:condition` columns the
+same fit does treat as between-patient. **The deciding experiment is `random = "slope"`, not
+`df.method = "between"`** (which would move only the df); it has **not** been run. Do not quote
+the mechanism as established.
+
+**The cascade is anti-conservative here too.** At nominal .05 on a complete null it calls
+1.3–3.0% of tests on the best-calibrated arms and 20% on `perm`, reproducing the 2026-09-13 YTMA
+result on three new cohorts. Quote per-gene calibrated counts on these cohorts, never the
+cascade's.
+
+No power or discovery claim exists yet: the real-data arms were submitted the same day
+(28781921–28781929) and had not run. Note also that `research/public/` passes depth through
+`covariates = "loglib"`, the workaround the library-size section below describes.
 ### There is no library-size term, and that is a real gap
 
 `fitSpiDE()` has **no offset argument** and `R/design.R` has **no size-factor handling** — per-cell
@@ -765,6 +824,10 @@ down. Before changing one, read the corresponding record:
 - `research/fdr-ordering/` — all eight FDR procedures scored on the real-cohort shuffle null, on
   injected signal and end-to-end; the per-gene tail addendum above. `R/recover.R` recovers exact
   p-values from any stored `fdr = 1` table, so orderings are comparable without refitting.
+- `research/public/` — the external validation on three public cohorts (Xenium + two CosMx,
+  105 k-1.52 M cells, S = 28-74): the harmonised builders, the run driver and the band-aware
+  scorer, with `FINDINGS.md` holding the nulls and the spec at
+  `design/specs/2026-09-21-public-cohort-validation.md`. The one place C2 is shown off YTMA.
 - `research/fdr-triplet/` — the earlier study: coefficient-level p-values are conservative, the
   cascade is clean on exact uniforms, and control is nevertheless lost in the combination between
   them. Its five refuted hypotheses are listed so they are not re-run.

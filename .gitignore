@@ -16,7 +16,7 @@ docs
 !.claude/hooks
 !.claude/settings.json
 .DS_Store
-specs/
+/specs/
 /doc/
 /Meta/
 spiDE.BiocCheck/
