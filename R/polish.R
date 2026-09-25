@@ -44,41 +44,6 @@
     0.5 * sum(pen * a^2)
 }
 
-#' Newton solver for the penalised NB information, with indicator columns absorbed
-#'
-#' The nested (sample x cell type) random intercepts are 0/1 indicators that
-#' partition the cells, so their blocks of the information matrix are cheap:
-#' with per-cell weights \code{w} and the design split into dense \code{X} and
-#' indicators \code{Z}, \code{A = X' diag(w) X + diag(pen_x)},
-#' \code{B = X' diag(w) Z} is one \code{rowsum} pass, and
-#' \code{C = Z' diag(w) Z + diag(pen_z)} is DIAGONAL. The step then comes from
-#' the Schur complement \code{S = A - B C^-1 B'}, whose cost is one
-#' \code{ncol(X)}-column gram regardless of how many groups there are -- the
-#' difference between a 345-column and a 1,000-column gram per iteration on a
-#' real cohort. \code{S^-1} is also the X-block of the full penalised
-#' covariance, which is what the tested columns need.
-#'
-#' @param W the full design (cells x columns).
-#' @param pen the per-column ridge penalty.
-#' @param nested a logical over the columns of \code{W} marking the indicator
-#'   block; all-FALSE (or \code{NULL}) selects the plain dense path.
-#' @return a list with \code{factor(w)} (the penalised information at those
-#'   weights, as an opaque state), \code{solve(w, s)} (the Newton step over all
-#'   columns) and \code{xcov(w)} (the X-block of the penalised covariance).
-#'   \code{solve()} and \code{xcov()} take either a weight vector or a state
-#'   from \code{factor()}; the first two return \code{NULL} on a singular
-#'   system.
-#'
-#' Why \code{factor()} is separate: the caller already knows when the weights
-#' change. \code{.polishGene()} refreshes them only every third Newton step, but
-#' until 2026-09-15 it still paid for a full rebuild on every step, because
-#' \code{solve()} recomputed the information from the (unchanged) weights it was
-#' handed -- the gram, the group sums and the Schur complement, which the
-#' documentation below calls "essentially the whole cost of an iteration".
-#' Splitting the two lets a caller reuse a factorisation it has already paid
-#' for. It is exactly reproducible: the state is built from the same weights
-#' \code{solve()} would have used, and the step is the same \code{solve(S, rhs)}.
-#' @noRd
 #' Which columns the Newton solver should absorb, and how they block
 #'
 #' Returns what \code{.newtonSolver()}'s \code{nested} argument accepts:
@@ -215,6 +180,47 @@
   )
 }
 
+#' Newton solver for the penalised NB information, with indicator columns absorbed
+#'
+#' The nested (sample x cell type) random intercepts are 0/1 indicators that
+#' partition the cells, so their blocks of the information matrix are cheap:
+#' with per-cell weights \code{w} and the design split into dense \code{X} and
+#' indicators \code{Z}, \code{A = X' diag(w) X + diag(pen_x)},
+#' \code{B = X' diag(w) Z} is one \code{rowsum} pass, and
+#' \code{C = Z' diag(w) Z + diag(pen_z)} is DIAGONAL. The step then comes from
+#' the Schur complement \code{S = A - B C^-1 B'}, whose cost is one
+#' \code{ncol(X)}-column gram regardless of how many groups there are -- the
+#' difference between a 345-column and a 1,000-column gram per iteration on a
+#' real cohort. \code{S^-1} is also the X-block of the full penalised
+#' covariance, which is what the tested columns need.
+#'
+#' @param W the full design (cells x columns).
+#' @param pen the per-column ridge penalty.
+#' @param nested which columns to absorb, and how they block: a logical over
+#'   the columns of \code{W} marking the indicator block (each absorbed column
+#'   its own 1x1 block, \code{C} diagonal), or a per-column grouping
+#'   (integer, factor or character block ids, \code{NA} for a dense column)
+#'   whose columns sharing an id form one dense block of \code{C} -- the
+#'   per-sample grouping of a random-slope fit's whole random block, from
+#'   \code{.absorbSpec()}. All-FALSE, all-NA or \code{NULL} selects the plain
+#'   dense path.
+#' @return a list with \code{factor(w)} (the penalised information at those
+#'   weights, as an opaque state), \code{solve(w, s)} (the Newton step over all
+#'   columns) and \code{xcov(w)} (the X-block of the penalised covariance).
+#'   \code{solve()} and \code{xcov()} take either a weight vector or a state
+#'   from \code{factor()}; the first two return \code{NULL} on a singular
+#'   system.
+#'
+#' Why \code{factor()} is separate: the caller already knows when the weights
+#' change. \code{.polishGene()} refreshes them only every third Newton step, but
+#' until 2026-09-15 it still paid for a full rebuild on every step, because
+#' \code{solve()} recomputed the information from the (unchanged) weights it was
+#' handed -- the gram, the group sums and the Schur complement, which the
+#' documentation below calls "essentially the whole cost of an iteration".
+#' Splitting the two lets a caller reuse a factorisation it has already paid
+#' for. It is exactly reproducible: the state is built from the same weights
+#' \code{solve()} would have used, and the step is the same \code{solve(S, rhs)}.
+#' @noRd
 .newtonSolver <- function(W, pen, nested = NULL) {
   # `nested` says which columns are absorbed and, now, how they BLOCK.
   #   NULL / all-FALSE  -> nothing absorbed, dense solve
@@ -634,6 +640,21 @@
     !is.na(re_group) & re_group == "SampleCellTypeInt"
   }
   solver <- .newtonSolver(W, pen, nested)
+  # The shared-factor batched solver (.newtonSolverBatch(), built inside
+  # .polishBatch() when a GPU is active) absorbs 1x1 blocks only, so it gets
+  # the nested indicators even when the per-gene solver above absorbs a slope
+  # fit's whole random block by sample -- the split .blockedInference() makes
+  # with sel_x / sel_x_cpu. Both are exact, so this costs the device path a
+  # wider dense block and moves no result. Without slopes `nested` is already
+  # that logical and is passed through unchanged. A grouping handed in with no
+  # re_group to recover the indicators from gets the dense batched path.
+  nested_batch <- if (is.logical(nested)) {
+    nested
+  } else if (!is.null(re_group)) {
+    !is.na(re_group) & re_group == "SampleCellTypeInt"
+  } else {
+    rep(FALSE, ncol(W))
+  }
   # the design goes to the device once, outside the gene blocks
   W_use <- if (gpu_active) SpaNorm::toGPUMatrix(W, backend = backend) else W
 
@@ -693,7 +714,7 @@
         r <- .polishBatch(Yblk, W_use, Ablk,
                           psi[gi[ii]], pen, solver, maxit = maxit, tol = tol,
                           ct_cols = ct_cols, psi.method = psi.method, warm = warm,
-                          shared.factor = gpu_active, nested = nested)
+                          shared.factor = gpu_active, nested = nested_batch)
         # back to the per-gene shape the merge below and @polish expect
         lapply(seq_along(ii), function(j) {
           list(alpha = r$alpha[j, ], psi = r$psi[[j]], loglik = r$loglik[[j]],

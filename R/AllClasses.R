@@ -189,6 +189,13 @@ validSpiDEFit <- function(object) {
   if (!all(levels(object@covtype) %in% valid_levels)) {
     stop(sprintf("'covtype' levels should be a subset of: %s", paste(valid_levels, collapse = ", ")))
   }
+  # re_sample is read beside re_group column by column (.absorbSpec()), and a
+  # length mismatch there falls back to the nested-only absorption silently, so
+  # a subset of one slot without the other must fail here instead
+  if (!is.null(object@re_group) && !is.null(object@re_sample) &&
+      length(object@re_sample) != length(object@re_group)) {
+    stop("length of 're_sample' does not match length of 're_group'")
+  }
   if (!is.null(object@polish) && nrow(object@polish) != object@ngenes) {
     stop("nrow of 'polish' does not match 'ngenes'")
   }
