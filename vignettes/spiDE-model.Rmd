@@ -629,9 +629,10 @@ makes the per-gene polish affordable on a cohort.
 The Schur complement is the Frisch–Waugh–Lovell theorem in matrix form:
 $S$ is precisely the information of the dense columns *after the group
 indicators have been partialled out* — the centring described earlier, done
-by algebra rather than by subtracting means. `.newtonSolver()` verifies the
-partition (each row of $Z$ sums to one) before relying on it, and
-`.blockedInference()` uses the same absorption to form each gene's covariance.
+by algebra rather than by subtracting means. `SpaNorm::nbNewtonSolver()`, which
+the polish runs on, verifies the partition (each row of $Z$ sums to one) before
+relying on it, and `.blockedInference()` uses the same absorption to form each
+gene's covariance.
 
 ## The variance components from the converged fit
 
