@@ -79,6 +79,40 @@
 #' for. It is exactly reproducible: the state is built from the same weights
 #' \code{solve()} would have used, and the step is the same \code{solve(S, rhs)}.
 #' @noRd
+#' Which columns the Newton solver should absorb, and how they block
+#'
+#' Returns what \code{.newtonSolver()}'s \code{nested} argument accepts:
+#' \code{NULL} for a fixed-effects fit, a LOGICAL selecting the nested
+#' indicators when there are no random slopes, and a per-column SAMPLE grouping
+#' when there are.
+#'
+#' Why not always the sample grouping. Without slopes the nested indicators are
+#' 0/1 and partition the cells, so their \code{C} is diagonal and the scalar
+#' path inverts it by reciprocal -- that is the production path for
+#' \code{random = "intercept"} and it is cheaper than a block Cholesky. Adding
+#' the per-sample intercepts to the absorbed set would buy little (there are S
+#' of them) and would move a path that is already measured.
+#'
+#' With slopes the nested indicators alone are not the absorbable set: a
+#' sample's slope columns are not orthogonal to its intercepts, so the whole
+#' random block has to go in, grouped by sample.
+#'
+#' This is the one place that decides, so a new random-effect group is handled
+#' by \code{re_sample} carrying it rather than by another literal match on
+#' \code{re_group} at each call site.
+#' @noRd
+.absorbSpec <- function(fit) {
+  rg <- fit@re_group
+  if (is.null(rg)) return(NULL)
+  has_slope <- any(!is.na(rg) & rg == "SampleSlope")
+  rs <- if (methods::.hasSlot(fit, "re_sample")) fit@re_sample else NULL
+  if (!has_slope || is.null(rs) || length(rs) != length(rg)) {
+    # no slopes, or a fit saved before re_sample existed: the nested indicators
+    return(!is.na(rg) & rg == "SampleCellTypeInt")
+  }
+  rs
+}
+
 #' Normalise an absorption specification into a per-column block id
 #'
 #' Returns an integer vector, \code{NA} for a column that stays in the dense
@@ -537,6 +571,7 @@
 #' @importFrom BiocParallel bplapply SerialParam bpnworkers
 #' @noRd
 .polishFit <- function(Y, W, alpha, psi, pen, re_group = NULL, covtype = NULL,
+                       absorb = NULL,
                        maxit = 50L, tol = 1e-8, block.size = NULL,
                        BPPARAM = BiocParallel::SerialParam(), verbose = FALSE,
                        psi.method = "profile", warm = FALSE,
@@ -587,7 +622,13 @@
          "Use the raw counts, or skip polishSpiDE().", call. = FALSE)
   }
   ct_cols <- if (is.null(covtype)) NULL else as.character(covtype) == "CellType"
-  nested <- if (is.null(re_group)) {
+  # `absorb` comes from .absorbSpec(): the nested indicators as a logical when
+  # there are no random slopes, the per-sample grouping of the whole random
+  # block when there are. The re_group fallback keeps a direct .polishFit()
+  # call, and a fit saved before re_sample existed, on the old behaviour.
+  nested <- if (!is.null(absorb)) {
+    absorb
+  } else if (is.null(re_group)) {
     rep(FALSE, ncol(W))
   } else {
     !is.na(re_group) & re_group == "SampleCellTypeInt"
@@ -878,7 +919,7 @@
   Yf <- Y[rownames(f@alpha), , drop = FALSE]
   pen <- .polishPenalty(f@penalty, lambda.a, ncol(f@W))
   run_polish <- function(alpha0, psi0, pen_now, warm = FALSE) {
-    .polishFit(Yf, f@W, alpha0, psi0, pen_now, f@re_group,
+    .polishFit(Yf, f@W, alpha0, psi0, pen_now, f@re_group, absorb = .absorbSpec(f),
                covtype = as.character(f@covtype),
                maxit = maxit, tol = tol, block.size = block.size,
                BPPARAM = BPPARAM, verbose = verbose, psi.method = psi.method,

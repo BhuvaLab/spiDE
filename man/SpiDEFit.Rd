@@ -65,6 +65,11 @@ Empty until inference has run.}
 
 \item{\code{loglik}}{a numeric, the per-gene log-likelihood (used for Cauchy weights).}
 
+\item{\code{re_sample}}{a character (or NULL), the sample each random-effect column
+belongs to, \code{NA} for a fixed column. Every random column is non-zero
+only on one sample's cells, which is what lets the Newton solver absorb the
+whole random block (see \code{.absorbSpec()}).}
+
 \item{\code{re_group}}{a character (or NULL), the random-effect group of each column
 of \code{W} (\code{NA} for fixed columns); NULL for a fixed-effects fit.}
 

@@ -363,7 +363,12 @@
         if (!is.null(w_rc)) quadB[g] <- NA_real_
         next
       }
-      vcg <- vcg[absorb$sel_x, absorb$sel_x, drop = FALSE]
+      # sel_x_cpu only differs from sel_x when the CPU solver absorbs MORE
+      # than the batched path can (a random-slope fit). It is absent on an
+      # `absorb` built by hand, so fall back rather than subset by NULL, which
+      # silently yields a 0 x 0 matrix instead of erroring.
+      sx <- if (is.null(absorb$sel_x_cpu)) absorb$sel_x else absorb$sel_x_cpu
+      vcg <- vcg[sx, sx, drop = FALSE]
       diagB[g, ] <- diag(vcg)
       if (!is.null(w_rc)) quadB[g] <- as.numeric(crossprod(w_rc, vcg %*% w_rc))
     }
@@ -643,16 +648,30 @@
   # p x p gram where a px x px one would do.
   absorb <- NULL
   if (full_cov && !is.null(fit@re_group)) {
+    # Two absorptions, because the two paths can absorb different amounts.
+    # .absorbBatch() implements 1x1 blocks only (C^-1 as an elementwise divide
+    # is what batches), so it gets the nested indicators. .newtonSolver() also
+    # takes a per-sample grouping, so for a random-slope fit it absorbs the
+    # WHOLE random block -- the slope columns are not orthogonal to their
+    # sample's intercepts and cannot be absorbed separately. Both are exact, so
+    # this is a cost difference and not a result difference; they need separate
+    # `sel_x` only because they leave different columns in the dense block.
+    # With no slopes .absorbSpec() returns the nested logical and the two
+    # indices are identical, so the production intercept path does not move.
     nested_cols <- !is.na(fit@re_group) & fit@re_group == "SampleCellTypeInt"
+    spec <- .absorbSpec(fit)
     if (any(nested_cols)) {
       xi <- which(!nested_cols)
       # every tested column is a fixed effect, so it lies in the dense block
       stopifnot(all(sel %in% xi))
+      xi_cpu <- if (is.logical(spec)) xi else which(is.na(spec))
+      stopifnot(all(sel %in% xi_cpu))
       absorb <- list(nested = nested_cols, sel_x = match(sel, xi),
+                     sel_x_cpu = match(sel, xi_cpu),
                      # the per-gene CPU path's closure; the batched path works
                      # from `nested` directly and does not need it built
                      solver = if (!gpu_active) {
-                       .newtonSolver(W_full, penalty, nested_cols)
+                       .newtonSolver(W_full, penalty, spec)
                      })
     }
   }

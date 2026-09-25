@@ -32,6 +32,10 @@
 #'   already loads. Used by \code{spiGSEA()} as the variance-inflation term.
 #'   Empty until inference has run.
 #' @slot loglik a numeric, the per-gene log-likelihood (used for Cauchy weights).
+#' @slot re_sample a character (or NULL), the sample each random-effect column
+#'   belongs to, \code{NA} for a fixed column. Every random column is non-zero
+#'   only on one sample's cells, which is what lets the Newton solver absorb the
+#'   whole random block (see \code{.absorbSpec()}).
 #' @slot re_group a character (or NULL), the random-effect group of each column
 #'   of `W` (`NA` for fixed columns); NULL for a fixed-effects fit.
 #' @slot tau2 a numeric (or NULL), the fitted random-effect variance components
@@ -82,6 +86,7 @@ setClass(
     psi = "numeric",
     loglik = "numeric",
     re_group = "ANY",
+    re_sample = "ANY",
     tau2 = "ANY",
     penalty = "ANY",
     df = "ANY",
@@ -94,7 +99,7 @@ setClass(
     polish = "ANY"
   ),
   prototype = list(
-    re_group = NULL, tau2 = NULL, penalty = NULL, df = NULL,
+    re_group = NULL, re_sample = NULL, tau2 = NULL, penalty = NULL, df = NULL,
     # "condition" is also what .fillSlots() gives objects serialised before
     # this slot existed -- every one of those is a condition-mode fit.
     mode = "condition",
