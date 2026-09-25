@@ -726,7 +726,21 @@ NULL
 #'   \code{(batch, px, px)} covariance on the dense columns.
 #' @noRd
 .newtonSolverBatch <- function(W, pen, nested = NULL) {
-  if (is.null(nested)) nested <- rep(FALSE, ncol(W))
+  # This path implements the DIAGONAL absorption only: C = Z' diag(w) Z with one
+  # column per group, so C^-1 is a reciprocal and the whole thing batches as an
+  # elementwise divide. .newtonSolver() also accepts a block grouping, for the
+  # random-slope case where a sample's columns are not mutually orthogonal and
+  # C^-1 is a per-block Cholesky; that has no batched equivalent written yet.
+  # Refuse it here rather than let `which()` fail on a non-logical, because the
+  # cost of guessing would be a wrong Newton step rather than an error.
+  blk <- .absorbBlocks(nested, ncol(W))
+  if (anyDuplicated(blk[!is.na(blk)])) {
+    stop("the batched Newton solver absorbs 1x1 blocks only (one column per ",
+         "group, C diagonal); this grouping has a block with more than one ",
+         "column, which needs a per-block Cholesky. Use .newtonSolver() on the ",
+         "CPU, or pass a logical `nested`.", call. = FALSE)
+  }
+  nested <- !is.na(blk)
   has_nested <- any(nested)
   xi <- which(!nested)
   zi <- which(nested)

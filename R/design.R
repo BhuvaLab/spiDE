@@ -82,6 +82,13 @@
   colnames(Zint) <- paste0("Sample", levels(smp))
   Z <- Zint
   re_group <- rep("SampleInt", ncol(Zint))
+  # The sample each random column belongs to. Every random column -- intercept,
+  # slope or nested -- is non-zero only on the cells of one sample, which is
+  # what makes C = Z' diag(w) Z block-diagonal by sample and therefore
+  # absorbable (.newtonSolver()). Recorded here rather than parsed back out of
+  # the column names downstream, because a sample id containing the separator
+  # would make that parse wrong rather than fail.
+  re_sample <- levels(smp)
 
   if (random == "slope" && ncol(slope_base) > 0) {
     Zslope <- do.call(cbind, lapply(colnames(slope_base), function(bc) {
@@ -91,6 +98,8 @@
     }))
     Z <- cbind(Zint, Zslope)
     re_group <- c(re_group, rep("SampleSlope", ncol(Zslope)))
+    # one block of S columns per base, in base order
+    re_sample <- c(re_sample, rep(levels(smp), times = ncol(slope_base)))
   }
 
   # Nested (sample x cell type) intercepts. The tested niche slopes are
@@ -109,8 +118,12 @@
     colnames(Zct) <- paste0("SampleCellType", levels(grp))
     Z <- cbind(Z, Zct)
     re_group <- c(re_group, rep("SampleCellTypeInt", ncol(Zct)))
+    # the sample of each (sample x cell type) level, taken from a cell that has
+    # it rather than by splitting the level name on its separator
+    re_sample <- c(re_sample,
+                   as.character(smp)[match(levels(grp), as.character(grp))])
   }
-  list(Z = Z, re_group = re_group)
+  list(Z = Z, re_group = re_group, re_sample = re_sample)
 }
 
 #' Tag each design-matrix column by covariate type and parse index/niche cells
@@ -352,6 +365,7 @@
   W <- W[, keep, drop = FALSE]
   coefmap <- coefmap[keep, , drop = FALSE]
   re_group <- rep(NA_character_, ncol(W))
+  re_sample <- rep(NA_character_, ncol(W))
 
   # append the patient random-effect block (penalised at fit time); these carry
   # the mixed-effects correction for cell-level pseudo-replication. The slopes
@@ -370,6 +384,7 @@
       index = NA_character_, niche = NA_character_, stringsAsFactors = FALSE
     ))
     re_group <- c(re_group, re$re_group)
+    re_sample <- c(re_sample, re$re_sample)
   }
 
   # E2 fix: "ResponseCellType" must be a declared level, otherwise factor()
@@ -381,6 +396,7 @@
 
   list(W = W, covtype = covtype, coefmap = coefmap,
        response_coef = response_coef, re_group = re_group,
+       re_sample = re_sample,
        mode = if (has_cond) "condition" else "niche")
 }
 

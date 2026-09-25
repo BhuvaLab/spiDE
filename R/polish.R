@@ -44,6 +44,142 @@
     0.5 * sum(pen * a^2)
 }
 
+#' Which columns the Newton solver should absorb, and how they block
+#'
+#' Returns what \code{.newtonSolver()}'s \code{nested} argument accepts:
+#' \code{NULL} for a fixed-effects fit, a LOGICAL selecting the nested
+#' indicators when there are no random slopes, and a per-column SAMPLE grouping
+#' when there are.
+#'
+#' Why not always the sample grouping. Without slopes the nested indicators are
+#' 0/1 and partition the cells, so their \code{C} is diagonal and the scalar
+#' path inverts it by reciprocal -- that is the production path for
+#' \code{random = "intercept"} and it is cheaper than a block Cholesky. Adding
+#' the per-sample intercepts to the absorbed set would buy little (there are S
+#' of them) and would move a path that is already measured.
+#'
+#' With slopes the nested indicators alone are not the absorbable set: a
+#' sample's slope columns are not orthogonal to its intercepts, so the whole
+#' random block has to go in, grouped by sample.
+#'
+#' This is the one place that decides, so a new random-effect group is handled
+#' by \code{re_sample} carrying it rather than by another literal match on
+#' \code{re_group} at each call site.
+#' @noRd
+.absorbSpec <- function(fit) {
+  rg <- fit@re_group
+  if (is.null(rg)) return(NULL)
+  has_slope <- any(!is.na(rg) & rg == "SampleSlope")
+  rs <- if (methods::.hasSlot(fit, "re_sample")) fit@re_sample else NULL
+  if (!has_slope || is.null(rs) || length(rs) != length(rg)) {
+    # no slopes, or a fit saved before re_sample existed: the nested indicators
+    return(!is.na(rg) & rg == "SampleCellTypeInt")
+  }
+  rs
+}
+
+#' Normalise an absorption specification into a per-column block id
+#'
+#' Returns an integer vector, \code{NA} for a column that stays in the dense
+#' block and otherwise the id of the block of \code{C = Z' diag(w) Z} the
+#' column belongs to.
+#' @noRd
+.absorbBlocks <- function(nested, p) {
+  if (is.null(nested)) return(rep(NA_integer_, p))
+  if (length(nested) != p) {
+    stop("`nested` must have one entry per column of W", call. = FALSE)
+  }
+  if (is.logical(nested)) {
+    out <- rep(NA_integer_, p)
+    out[which(nested)] <- which(nested)   # each absorbed column its own block
+    return(out)
+  }
+  out <- rep(NA_integer_, p)
+  keep <- !is.na(nested)
+  if (any(keep)) out[keep] <- as.integer(factor(as.character(nested[keep])))
+  out
+}
+
+#' Schur absorption of a random block that is block-diagonal, not diagonal
+#'
+#' Same identity as the scalar path, with \code{C^-1} a per-block solve. The
+#' blocks must be mutually orthogonal under any weight, which holds iff no cell
+#' loads on two blocks -- checked here rather than assumed, because a violated
+#' assumption would not error, it would return a wrong step.
+#' @noRd
+.newtonSolverBlocked <- function(W, pen, blk, xi, zi, X, pen_x, pen_z) {
+  bid <- blk[zi]
+  cols <- split(seq_along(zi), bid)              # positions WITHIN zi
+  Z <- W[, zi, drop = FALSE]
+
+  # No cell may load on two blocks. Counting hits per cell is O(n x p_z), the
+  # same order as the gram that follows, and it is done once per solver.
+  hits <- integer(nrow(W))
+  for (cc in cols) {
+    hits <- hits + (rowSums(abs(Z[, cc, drop = FALSE])) > 0)
+  }
+  if (max(hits) > 1) {
+    stop("the absorbed random-effect columns are not block-orthogonal: ",
+         sum(hits > 1), " cells load on more than one block, so ",
+         "C = Z'WZ is not block-diagonal and .newtonSolver() cannot absorb it",
+         call. = FALSE)
+  }
+
+  parts <- function(w) {
+    sw <- sqrt(w)
+    Xw <- X * sw
+    A <- crossprod(Xw)
+    diag(A) <- diag(A) + pen_x
+    Zw <- Z * sw
+    B <- crossprod(Xw, Zw)                       # px x p_z
+    # one dense C block per group, Cholesky-factorised once per weight vector
+    fac <- lapply(cols, function(cc) {
+      Cb <- crossprod(Zw[, cc, drop = FALSE])
+      diag(Cb) <- diag(Cb) + pen_z[cc]
+      tryCatch(chol(Cb), error = function(e) NULL)
+    })
+    if (any(vapply(fac, is.null, logical(1)))) return(NULL)
+    S <- A
+    for (k in seq_along(cols)) {
+      Bb <- B[, cols[[k]], drop = FALSE]
+      S <- S - Bb %*% chol2inv(fac[[k]]) %*% t(Bb)
+    }
+    structure(list(S = S, B = B, fac = fac, cols = cols), class = "spiDE_nfac")
+  }
+  as_fac <- function(x) if (inherits(x, "spiDE_nfac")) x else parts(x)
+  # C^-1 v, block by block
+  cinv <- function(p, v) {
+    out <- numeric(length(v))
+    for (k in seq_along(p$cols)) {
+      cc <- p$cols[[k]]
+      out[cc] <- backsolve(p$fac[[k]],
+                           backsolve(p$fac[[k]], v[cc], transpose = TRUE))
+    }
+    out
+  }
+
+  list(
+    factor = parts,
+    solve = function(w, s) {
+      p <- as_fac(w)
+      if (is.null(p)) return(NULL)
+      rhs <- s[xi] - as.numeric(p$B %*% cinv(p, s[zi]))
+      dx <- tryCatch(solve(p$S, rhs), error = function(e) NULL)
+      if (is.null(dx)) return(NULL)
+      dz <- cinv(p, s[zi] - as.numeric(crossprod(p$B, dx)))
+      out <- numeric(ncol(W))
+      out[xi] <- dx
+      out[zi] <- dz
+      out
+    },
+    xcov = function(w) {
+      p <- as_fac(w)
+      if (is.null(p)) return(NULL)
+      tryCatch(solve(p$S), error = function(e) NULL)
+    }
+  )
+}
+
 #' Newton solver for the penalised NB information, with indicator columns absorbed
 #'
 #' The nested (sample x cell type) random intercepts are 0/1 indicators that
@@ -60,8 +196,14 @@
 #'
 #' @param W the full design (cells x columns).
 #' @param pen the per-column ridge penalty.
-#' @param nested a logical over the columns of \code{W} marking the indicator
-#'   block; all-FALSE (or \code{NULL}) selects the plain dense path.
+#' @param nested which columns to absorb, and how they block: a logical over
+#'   the columns of \code{W} marking the indicator block (each absorbed column
+#'   its own 1x1 block, \code{C} diagonal), or a per-column grouping
+#'   (integer, factor or character block ids, \code{NA} for a dense column)
+#'   whose columns sharing an id form one dense block of \code{C} -- the
+#'   per-sample grouping of a random-slope fit's whole random block, from
+#'   \code{.absorbSpec()}. All-FALSE, all-NA or \code{NULL} selects the plain
+#'   dense path.
 #' @return a list with \code{factor(w)} (the penalised information at those
 #'   weights, as an opaque state), \code{solve(w, s)} (the Newton step over all
 #'   columns) and \code{xcov(w)} (the X-block of the penalised covariance).
@@ -80,7 +222,21 @@
 #' \code{solve()} would have used, and the step is the same \code{solve(S, rhs)}.
 #' @noRd
 .newtonSolver <- function(W, pen, nested = NULL) {
-  if (is.null(nested)) nested <- rep(FALSE, ncol(W))
+  # `nested` says which columns are absorbed and, now, how they BLOCK.
+  #   NULL / all-FALSE  -> nothing absorbed, dense solve
+  #   logical           -> each TRUE column is its own 1x1 block. This is the
+  #                        nested (sample x cell type) intercept: 0/1 indicators
+  #                        partitioning the cells, so C is diagonal.
+  #   integer/factor/character with NA for the dense columns
+  #                     -> columns sharing a level form ONE dense block of C.
+  #                        Random slopes need this: a sample's slope columns are
+  #                        indicator x covariate, so they are not orthogonal to
+  #                        each other nor to that sample's intercept, and C is
+  #                        block-diagonal by sample rather than diagonal.
+  # The absorption identity is the same either way; only C^-1 changes, from a
+  # reciprocal to a per-block solve.
+  blk <- .absorbBlocks(nested, ncol(W))
+  nested <- !is.na(blk)
   if (!any(nested)) {
     factor_dense <- function(w) {
       info <- crossprod(W * sqrt(w))
@@ -104,6 +260,10 @@
   X <- W[, xi, drop = FALSE]
   pen_x <- pen[xi]
   pen_z <- pen[zi]
+  # A block carrying more than one column cannot use the reciprocal path.
+  if (anyDuplicated(blk[zi])) {
+    return(.newtonSolverBlocked(W, pen, blk, xi, zi, X, pen_x, pen_z))
+  }
   # The indicator each cell belongs to. The columns are 0/1 and partition the
   # cells, so this dot product recovers the group index -- via round(), not
   # as.integer(): a floating-point product of 7 can come back as 6.9999999,
@@ -417,6 +577,7 @@
 #' @importFrom BiocParallel bplapply SerialParam bpnworkers
 #' @noRd
 .polishFit <- function(Y, W, alpha, psi, pen, re_group = NULL, covtype = NULL,
+                       absorb = NULL,
                        maxit = 50L, tol = 1e-8, block.size = NULL,
                        BPPARAM = BiocParallel::SerialParam(), verbose = FALSE,
                        psi.method = "profile", warm = FALSE,
@@ -467,12 +628,33 @@
          "Use the raw counts, or skip polishSpiDE().", call. = FALSE)
   }
   ct_cols <- if (is.null(covtype)) NULL else as.character(covtype) == "CellType"
-  nested <- if (is.null(re_group)) {
+  # `absorb` comes from .absorbSpec(): the nested indicators as a logical when
+  # there are no random slopes, the per-sample grouping of the whole random
+  # block when there are. The re_group fallback keeps a direct .polishFit()
+  # call, and a fit saved before re_sample existed, on the old behaviour.
+  nested <- if (!is.null(absorb)) {
+    absorb
+  } else if (is.null(re_group)) {
     rep(FALSE, ncol(W))
   } else {
     !is.na(re_group) & re_group == "SampleCellTypeInt"
   }
   solver <- .newtonSolver(W, pen, nested)
+  # The shared-factor batched solver (.newtonSolverBatch(), built inside
+  # .polishBatch() when a GPU is active) absorbs 1x1 blocks only, so it gets
+  # the nested indicators even when the per-gene solver above absorbs a slope
+  # fit's whole random block by sample -- the split .blockedInference() makes
+  # with sel_x / sel_x_cpu. Both are exact, so this costs the device path a
+  # wider dense block and moves no result. Without slopes `nested` is already
+  # that logical and is passed through unchanged. A grouping handed in with no
+  # re_group to recover the indicators from gets the dense batched path.
+  nested_batch <- if (is.logical(nested)) {
+    nested
+  } else if (!is.null(re_group)) {
+    !is.na(re_group) & re_group == "SampleCellTypeInt"
+  } else {
+    rep(FALSE, ncol(W))
+  }
   # the design goes to the device once, outside the gene blocks
   W_use <- if (gpu_active) SpaNorm::toGPUMatrix(W, backend = backend) else W
 
@@ -532,7 +714,7 @@
         r <- .polishBatch(Yblk, W_use, Ablk,
                           psi[gi[ii]], pen, solver, maxit = maxit, tol = tol,
                           ct_cols = ct_cols, psi.method = psi.method, warm = warm,
-                          shared.factor = gpu_active, nested = nested)
+                          shared.factor = gpu_active, nested = nested_batch)
         # back to the per-gene shape the merge below and @polish expect
         lapply(seq_along(ii), function(j) {
           list(alpha = r$alpha[j, ], psi = r$psi[[j]], loglik = r$loglik[[j]],
@@ -758,7 +940,7 @@
   Yf <- Y[rownames(f@alpha), , drop = FALSE]
   pen <- .polishPenalty(f@penalty, lambda.a, ncol(f@W))
   run_polish <- function(alpha0, psi0, pen_now, warm = FALSE) {
-    .polishFit(Yf, f@W, alpha0, psi0, pen_now, f@re_group,
+    .polishFit(Yf, f@W, alpha0, psi0, pen_now, f@re_group, absorb = .absorbSpec(f),
                covtype = as.character(f@covtype),
                maxit = maxit, tol = tol, block.size = block.size,
                BPPARAM = BPPARAM, verbose = verbose, psi.method = psi.method,

@@ -32,6 +32,10 @@
 #'   already loads. Used by \code{spiGSEA()} as the variance-inflation term.
 #'   Empty until inference has run.
 #' @slot loglik a numeric, the per-gene log-likelihood (used for Cauchy weights).
+#' @slot re_sample a character (or NULL), the sample each random-effect column
+#'   belongs to, \code{NA} for a fixed column. Every random column is non-zero
+#'   only on one sample's cells, which is what lets the Newton solver absorb the
+#'   whole random block (see \code{.absorbSpec()}).
 #' @slot re_group a character (or NULL), the random-effect group of each column
 #'   of `W` (`NA` for fixed columns); NULL for a fixed-effects fit.
 #' @slot tau2 a numeric (or NULL), the fitted random-effect variance components
@@ -82,6 +86,7 @@ setClass(
     psi = "numeric",
     loglik = "numeric",
     re_group = "ANY",
+    re_sample = "ANY",
     tau2 = "ANY",
     penalty = "ANY",
     df = "ANY",
@@ -94,7 +99,7 @@ setClass(
     polish = "ANY"
   ),
   prototype = list(
-    re_group = NULL, tau2 = NULL, penalty = NULL, df = NULL,
+    re_group = NULL, re_sample = NULL, tau2 = NULL, penalty = NULL, df = NULL,
     # "condition" is also what .fillSlots() gives objects serialised before
     # this slot existed -- every one of those is a condition-mode fit.
     mode = "condition",
@@ -183,6 +188,13 @@ validSpiDEFit <- function(object) {
                     "Random")
   if (!all(levels(object@covtype) %in% valid_levels)) {
     stop(sprintf("'covtype' levels should be a subset of: %s", paste(valid_levels, collapse = ", ")))
+  }
+  # re_sample is read beside re_group column by column (.absorbSpec()), and a
+  # length mismatch there falls back to the nested-only absorption silently, so
+  # a subset of one slot without the other must fail here instead
+  if (!is.null(object@re_group) && !is.null(object@re_sample) &&
+      length(object@re_sample) != length(object@re_group)) {
+    stop("length of 're_sample' does not match length of 're_group'")
   }
   if (!is.null(object@polish) && nrow(object@polish) != object@ngenes) {
     stop("nrow of 'polish' does not match 'ngenes'")

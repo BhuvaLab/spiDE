@@ -92,6 +92,7 @@
     psi = as.numeric(fit$psi),
     loglik = as.numeric(loglik),
     re_group = if (random == "none") NULL else des$re_group,
+    re_sample = if (random == "none") NULL else des$re_sample,
     tau2 = tau2,
     penalty = penalty,
     df = df,
