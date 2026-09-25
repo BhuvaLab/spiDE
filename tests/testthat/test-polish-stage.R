@@ -213,7 +213,7 @@ test_that("the dispersion is re-profiled at the coefficients the stage reports",
   f <- fits(polishSpiDE(cl$fit, cl$spe, verbose = FALSE))[[1]]
   Y <- as.matrix(SummarizedExperiment::assay(cl$spe, "counts"))[rownames(f@alpha), ]
   for (g in seq_len(3)) {
-    mu <- pmax(as.numeric(exp(f@W %*% f@alpha[g, ])), spiDE:::.MU_FLOOR)
+    mu <- pmax(as.numeric(exp(f@W %*% f@alpha[g, ])), SpaNorm::nbMuFloor())
     o <- stats::optimize(function(lp) -sum(stats::dnbinom(Y[g, ], size = 1 / exp(lp), mu = mu, log = TRUE)),
                          c(log(1e-3), log(1e3)))
     expect_equal(unname(f@psi[g]), exp(o$minimum), tolerance = 1e-3)

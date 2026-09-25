@@ -87,9 +87,12 @@ test_that("converging each gene raises every gene's penalised log-likelihood", {
 
   # both fits carry the same penalty vector (same design, same tau2 path), so
   # the comparison is of the same objective at two points
+  # the penalised NB log-likelihood the polish maximises, at the mean floor
+  # the polish and the inference share
   ll <- function(fit, g) {
-    mu <- pmax(as.numeric(exp(fit@W %*% fit@alpha[g, ])), spiDE:::.MU_FLOOR)
-    spiDE:::.nbPenLoglik(Y[g, ], mu, fit@psi[g], fit@alpha[g, ], fit@penalty)
+    mu <- pmax(as.numeric(exp(fit@W %*% fit@alpha[g, ])), SpaNorm::nbMuFloor())
+    sum(stats::dnbinom(Y[g, ], size = 1 / fit@psi[g], mu = mu, log = TRUE)) -
+      0.5 * sum(fit@penalty * fit@alpha[g, ]^2)
   }
   base <- vapply(seq_len(a1@ngenes), function(g) ll(a0, g), numeric(1))
   gains <- vapply(seq_len(a1@ngenes), function(g) ll(a1, g), numeric(1)) - base

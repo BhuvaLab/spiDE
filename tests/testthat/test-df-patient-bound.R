@@ -92,8 +92,9 @@ test_that("the bound survives the polish, which recomputes the df", {
   # .fitNBmixed() is therefore computed and then overwritten, i.e. inert
   # exactly where it matters.
   #
-  # This is the second time on this branch: .reprofilePsi() would have
-  # overwritten the dispersion bisection at the last step the same way. Any
+  # This is the second time on this branch: the dispersion re-profile (now
+  # SpaNorm::nbProfilePsi()) would have overwritten the dispersion bisection
+  # at the last step the same way. Any
   # quantity the fit computes and the polish recomputes needs the correction at
   # BOTH sites, or at one site both call.
   spe <- buildNiches(spiDE:::.toyClustered(n_samples = 16, n_per = 30,
