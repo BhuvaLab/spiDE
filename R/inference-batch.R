@@ -1,7 +1,9 @@
-# Batched / accelerator-aware helpers for the inference stage: per-gene Gram
-# matrices, their batched inverse sub-blocks, and the two independent memory
-# budgets that bound them. Split out of inference.R, which keeps the
-# statistical path (Wald covariance, within-gene combination, blocked driver).
+# Batched / accelerator-aware helpers for the inference stage: the batched
+# inverse's sub-blocks and the two independent memory budgets that bound the
+# per-gene Gram stack. Split out of inference.R, which keeps the statistical
+# path (Wald covariance, within-gene combination, blocked driver). The Gram
+# matrices themselves, plain and with the nested block absorbed, are built by
+# SpaNorm::nbGramBatch() and SpaNorm::nbAbsorbGramBatch().
 #
 # Everything here is shape-and-memory plumbing that must behave identically on
 # a base R matrix and a torch tensor -- the two backends differ in ways that

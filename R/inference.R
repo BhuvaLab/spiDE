@@ -130,6 +130,7 @@
   ng <- nrow(alpha)
   blocks <- .chunkGenes(ng, block.size)
   ll <- numeric(ng)
+  mu_floor <- SpaNorm::nbMuFloor()
   for (gi in blocks) {
     Yb <- as.matrix(Y[gi, , drop = FALSE])
     # ONE mean function per fit: fitNB's coefficients are read back through
@@ -139,7 +140,7 @@
     # was never converged on -- the mismatch the inference review removed.
     mub <- SpaNorm::calculateMu(rep(0, length(gi)),
                                 alpha[gi, , drop = FALSE], W, winsor = winsor)
-    mub <- pmax(mub, .MU_FLOOR)
+    mub <- pmax(mub, mu_floor)
     ll[gi] <- rowSums(stats::dnbinom(Yb, mu = mub, size = 1 / psi[gi],
                                      log = TRUE))
   }
@@ -288,10 +289,10 @@
 #'
 #' Batched replacement for the per-gene \code{.waldBrownGene()} loop when
 #' \code{combine == "cauchy"}: per-gene weighted Gram matrices are built for a
-#' sub-batch of genes at a time (\code{.gramBatch()}), inverted in one batched
-#' Cholesky call (\code{SpaNorm::invert_mat_batched()}), and the within-gene
-#' Cauchy combination is vectorized across the block by looping only over
-#' \code{uniq_index} (a handful of cell types) rather than over genes --
+#' sub-batch of genes at a time (\code{SpaNorm::nbGramBatch()}), inverted in
+#' one batched Cholesky call (\code{SpaNorm::invert_mat_batched()}), and the
+#' within-gene Cauchy combination is vectorized across the block by looping
+#' only over \code{uniq_index} (a handful of cell types) rather than over genes --
 #' \code{.cauchyCombine()} already accepts a genes x k matrix, it is just
 #' never fed more than one row at a time by the per-gene path. Only valid for
 #' \code{combine == "cauchy"}: Brown's method needs a gene-specific
@@ -413,13 +414,14 @@
       # contract -- so this is a cost change, not a result change: px x px
       # instead of p x p, 398 against 1,107 on the cohort's design.
       info <- if (!is.null(absorb)) {
-        .absorbBatch(Wgram, penalty, absorb$nested, wt_sub)
+        SpaNorm::nbAbsorbGramBatch(Wgram, penalty, absorb$nested, wt_sub)
       } else {
-        .gramBatch(Wgram, wt_sub, penalty_diag = penalty, backend = backend)
+        SpaNorm::nbGramBatch(Wgram, wt_sub, penalty_diag = penalty,
+                             backend = backend)
       }
       # Same singular-gene exposure as the direct path above, but batched: one
       # bad gene fails the whole Cholesky for its sub-batch. A per-gene fallback
-      # here would have to reproduce the torch/base split of .gramBatch(), which
+      # here would have to reproduce the torch/base split of nbGramBatch(), which
       # cannot be exercised without a GPU, so this reports a diagnosis with the
       # concrete lever instead of guessing at a recovery.
       vc <- tryCatch(SpaNorm::invert_mat_batched(info), error = function(e)
@@ -593,6 +595,9 @@
   alpha_full <- fit@alpha
   psi <- fit@psi
   ng <- nrow(alpha_full)
+  # the floor the polish converged each mean against (SpaNorm's polish engine),
+  # applied at inference too so the two stages read one mean function
+  mu_floor <- SpaNorm::nbMuFloor()
 
   # resolve GPU state once, in the parent process, before any dispatch. The
   # backend %in% c("gpu","auto") test short-circuits before checkGPU() probes
@@ -643,19 +648,20 @@
 
   # Absorb the nested indicator block when there is one -- on either backend.
   # This was CPU-only because "the absorption uses rowsum(), which has no
-  # tensor equivalent here"; .segmentSum() retired that, and .absorbBatch()
-  # does the absorption batched, so the device path no longer inverts a dense
-  # p x p gram where a px x px one would do.
+  # tensor equivalent here"; a segment sum retired that, and
+  # SpaNorm::nbAbsorbGramBatch() does the absorption batched, so the device
+  # path no longer inverts a dense p x p gram where a px x px one would do.
   absorb <- NULL
   if (full_cov && !is.null(fit@re_group)) {
     # Two absorptions, because the two paths can absorb different amounts.
-    # .absorbBatch() implements 1x1 blocks only (C^-1 as an elementwise divide
-    # is what batches), so it gets the nested indicators. .newtonSolver() also
-    # takes a per-sample grouping, so for a random-slope fit it absorbs the
-    # WHOLE random block -- the slope columns are not orthogonal to their
-    # sample's intercepts and cannot be absorbed separately. Both are exact, so
-    # this is a cost difference and not a result difference; they need separate
-    # `sel_x` only because they leave different columns in the dense block.
+    # nbAbsorbGramBatch() implements 1x1 blocks only (C^-1 as an elementwise
+    # divide is what batches), so it gets the nested indicators.
+    # nbNewtonSolver() also takes a per-sample grouping, so for a random-slope
+    # fit it absorbs the WHOLE random block -- the slope columns are not
+    # orthogonal to their sample's intercepts and cannot be absorbed
+    # separately. Both are exact, so this is a cost difference and not a result
+    # difference; they need separate `sel_x` only because they leave different
+    # columns in the dense block.
     # With no slopes .absorbSpec() returns the nested logical and the two
     # indices are identical, so the production intercept path does not move.
     nested_cols <- !is.na(fit@re_group) & fit@re_group == "SampleCellTypeInt"
@@ -671,7 +677,7 @@
                      # the per-gene CPU path's closure; the batched path works
                      # from `nested` directly and does not need it built
                      solver = if (!gpu_active) {
-                       .newtonSolver(W_full, penalty, spec)
+                       SpaNorm::nbNewtonSolver(W_full, penalty, spec)
                      })
     }
   }
@@ -700,7 +706,7 @@
     # Results are then exactly invariant to block.size and workers, and the
     # same table serves both backends.
     ql_table <- SpaNorm::qlMomentTable(
-      lmu_range = c(log(.MU_FLOOR), log(2 * max(Y) + 2)),
+      lmu_range = c(log(mu_floor), log(2 * max(Y) + 2)),
       lphi_range = log(range(psi[is.finite(psi) & psi > 0])))
     ql_parts <- .bplapplySingleBLAS(blocks, function(gi) {
       Yb <- as.matrix(Y[gi, , drop = FALSE])
@@ -708,12 +714,12 @@
         Yb_q <- SpaNorm::toGPUMatrix(Yb, backend = backend)
         mub <- SpaNorm::calculateMu(rep(0, length(gi)), alpha_full[gi, , drop = FALSE],
                                     W_full_dev, winsor = winsor_use, backend = backend)
-        mub <- torch::torch_clamp(mub, min = .MU_FLOOR)
+        mub <- torch::torch_clamp(mub, min = mu_floor)
       } else {
         Yb_q <- Yb
         mub <- SpaNorm::calculateMu(rep(0, length(gi)), alpha_full[gi, , drop = FALSE],
                                     W_full, winsor = winsor_use)
-        mub <- pmax(mub, .MU_FLOOR)
+        mub <- pmax(mub, mu_floor)
       }
       q <- SpaNorm::qlDispersion(Yb_q, mub, psi[gi], p = p_fixed, table = ql_table)
       list(s2 = q$s2, df = q$df, ave = log2(rowMeans(Yb) + 0.5))
@@ -774,7 +780,7 @@
       # same floor the polish uses: an unwinsorised linear predictor can
       # underflow exp() to exactly 0, and the Pearson dispersion below would
       # then be 0/0 = NaN for that gene
-      mub <- pmax(mub, .MU_FLOOR)
+      mub <- pmax(mub, mu_floor)
       wtb <- 1 / (1 / mub + psib) # nblock x ncells
       loglikb <- rowSums(dnbinom(Yb, mu = mub, size = 1 / psib, log = TRUE))
       if (use_pearson) {

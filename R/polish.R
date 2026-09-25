@@ -17,10 +17,18 @@
 # which is why genes must not be blocked at fit time), and because a polished
 # gene depends only on its own counts it is blockable and parallel -- the same
 # split .blockedInference() uses.
+#
+# The engine itself -- the per-gene and batched damped Newton, the Schur
+# absorption of the random block, the profile dispersion -- lives in SpaNorm
+# (SpaNorm::polishNB(), SpaNorm::nbProfilePsi(), SpaNorm::nbNewtonSolver()).
+# This file keeps what is spiDE's: which columns a SpiDEFit absorbs and starts
+# from, the penalty it must respect, and the variance-component loop around the
+# polish.
 
 #' Which columns the Newton solver should absorb, and how they block
 #'
-#' Returns what \code{.newtonSolver()}'s \code{nested} argument accepts:
+#' Returns what \code{SpaNorm::nbNewtonSolver()}'s and
+#' \code{SpaNorm::polishNB()}'s \code{absorb} argument accepts:
 #' \code{NULL} for a fixed-effects fit, a LOGICAL selecting the nested
 #' indicators when there are no random slopes, and a per-column SAMPLE grouping
 #' when there are.
@@ -50,6 +58,49 @@
     return(!is.na(rg) & rg == "SampleCellTypeInt")
   }
   rs
+}
+
+#' The absorption the shared-factor batched solver gets
+#'
+#' \code{SpaNorm::polishNB()}'s \code{absorb.batch}. The shared-factor batched
+#' solver (the device path) absorbs 1x1 blocks only, so it gets the nested
+#' (sample x cell type) indicators even when \code{.absorbSpec()} hands the
+#' per-gene solver a slope fit's whole random block grouped by sample. Both are
+#' exact, so this costs the device path a wider dense block and moves no
+#' result. Without slopes it is the same logical \code{.absorbSpec()} returns;
+#' for a fixed-effects fit it is \code{NULL}.
+#' @noRd
+.absorbBatchSpec <- function(fit) {
+  if (is.null(fit@re_group)) NULL else
+    !is.na(fit@re_group) & fit@re_group == "SampleCellTypeInt"
+}
+
+#' The columns the polish's sane start fills with cell-type log means
+#'
+#' \code{SpaNorm::polishNB()}'s \code{start.cols}: a gene whose starting point
+#' is degenerate restarts from the log mean over each cell type's cells on its
+#' cell-type intercept, every other coefficient zero. The one place the start
+#' columns are read off the design's tags.
+#' @noRd
+.testedStartCols <- function(fit) {
+  as.character(fit@covtype) == "CellType"
+}
+
+#' Refuse a ridge penalty of the wrong length, naming re.celltype
+#'
+#' \code{SpaNorm::polishNB()} checks the length too, but its message cannot
+#' name a spiDE argument. The usual way to get here is a \code{lambda.a}
+#' vector sized for a design before \code{re.celltype = TRUE} added its
+#' columns, so spiDE checks first and says so.
+#' @noRd
+.checkPolishPenalty <- function(pen, p) {
+  if (!length(pen) %in% c(1L, p)) {
+    stop("'lambda.a' must be a single value or one per design column (",
+         p, " here, ", length(pen), " supplied). Note re.celltype = TRUE ",
+         "adds one column per non-empty (sample, cell type), so a vector sized ",
+         "for an earlier design is now too short.", call. = FALSE)
+  }
+  invisible(TRUE)
 }
 
 #' The per-column ridge the polish must respect
@@ -185,16 +236,23 @@
                             gpu.mem.budget = NULL) {
   engine <- match.arg(engine)
   backend <- match.arg(backend)
+  psi.method <- match.arg(psi.method, c("profile", "moderated"))
   f <- updateObject(f)
   Yf <- Y[rownames(f@alpha), , drop = FALSE]
   pen <- .polishPenalty(f@penalty, lambda.a, ncol(f@W))
+  # "moderated" keeps fitNB's dispersion, which SpaNorm calls holding it fixed
+  psi_rule <- if (psi.method == "moderated") "fixed" else "profile"
+  # gpu.mem.budget is not forwarded: it sizes the inference stage's device
+  # batches, and SpaNorm::polishNB() sizes its own
   run_polish <- function(alpha0, psi0, pen_now, warm = FALSE) {
-    .polishFit(Yf, f@W, alpha0, psi0, pen_now, f@re_group, absorb = .absorbSpec(f),
-               covtype = as.character(f@covtype),
-               maxit = maxit, tol = tol, block.size = block.size,
-               BPPARAM = BPPARAM, verbose = verbose, psi.method = psi.method,
-               warm = warm, engine = engine, batch.size = batch.size,
-               backend = backend, gpu.mem.budget = gpu.mem.budget)
+    .checkPolishPenalty(pen_now, ncol(f@W))
+    SpaNorm::polishNB(
+      Yf, f@W, alpha0, psi0, lambda.a = pen_now,
+      absorb = .absorbSpec(f), absorb.batch = .absorbBatchSpec(f),
+      start.cols = .testedStartCols(f), psi.method = psi_rule,
+      warm = warm, maxit = maxit, tol = tol, engine = engine,
+      batch.size = batch.size, block.size = block.size, backend = backend,
+      BPPARAM = BPPARAM, verbose = verbose)
   }
   pol <- run_polish(f@alpha, f@psi, pen)
   alpha <- pol$alpha
@@ -287,7 +345,8 @@
     # fixture the held value sat 1-5% below its optimum after a loop that
     # moved the nested component 35-fold, worth 0.014 in t at most)
     if (psi.method == "profile" && loop$iterations > 0L) {
-      psi <- .reprofilePsi(Yf, f@W, alpha, psi, block.size = block.size, BPPARAM = BPPARAM)
+      psi <- SpaNorm::nbProfilePsi(Yf, f@W, alpha, psi, block.size = block.size,
+                                   BPPARAM = BPPARAM)
     }
   }
   polish$repolish.iterations <- repolish_it
