@@ -6,13 +6,30 @@
 # the case this exists for: the failure would otherwise be silent and look like
 # a convergence problem.
 
-test_that(".requireFloat64 refuses a single-precision device", {
-  expect_error(spiDE:::.requireFloat64("Float"), "single precision")
-  expect_error(spiDE:::.requireFloat64("float32"), "single precision")
-  expect_silent(spiDE:::.requireFloat64("Double"))
-  expect_silent(spiDE:::.requireFloat64("float64"))
+test_that("the device path refuses a single-precision device", {
+  # The refusal lives in SpaNorm::polishNB() since the polish moved there.
+  # Reach it with no device at all: report a GPU, make the transfer the
+  # identity and set the backend dtype, so only the precision differs.
+  set.seed(3)
+  n <- 60
+  W <- cbind(1, scale(rnorm(n)))
+  Y <- matrix(rnbinom(2 * n, mu = 3, size = 2), 2)
+  A0 <- matrix(c(1, 0), 2, 2, byrow = TRUE)
+  run <- function(dtype) {
+    testthat::with_mocked_bindings(
+      SpaNorm::polishNB(Y, W, A0, c(0.5, 0.5), backend = "gpu"),
+      checkGPU = function(...) TRUE,
+      toGPUMatrix = function(x, ...) x,
+      getBackendDtype = function(...) dtype,
+      .package = "SpaNorm"
+    )
+  }
+  expect_error(run("Float"), "single precision")
+  expect_error(run("float32"), "single precision")
+  expect_no_error(run("Double"))
+  expect_no_error(run("float64"))
   # the message has to say what to do, not only what is wrong
-  err <- tryCatch(spiDE:::.requireFloat64("Float"), error = function(e) conditionMessage(e))
+  err <- tryCatch(run("Float"), error = function(e) conditionMessage(e))
   expect_match(err, "backend")
 })
 

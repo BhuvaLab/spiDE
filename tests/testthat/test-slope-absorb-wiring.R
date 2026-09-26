@@ -1,7 +1,7 @@
 # Wiring the per-sample absorption grouping from the design through to the
 # polish and the inference.
 #
-# .newtonSolver() can absorb a random block that is block-diagonal by sample,
+# SpaNorm::nbNewtonSolver() can absorb a random block that is block-diagonal by sample,
 # but nothing reaches that path while the call sites select the absorbed columns
 # with `re_group == "SampleCellTypeInt"`. That literal is also exactly what the
 # architecture notes warn against: it silently skips a block that a new mode
@@ -49,7 +49,7 @@ test_that(".buildRandomEffects reports the sample of every random column", {
 })
 
 test_that("the design's random block is block-orthogonal under its own grouping", {
-  # the property .newtonSolver() relies on: no cell loads on two blocks
+  # the property SpaNorm::nbNewtonSolver() relies on: no cell loads on two blocks
   spe <- buildNiches(spiDE:::.toySPE(n_genes = 6, n_per = 40), sigma = 30)
   des <- spiDE:::.buildNicheDesign(spe, "condition", 30, random = "slope")
 
@@ -85,6 +85,8 @@ test_that(".absorbSpec picks the whole random block for a slope fit and the nest
   # intercept-only: the nested indicators, 1x1 blocks, i.e. the logical path
   expect_true(is.logical(si))
   expect_equal(sum(si), sum(fi@re_group == "SampleCellTypeInt", na.rm = TRUE))
+  # and the shared-factor batched solver gets that same logical
+  expect_identical(spiDE:::.absorbBatchSpec(fi), si)
 
   fs <- .slopeWiringFit()$f
   ss <- spiDE:::.absorbSpec(fs)
@@ -126,12 +128,14 @@ test_that("the polish of a slope fit with the whole random block absorbed matche
   spec <- spiDE:::.absorbSpec(f)
   expect_false(is.logical(spec))                # the per-sample grouping path
   dense <- rep(FALSE, ncol(f@W))
-  ct <- as.character(f@covtype)
+  st <- spiDE:::.testedStartCols(f)
   for (eng in c("gene", "batch")) {
-    ab <- spiDE:::.polishFit(d$Y, f@W, f@alpha, f@psi, d$pen, f@re_group,
-                             covtype = ct, absorb = spec, engine = eng)
-    dn <- spiDE:::.polishFit(d$Y, f@W, f@alpha, f@psi, d$pen, f@re_group,
-                             covtype = ct, absorb = dense, engine = eng)
+    ab <- SpaNorm::polishNB(d$Y, f@W, f@alpha, f@psi, lambda.a = d$pen,
+                            absorb = spec,
+                            absorb.batch = spiDE:::.absorbBatchSpec(f),
+                            start.cols = st, engine = eng)
+    dn <- SpaNorm::polishNB(d$Y, f@W, f@alpha, f@psi, lambda.a = d$pen,
+                            absorb = dense, start.cols = st, engine = eng)
     expect_true(all(ab$polish$polished), label = eng)
     expect_equal(ab$alpha, dn$alpha, tolerance = 1e-8, label = eng)
     expect_equal(ab$psi, dn$psi, tolerance = 1e-8, label = eng)
@@ -154,28 +158,41 @@ test_that("inference on a slope fit with the whole random block absorbed matches
 })
 
 test_that("the batched (shared-factor) polish of a slope fit runs and matches the per-gene solver", {
-  # The shared-factor batched solver is the device path: .polishFit() builds it
-  # only when a GPU is active. It absorbs 1x1 blocks only, so a slope fit must
-  # hand it the nested indicators and not the per-sample grouping the per-gene
-  # CPU solver takes. Reach that path on the CPU by reporting a GPU and making
-  # the device transfer the identity -- every batched kernel runs on a base
-  # matrix too (test-polish-batch.R).
+  # The shared-factor batched solver is the device path: SpaNorm::polishNB()
+  # builds it only when a GPU is active. It absorbs 1x1 blocks only, so a slope
+  # fit must hand it the nested indicators (.absorbBatchSpec()) and not the
+  # per-sample grouping the per-gene CPU solver takes (.absorbSpec()). Reach
+  # that path on the CPU by reporting a GPU and making the device transfer the
+  # identity -- every batched kernel runs on a base matrix too (SpaNorm's
+  # test-polishEngine.R).
   d <- .slopeWiringFit()
   f <- d$f
-  ct <- as.character(f@covtype)
   spec <- spiDE:::.absorbSpec(f)
-  cpu <- spiDE:::.polishFit(d$Y, f@W, f@alpha, f@psi, d$pen, f@re_group,
-                            covtype = ct, absorb = spec, engine = "batch",
-                            backend = "cpu")
+  spec_batch <- spiDE:::.absorbBatchSpec(f)
+  # the batched solver's absorption is the nested block alone, inside the
+  # grouping the per-gene solver absorbs whole
+  expect_true(is.logical(spec_batch))
+  expect_identical(spec_batch,
+                   !is.na(f@re_group) & f@re_group == "SampleCellTypeInt")
+  expect_true(all(!is.na(spec[spec_batch])))
+  st <- spiDE:::.testedStartCols(f)
+  cpu <- SpaNorm::polishNB(d$Y, f@W, f@alpha, f@psi, lambda.a = d$pen,
+                           absorb = spec, absorb.batch = spec_batch,
+                           start.cols = st, engine = "batch", backend = "cpu")
   testthat::local_mocked_bindings(
     checkGPU = function(...) TRUE,
     toGPUMatrix = function(x, ...) x,
+    # SpaNorm::polishNB() calls the internal .requireFloat64() with no
+    # arguments, whose default `dtype = getBackendDtype()` is evaluated at
+    # that call (test-polish-backend.R relies on the same mechanism), so
+    # mocking the exported getBackendDtype() reaches the real refusal check
+    # instead of mocking the internal directly.
+    getBackendDtype = function(...) "float64",
     .package = "SpaNorm"
   )
-  testthat::local_mocked_bindings(.requireFloat64 = function(...) invisible(TRUE))
-  dev <- spiDE:::.polishFit(d$Y, f@W, f@alpha, f@psi, d$pen, f@re_group,
-                            covtype = ct, absorb = spec, engine = "batch",
-                            backend = "gpu")
+  dev <- SpaNorm::polishNB(d$Y, f@W, f@alpha, f@psi, lambda.a = d$pen,
+                           absorb = spec, absorb.batch = spec_batch,
+                           start.cols = st, engine = "batch", backend = "gpu")
   expect_true(all(dev$polish$polished))
   # a shared factorisation refreshes on a different schedule from the per-gene
   # one, so the two converge to the same optimum rather than along one path

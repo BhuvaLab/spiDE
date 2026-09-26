@@ -108,7 +108,7 @@ test_that(".chunkGenes partitions all genes exactly once", {
   expect_true(all(lengths(ch) <= 3))
 })
 
-test_that(".gramBatch reproduces the per-gene weighted Gram matrix", {
+test_that("nbGramBatch reproduces the per-gene weighted Gram matrix", {
   set.seed(20)
   ncells <- 40
   p <- 5
@@ -119,7 +119,7 @@ test_that(".gramBatch reproduces the per-gene weighted Gram matrix", {
   ref <- array(0, c(b, p, p))
   for (g in seq_len(b)) ref[g, , ] <- crossprod(W * wt[g, ], W)
 
-  info <- spiDE:::.gramBatch(W, wt)
+  info <- SpaNorm::nbGramBatch(W, wt)
   expect_equal(dim(info), c(b, p, p))
   expect_equal(info, ref, tolerance = 1e-10)
 
@@ -127,7 +127,7 @@ test_that(".gramBatch reproduces the per-gene weighted Gram matrix", {
   pen <- runif(p)
   ref_pen <- ref
   for (g in seq_len(b)) ref_pen[g, , ] <- ref[g, , ] + diag(pen)
-  info_pen <- spiDE:::.gramBatch(W, wt, penalty_diag = pen)
+  info_pen <- SpaNorm::nbGramBatch(W, wt, penalty_diag = pen)
   expect_equal(info_pen, ref_pen, tolerance = 1e-10)
 
   # sub-batching the genes must not change the result: the same slices come
@@ -135,7 +135,7 @@ test_that(".gramBatch reproduces the per-gene weighted Gram matrix", {
   # that makes .covBatchSize()'s bound safe to apply at any size.
   chunked <- array(0, c(b, p, p))
   for (ii in list(1:2, 3:4, 5:6)) {
-    chunked[ii, , ] <- spiDE:::.gramBatch(W, wt[ii, , drop = FALSE])
+    chunked[ii, , ] <- SpaNorm::nbGramBatch(W, wt[ii, , drop = FALSE])
   }
   expect_equal(chunked, ref, tolerance = 1e-10)
 })
@@ -159,7 +159,7 @@ test_that(".covBatchSize shrinks with design width and stays >= 1", {
   expect_gt(big, wide)
 })
 
-test_that(".gramBatch is invariant to the cell tile, on both branches", {
+test_that("nbGramBatch is invariant to the cell tile, on both branches", {
   # The torch branch builds sqrt(w) * W as one (batch, ncells, p) tensor --
   # ~8 GB at a 64-gene batch on the cohort's design, and unbounded by the gene
   # sub-batch that is supposed to bound this stage. Accumulating over cell
@@ -170,20 +170,23 @@ test_that(".gramBatch is invariant to the cell tile, on both branches", {
   wt <- matrix(stats::runif(b * n, 0.2, 2), b, n)
   pen <- stats::runif(p, 0, 0.5)
 
-  whole <- spiDE:::.gramBatch(W, wt, penalty_diag = pen)
+  whole <- SpaNorm::nbGramBatch(W, wt, penalty_diag = pen)
   for (tile in c(1L, 7L, 49L, 50L, 500L)) {
-    expect_equal(spiDE:::.gramBatch(W, wt, penalty_diag = pen, cell.tile = tile),
+    expect_equal(SpaNorm::nbGramBatch(W, wt, penalty_diag = pen, cell.tile = tile),
                  whole, tolerance = 1e-12, info = sprintf("cell.tile = %d", tile))
   }
 
-  skip_if_not_installed("torch")
+  # GPU only: on a CPU device torch 0.17's torch_tensor(<R double>, float64)
+  # aliases R memory without keeping the R object alive, so a tensor-path
+  # result there depends on garbage-collection timing (a CUDA copy does not)
+  skip_if_no_gpu()
   Wt <- torch::torch_tensor(W, dtype = torch::torch_float64())
   wtt <- torch::torch_tensor(wt, dtype = torch::torch_float64())
-  tor_whole <- spiDE:::.gramBatch(Wt, wtt, penalty_diag = pen)
+  tor_whole <- SpaNorm::nbGramBatch(Wt, wtt, penalty_diag = pen)
   expect_equal(as.array(tor_whole), whole, tolerance = 1e-10)
   for (tile in c(1L, 7L, 50L)) {
-    expect_equal(as.array(spiDE:::.gramBatch(Wt, wtt, penalty_diag = pen,
-                                             cell.tile = tile)),
+    expect_equal(as.array(SpaNorm::nbGramBatch(Wt, wtt, penalty_diag = pen,
+                                               cell.tile = tile)),
                  whole, tolerance = 1e-10,
                  info = sprintf("torch cell.tile = %d", tile))
   }
@@ -388,7 +391,7 @@ test_that("absorbing the nested block gives identical inference to the dense gra
   sel <- which(cols_gene)
 
   mu <- pmax(SpaNorm::calculateMu(rep(0, nrow(f@alpha)), f@alpha, W_full,
-                                  winsor = Inf), spiDE:::.MU_FLOOR)
+                                  winsor = Inf), SpaNorm::nbMuFloor())
   wt <- 1 / (1 / mu + f@psi)
   disp_df <- max(nrow(W_full) - sum(covtype != "Random"), 1)
   scale_b <- rowSums((Y - mu)^2 / (mu + f@psi * mu^2)) / disp_df
@@ -396,7 +399,7 @@ test_that("absorbing the nested block gives identical inference to the dense gra
   nested <- !is.na(f@re_group) & f@re_group == "SampleCellTypeInt"
   expect_true(any(nested))
   xi <- which(!nested)
-  absorb <- list(solver = spiDE:::.newtonSolver(W_full, f@penalty, nested),
+  absorb <- list(solver = SpaNorm::nbNewtonSolver(W_full, f@penalty, nested),
                  nested = nested, sel_x = match(sel, xi))
 
   args <- list(f@alpha[, cols_gene, drop = FALSE], Wsub, wt, scale_b,
@@ -412,8 +415,11 @@ test_that("absorbing the nested block gives identical inference to the dense gra
 
   # The device path takes the BATCHED branch, which until now ignored the
   # absorption and inverted the full design's gram -- 1,107 columns against 398
-  # on the cohort. Exercised here on CPU torch tensors, which is the same code.
-  skip_if_not_installed("torch")
+  # on the cohort. Exercised on torch tensors, which is the same code -- on a
+  # GPU host only: on a CPU device torch 0.17's torch_tensor(<R double>,
+  # float64) aliases R memory without keeping the R object alive, so a
+  # tensor-path result there depends on garbage-collection timing.
+  skip_if_no_gpu()
   Wt <- torch::torch_tensor(W_full, dtype = torch::torch_float64())
   wtt <- torch::torch_tensor(wt, dtype = torch::torch_float64())
   args_t <- list(f@alpha[, cols_gene, drop = FALSE], Wsub, wtt, scale_b,
@@ -457,31 +463,4 @@ test_that(".bplapplySingleBLAS runs forked workers single-threaded and serial di
   # extra arguments reach FUN
   expect_equal(unlist(spiDE:::.bplapplySingleBLAS(1:2, function(i, k) i * k, BPPARAM = bp,
                                                   k = 10L)), c(10L, 20L))
-})
-
-test_that(".segmentSum agrees with rowsum on both backends", {
-  # The claim this exists to retire: "rowsum(), which has no tensor equivalent
-  # here" (.blockedInference()), which is why the nested absorption is CPU-only
-  # and the GPU path pays for a dense p x p gram instead of an absorbed one.
-  set.seed(7)
-  n <- 200L; k <- 5L; G <- 9L
-  M <- matrix(rnorm(n * k), n, k)
-  gidx <- sample.int(G, n, replace = TRUE)
-  ref <- rowsum(M, group = factor(gidx, levels = seq_len(G)), reorder = TRUE)
-  got <- spiDE:::.segmentSum(M, gidx, G)
-  expect_equal(unname(got), unname(ref), tolerance = 1e-12)
-
-  # a group with no rows must come back as zeros, not be dropped: the caller
-  # indexes the result positionally, so a short matrix silently misaligns every
-  # group after the gap
-  gidx2 <- gidx; gidx2[gidx2 == 4L] <- 5L
-  got2 <- spiDE:::.segmentSum(M, gidx2, G)
-  expect_equal(nrow(got2), G)
-  expect_true(all(got2[4, ] == 0))
-
-  skip_if_not_installed("torch")
-  Mt <- torch::torch_tensor(M, dtype = torch::torch_float64())
-  gott <- spiDE:::.segmentSum(Mt, gidx, G)
-  expect_equal(as.matrix(gott$cpu()), unname(ref), tolerance = 1e-12)
-  expect_equal(dim(as.matrix(gott$cpu())), c(G, k))
 })

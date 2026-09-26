@@ -85,9 +85,9 @@
   # The sample each random column belongs to. Every random column -- intercept,
   # slope or nested -- is non-zero only on the cells of one sample, which is
   # what makes C = Z' diag(w) Z block-diagonal by sample and therefore
-  # absorbable (.newtonSolver()). Recorded here rather than parsed back out of
-  # the column names downstream, because a sample id containing the separator
-  # would make that parse wrong rather than fail.
+  # absorbable (SpaNorm::nbNewtonSolver()). Recorded here rather than parsed
+  # back out of the column names downstream, because a sample id containing
+  # the separator would make that parse wrong rather than fail.
   re_sample <- levels(smp)
 
   if (random == "slope" && ncol(slope_base) > 0) {

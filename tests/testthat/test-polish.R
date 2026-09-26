@@ -4,10 +4,25 @@
 # large. These tests pin the polish stage: it never decreases the penalised
 # log-likelihood, it reaches a stationary point, it leaves an already-converged
 # gene alone, and the Schur-complement solve equals the dense one.
+#
+# The engine lives in SpaNorm (polishNB(), nbNewtonSolver()); these tests reach
+# it through those exports, and SpaNorm's own tests/testthat/test-polishNB.R,
+# test-polishEngine.R and test-nbSolver.R cover it directly.
 
 set.seed(11)
 
-# a small design with an indicator block, in the shape .polishFit() sees
+# the penalised NB log-likelihood the polish maximises, written out
+nb_pen_loglik <- function(y, mu, psi, a, pen) {
+  sum(stats::dnbinom(y, size = 1 / psi, mu = mu, log = TRUE)) - 0.5 * sum(pen * a^2)
+}
+
+# polish one gene on the per-gene engine, the one .polishGene() implements
+polish_gene <- function(y, W, a0, psi0, pen, absorb = NULL, ...) {
+  SpaNorm::polishNB(matrix(y, 1L), W, matrix(a0, 1L), psi0, lambda.a = pen,
+                    absorb = absorb, engine = "gene", ...)
+}
+
+# a small design with an indicator block, in the shape SpaNorm::polishNB() sees
 toy_design <- function(n = 240, p_x = 6, n_grp = 8) {
   X <- cbind(1, matrix(rnorm(n * (p_x - 1)), n, p_x - 1))
   colnames(X) <- c("(Intercept)", paste0("x", seq_len(p_x - 1)))
@@ -19,89 +34,89 @@ toy_design <- function(n = 240, p_x = 6, n_grp = 8) {
        pen = c(rep(0, p_x), rep(1.7, n_grp)))
 }
 
-test_that(".newtonSolver's Schur solve equals the dense solve", {
+test_that("nbNewtonSolver's Schur solve equals the dense solve", {
   d <- toy_design()
   w <- runif(nrow(d$W), 0.2, 3)
   s <- rnorm(ncol(d$W))
 
   info <- crossprod(d$W * sqrt(w))
   diag(info) <- diag(info) + d$pen
-  expect_equal(as.numeric(spiDE:::.newtonSolver(d$W, d$pen, d$nested)$solve(w, s)),
+  expect_equal(as.numeric(SpaNorm::nbNewtonSolver(d$W, d$pen, d$nested)$solve(w, s)),
                as.numeric(solve(info, s)), tolerance = 1e-8)
 })
 
-test_that(".newtonSolver's xcov equals the X-block of the dense covariance", {
+test_that("nbNewtonSolver's xcov equals the X-block of the dense covariance", {
   d <- toy_design()
   w <- runif(nrow(d$W), 0.2, 3)
   info <- crossprod(d$W * sqrt(w))
   diag(info) <- diag(info) + d$pen
-  expect_equal(spiDE:::.newtonSolver(d$W, d$pen, d$nested)$xcov(w),
+  expect_equal(SpaNorm::nbNewtonSolver(d$W, d$pen, d$nested)$xcov(w),
                solve(info)[!d$nested, !d$nested], tolerance = 1e-8,
                ignore_attr = TRUE)
 })
 
-test_that(".newtonSolver falls back to the dense path with no nested block", {
+test_that("nbNewtonSolver falls back to the dense path with no nested block", {
   d <- toy_design()
   nested <- rep(FALSE, ncol(d$W))
   w <- runif(nrow(d$W), 0.2, 3)
   s <- rnorm(ncol(d$W))
   info <- crossprod(d$W * sqrt(w))
   diag(info) <- diag(info) + d$pen
-  expect_equal(as.numeric(spiDE:::.newtonSolver(d$W, d$pen, nested)$solve(w, s)),
+  expect_equal(as.numeric(SpaNorm::nbNewtonSolver(d$W, d$pen, nested)$solve(w, s)),
                as.numeric(solve(info, s)), tolerance = 1e-8)
 })
 
-test_that(".polishGene reaches a stationary point and raises the log-likelihood", {
+test_that("a per-gene polish reaches a stationary point and raises the log-likelihood", {
   d <- toy_design()
   a_true <- c(1.2, 0.4, -0.3, 0.2, 0, 0.1, rnorm(8, 0, 0.3))
   mu <- exp(d$W %*% a_true)
   y <- rnbinom(length(mu), mu = as.numeric(mu), size = 1 / 0.4)
   a0 <- c(0.2, rep(0, ncol(d$W) - 1))          # a deliberately poor start
-  solver <- spiDE:::.newtonSolver(d$W, d$pen, d$nested)
 
-  ll0 <- spiDE:::.nbPenLoglik(y, as.numeric(exp(d$W %*% a0)), 0.4, a0, d$pen)
-  out <- spiDE:::.polishGene(y, d$W, a0, 0.4, d$pen, solver,
-                             maxit = 50L, tol = 1e-10)
+  ll0 <- nb_pen_loglik(y, as.numeric(exp(d$W %*% a0)), 0.4, a0, d$pen)
+  out <- polish_gene(y, d$W, a0, 0.4, d$pen, absorb = d$nested,
+                     maxit = 50L, tol = 1e-10)
+  a1 <- out$alpha[1, ]
 
   expect_gt(out$loglik, ll0)
   # penalised score at the polished point, at the polished psi
-  mu1 <- as.numeric(exp(d$W %*% out$alpha))
+  mu1 <- as.numeric(exp(d$W %*% a1))
   s1 <- as.numeric(crossprod(d$W, (y - mu1) / (1 + out$psi * mu1))) -
-    d$pen * out$alpha
+    d$pen * a1
   expect_lt(max(abs(s1)), 1e-4 * max(abs(y)))
   expect_true(is.finite(out$psi) && out$psi > 0)
-  expect_gte(out$iterations, 1L)
-  expect_false(out$singular)
+  expect_gte(out$polish$iterations, 1L)
+  expect_false(out$polish$singular)
 })
 
-test_that(".polishGene leaves an already-converged gene alone", {
+test_that("a per-gene polish leaves an already-converged gene alone", {
   d <- toy_design()
   a_true <- c(1.0, 0.3, -0.2, 0.1, 0, 0, rnorm(8, 0, 0.2))
   mu <- exp(d$W %*% a_true)
   y <- rnbinom(length(mu), mu = as.numeric(mu), size = 1 / 0.5)
-  solver <- spiDE:::.newtonSolver(d$W, d$pen, d$nested)
   # converge once, then polish again from the converged point
-  first <- spiDE:::.polishGene(y, d$W, a_true, 0.5, d$pen, solver, 50L, 1e-12)
-  again <- spiDE:::.polishGene(y, d$W, first$alpha, first$psi, d$pen, solver,
-                               50L, 1e-12)
+  first <- polish_gene(y, d$W, a_true, 0.5, d$pen, absorb = d$nested,
+                       maxit = 50L, tol = 1e-12)
+  again <- polish_gene(y, d$W, first$alpha[1, ], first$psi, d$pen,
+                       absorb = d$nested, maxit = 50L, tol = 1e-12)
   expect_equal(again$alpha, first$alpha, tolerance = 1e-3)
   expect_equal(again$psi, first$psi, tolerance = 1e-3)
 })
 
-test_that(".polishGene restarts from cell-type means when the start is degenerate", {
+test_that("a per-gene polish restarts from cell-type means when the start is degenerate", {
   d <- toy_design()
   mu <- exp(d$W %*% c(1.0, rep(0.1, 5), rnorm(8, 0, 0.2)))
   y <- rnbinom(length(mu), mu = as.numeric(mu), size = 1 / 0.4)
   a_bad <- c(-25, rep(0, ncol(d$W) - 1))       # min log mu < -10
-  solver <- spiDE:::.newtonSolver(d$W, d$pen, d$nested)
-  out <- spiDE:::.polishGene(y, d$W, a_bad, 0.4, d$pen, solver, 50L, 1e-10)
+  out <- polish_gene(y, d$W, a_bad, 0.4, d$pen, absorb = d$nested,
+                     maxit = 50L, tol = 1e-10)
 
-  expect_true(out$restarted)
-  expect_gt(min(as.numeric(d$W %*% out$alpha)), -10)
+  expect_true(out$polish$restarted)
+  expect_gt(min(as.numeric(d$W %*% out$alpha[1, ])), -10)
   expect_true(is.finite(out$loglik))
 })
 
-test_that(".polishFit is invariant to gene blocking", {
+test_that("polishNB is invariant to gene blocking", {
   d <- toy_design()
   ng <- 5
   A0 <- matrix(0, ng, ncol(d$W), dimnames = list(paste0("G", seq_len(ng)),
@@ -113,12 +128,11 @@ test_that(".polishFit is invariant to gene blocking", {
   }, numeric(nrow(d$W))))
   dimnames(Y) <- list(rownames(A0), NULL)
   psi0 <- rep(0.4, ng)
-  re_group <- ifelse(d$nested, "SampleCellTypeInt", NA_character_)
 
-  a <- spiDE:::.polishFit(Y, d$W, A0, psi0, d$pen, re_group,
-                          block.size = NULL)
-  b <- spiDE:::.polishFit(Y, d$W, A0, psi0, d$pen, re_group,
-                          block.size = 2L)
+  a <- SpaNorm::polishNB(Y, d$W, A0, psi0, lambda.a = d$pen, absorb = d$nested,
+                         block.size = NULL)
+  b <- SpaNorm::polishNB(Y, d$W, A0, psi0, lambda.a = d$pen, absorb = d$nested,
+                         block.size = 2L)
   expect_equal(a$alpha, b$alpha)
   expect_equal(a$psi, b$psi)
   expect_equal(nrow(a$polish), ng)
@@ -128,14 +142,13 @@ test_that(".polishFit is invariant to gene blocking", {
   expect_equal(a$polish$psi_fitnb, psi0)
 })
 
-test_that(".polishFit flags a degenerate gene and keeps finite values", {
+test_that("polishNB flags a degenerate gene and keeps finite values", {
   d <- toy_design()
   # a gene that is zero everywhere: every working weight is ~0, so the
   # information matrix is singular at the start
   Y <- matrix(0L, 1, nrow(d$W), dimnames = list("G1", NULL))
   A0 <- matrix(-40, 1, ncol(d$W), dimnames = list("G1", colnames(d$W)))
-  re_group <- ifelse(d$nested, "SampleCellTypeInt", NA_character_)
-  out <- spiDE:::.polishFit(Y, d$W, A0, 0.4, d$pen, re_group)
+  out <- SpaNorm::polishNB(Y, d$W, A0, 0.4, lambda.a = d$pen, absorb = d$nested)
   expect_true(out$polish$singular || out$polish$restarted)
   expect_true(all(is.finite(out$alpha)))
   expect_true(is.finite(out$psi))
@@ -159,7 +172,7 @@ test_that("the polish stage populates @polish and raises the per-gene log-likeli
   pen <- rep(0, ncol(a1@W))
   ll <- function(fit, g) {
     mu <- as.numeric(exp(fit@W %*% fit@alpha[g, ]))
-    spiDE:::.nbPenLoglik(Y[g, ], mu, fit@psi[g], fit@alpha[g, ], pen)
+    nb_pen_loglik(Y[g, ], mu, fit@psi[g], fit@alpha[g, ], pen)
   }
   base <- vapply(seq_len(a1@ngenes), function(g) ll(a0, g), numeric(1))
   gains <- vapply(seq_len(a1@ngenes), function(g) ll(a1, g), numeric(1)) - base
@@ -185,16 +198,16 @@ test_that("a polished fit still passes validity and testSpiDE runs on it", {
   expect_true(all(is.finite(results(r)$t)))
 })
 
-test_that(".newtonSolver refuses a nested block that is not a partition", {
+test_that("nbNewtonSolver refuses a nested block that is not a partition", {
   d <- toy_design()
   # break the partition: give one cell membership of two groups
   W <- d$W
   W[1, which(d$nested)[2]] <- 1
-  expect_error(spiDE:::.newtonSolver(W, d$pen, d$nested),
+  expect_error(SpaNorm::nbNewtonSolver(W, d$pen, d$nested),
                "0/1 indicators partitioning")
 })
 
-test_that(".newtonSolver recovers group membership from a float-valued product", {
+test_that("nbNewtonSolver recovers group membership from a float-valued product", {
   # the group index comes from a dot product; a product of 7 arriving as
   # 6.9999999 must not be truncated to group 6
   d <- toy_design(n_grp = 8)
@@ -205,11 +218,11 @@ test_that(".newtonSolver recovers group membership from a float-valued product",
   s <- rnorm(ncol(W))
   info <- crossprod(W * sqrt(w))
   diag(info) <- diag(info) + d$pen
-  expect_equal(as.numeric(spiDE:::.newtonSolver(W, d$pen, d$nested)$solve(w, s)),
+  expect_equal(as.numeric(SpaNorm::nbNewtonSolver(W, d$pen, d$nested)$solve(w, s)),
                as.numeric(solve(info, s)), tolerance = 1e-6)
 })
 
-test_that(".polishFit splits into one block per worker when block.size is NULL", {
+test_that("polishNB splits into one block per worker when block.size is NULL", {
   d <- toy_design()
   ng <- 6
   A0 <- matrix(0, ng, ncol(d$W), dimnames = list(paste0("G", seq_len(ng)),
@@ -220,7 +233,6 @@ test_that(".polishFit splits into one block per worker when block.size is NULL",
     rnbinom(nrow(d$W), mu = as.numeric(mu), size = 1 / 0.4)
   }, numeric(nrow(d$W))))
   dimnames(Y) <- list(rownames(A0), NULL)
-  re_group <- ifelse(d$nested, "SampleCellTypeInt", NA_character_)
 
   # a multi-worker BPPARAM must not collapse to a single block. Fork-based
   # parallelism, so the workers inherit the loaded namespace (a snow cluster
@@ -231,13 +243,13 @@ test_that(".polishFit splits into one block per worker when block.size is NULL",
   skip_if_not(BiocParallel::bpnworkers(bp) == 2)
 
   msgs <- capture_messages(
-    par <- spiDE:::.polishFit(Y, d$W, A0, rep(0.4, ng), d$pen, re_group,
-                              BPPARAM = bp, verbose = TRUE))
+    par <- SpaNorm::polishNB(Y, d$W, A0, rep(0.4, ng), lambda.a = d$pen,
+                             absorb = d$nested, BPPARAM = bp, verbose = TRUE))
   expect_match(paste(msgs, collapse = " "), "2 blocks")
 
   serial <- capture_messages(
-    ser <- spiDE:::.polishFit(Y, d$W, A0, rep(0.4, ng), d$pen, re_group,
-                              verbose = TRUE))
+    ser <- SpaNorm::polishNB(Y, d$W, A0, rep(0.4, ng), lambda.a = d$pen,
+                             absorb = d$nested, verbose = TRUE))
   expect_match(paste(serial, collapse = " "), "1 block")
 
   # blocking is exact, so the split must not change the answer
@@ -300,19 +312,18 @@ test_that("a dispersion optimum on its search bound keeps fitNB's estimate", {
   set.seed(4)
   n <- 300
   W <- cbind(1, scale(rnorm(n)))
-  sv <- spiDE:::.newtonSolver(W, c(0, 0))
   # an all-zero gene has no information about overdispersion: the profile
   # likelihood is monotone and optimize() returns its ceiling (~976), which is
   # not an estimate. On the fixed-effects path psi scales the SE directly.
   r <- suppressWarnings(
-    spiDE:::.polishGene(rep(0, n), W, c(0, 0), 0.7, c(0, 0), sv, psi.method = "profile"))
-  expect_true(r$psi_bound)
+    polish_gene(rep(0, n), W, c(0, 0), 0.7, c(0, 0), psi.method = "profile"))
+  expect_true(r$polish$psi_bound)
   expect_equal(r$psi, 0.7)
   # a well-identified gene is unaffected
   y <- rnbinom(n, mu = exp(W %*% c(1.5, 0.3)), size = 1 / 0.4)
-  r2 <- spiDE:::.polishGene(y, W, c(0, 0), 1, c(0, 0), sv, psi.method = "profile")
-  expect_false(r2$psi_bound)
-  expect_true(r2$polished)
+  r2 <- polish_gene(y, W, c(0, 0), 1, c(0, 0), psi.method = "profile")
+  expect_false(r2$polish$psi_bound)
+  expect_true(r2$polish$polished)
   expect_gt(r2$psi, 0.1)
 })
 
@@ -320,17 +331,23 @@ test_that("an unusable Newton keeps fitNB's fit rather than the sane start", {
   # Returning the sane start would zero every tested coefficient, which
   # inference reports as t = 0 with a finite SE: a confident null for a gene
   # that was never converged. A singular solver must fall back to the input.
+  # The solver is made singular through the design: a duplicated column with no
+  # ridge leaves the information matrix singular at every weight, so neither
+  # the given start nor the sane start can take a Newton step.
   set.seed(5)
   n <- 120
-  W <- cbind(1, scale(rnorm(n)))
+  x <- scale(rnorm(n))[, 1]
+  W <- cbind(1, x, x)
   y <- rnbinom(n, mu = 4, size = 2)
-  a0 <- c(0.9, 0.25)
-  bad <- list(solve = function(w, s) NULL, xcov = function(w) NULL)
-  r <- spiDE:::.polishGene(y, W, a0, 0.6, c(0, 0), bad)
-  expect_identical(r$alpha, a0)
-  expect_equal(r$psi, 0.6)
-  expect_true(r$singular)
-  expect_false(r$polished)
+  a0 <- c(0.9, 0.25, 0)
+  for (eng in c("gene", "batch")) {
+    r <- SpaNorm::polishNB(matrix(y, 1L), W, matrix(a0, 1L), 0.6,
+                           lambda.a = 0, engine = eng)
+    expect_identical(r$alpha[1, ], a0, label = eng)
+    expect_equal(r$psi, 0.6, label = eng)
+    expect_true(r$polish$singular, label = eng)
+    expect_false(r$polish$polished, label = eng)
+  }
 })
 
 test_that("a polished fixed-effects fit is scaled by the Pearson dispersion", {
@@ -354,12 +371,17 @@ test_that("the per-gene diagnostics are keyed by gene, not by position", {
 })
 
 test_that("a wrongly sized lambda.a is refused with a message naming re.celltype", {
-  d <- toy_design()
-  A0 <- matrix(0, 2, ncol(d$W), dimnames = list(c("a", "b"), colnames(d$W)))
-  Y <- matrix(rpois(2 * nrow(d$W), 3), 2, dimnames = list(c("a", "b"), NULL))
-  expect_error(
-    spiDE:::.polishFit(Y, d$W, A0, c(1, 1), rep(0, ncol(d$W) - 1L)),
-    "re.celltype")
+  # SpaNorm::polishNB() checks the length as well, but its message cannot name
+  # a spiDE argument, so polishSpiDE() checks first
+  spe <- buildNiches(spiDE:::.toySPE(n_genes = 10, n_per = 50), sigma = 30)
+  f0 <- fitSpiDE(spe, "condition", sigma = 30, random = "none", verbose = FALSE)
+  p <- ncol(fits(f0)[[1]]@W)
+  expect_error(polishSpiDE(f0, spe, lambda.a = rep(0, p - 1L), verbose = FALSE),
+               "re.celltype")
+  expect_error(spiDE:::.checkPolishPenalty(rep(0, p - 1L), p),
+               sprintf("%d here, %d supplied", p, p - 1L))
+  expect_true(spiDE:::.checkPolishPenalty(0, p))
+  expect_true(spiDE:::.checkPolishPenalty(rep(0, p), p))
 })
 
 test_that("an underflowed fitted mean does not become a NaN statistic", {
@@ -388,7 +410,7 @@ test_that("the absorbed covariance equals the dense one on the TESTED columns", 
   d <- toy_design()
   set.seed(11)
   w <- runif(nrow(d$W), 0.2, 3)
-  sv <- spiDE:::.newtonSolver(d$W, d$pen, d$nested)
+  sv <- SpaNorm::nbNewtonSolver(d$W, d$pen, d$nested)
 
   info <- crossprod(d$W * sqrt(w))
   diag(info) <- diag(info) + d$pen
@@ -416,7 +438,7 @@ test_that("the absorbed covariance equals the dense one on the TESTED columns", 
 # sane start on every pass because their converged fit has a fitted log-mean
 # below -10. A warm pass is a few damped Newton steps at the held dispersion.
 
-test_that(".polishFit's warm re-polish at a nearby penalty matches the cold one", {
+test_that("polishNB's warm re-polish at a nearby penalty matches the cold one", {
   d <- toy_design()
   ng <- 5
   A0 <- matrix(0, ng, ncol(d$W), dimnames = list(paste0("G", seq_len(ng)),
@@ -427,15 +449,16 @@ test_that(".polishFit's warm re-polish at a nearby penalty matches the cold one"
     rnbinom(nrow(d$W), mu = as.numeric(mu), size = 1 / 0.4)
   }, numeric(nrow(d$W))))
   dimnames(Y) <- list(rownames(A0), NULL)
-  re_group <- ifelse(d$nested, "SampleCellTypeInt", NA_character_)
-  first <- spiDE:::.polishFit(Y, d$W, A0, rep(0.4, ng), d$pen, re_group)
+  first <- SpaNorm::polishNB(Y, d$W, A0, rep(0.4, ng), lambda.a = d$pen,
+                             absorb = d$nested)
 
   # one Schall step's worth of change in the nested penalty
   pen2 <- d$pen
   pen2[d$nested] <- 2 * pen2[d$nested]
-  cold <- spiDE:::.polishFit(Y, d$W, first$alpha, first$psi, pen2, re_group)
-  warm <- spiDE:::.polishFit(Y, d$W, first$alpha, first$psi, pen2, re_group,
-                             warm = TRUE)
+  cold <- SpaNorm::polishNB(Y, d$W, first$alpha, first$psi, lambda.a = pen2,
+                            absorb = d$nested)
+  warm <- SpaNorm::polishNB(Y, d$W, first$alpha, first$psi, lambda.a = pen2,
+                            absorb = d$nested, warm = TRUE)
 
   expect_equal(warm$alpha, cold$alpha, tolerance = 1e-3)
   # the dispersion is held: its profile optimum moves at second order in the
@@ -463,23 +486,23 @@ test_that("a warm re-polish keeps a converged fit whose fitted log-mean is below
   ct_cols <- c(TRUE, TRUE, rep(FALSE, 9))
   y <- rnbinom(n, mu = exp(1.5), size = 2)
   y[ct == "B"] <- 0L
-  solver <- spiDE:::.newtonSolver(W, pen, nested)
 
-  first <- spiDE:::.polishGene(y, W, rep(0, ncol(W)), 0.5, pen, solver,
-                               ct_cols = ct_cols)
-  expect_lt(min(as.numeric(W %*% first$alpha)), -10)
+  first <- polish_gene(y, W, rep(0, ncol(W)), 0.5, pen, absorb = nested,
+                       start.cols = ct_cols)
+  a1 <- first$alpha[1, ]
+  expect_lt(min(as.numeric(W %*% a1)), -10)
   # the cold path restarts it -- the trap the warm path must avoid
-  cold <- spiDE:::.polishGene(y, W, first$alpha, first$psi, pen, solver,
-                              ct_cols = ct_cols)
-  expect_false(cold$restarted)   # a converged zero-count intercept is not a degenerate start
-  warm <- spiDE:::.polishGene(y, W, first$alpha, first$psi, pen, solver,
-                              ct_cols = ct_cols, warm = TRUE)
-  expect_false(warm$restarted)
-  expect_true(warm$polished)
+  cold <- polish_gene(y, W, a1, first$psi, pen, absorb = nested,
+                      start.cols = ct_cols)
+  expect_false(cold$polish$restarted)   # a converged zero-count intercept is not a degenerate start
+  warm <- polish_gene(y, W, a1, first$psi, pen, absorb = nested,
+                      start.cols = ct_cols, warm = TRUE)
+  expect_false(warm$polish$restarted)
+  expect_true(warm$polish$polished)
   # the identified coefficients stay put; the unidentified intercept stays
   # where the converged fit left it rather than at the sane start (-6.9)
-  expect_equal(warm$alpha[-2], first$alpha[-2], tolerance = 1e-4)
-  expect_lt(warm$alpha[2], -10)
+  expect_equal(warm$alpha[1, -2], a1[-2], tolerance = 1e-4)
+  expect_lt(warm$alpha[1, 2], -10)
   expect_equal(warm$psi, first$psi)
 })
 
@@ -500,7 +523,8 @@ test_that("forked polish workers run BLAS single-threaded and leave the parent a
   expect_equal(got, c(1L, 1L))
   expect_equal(RhpcBLASctl::blas_get_num_procs(), 2L)
 
-  # and .polishFit applies it whenever it has more than one worker
+  # and the polish (SpaNorm::polishNB(), which carries its own copy of the
+  # wrapper) applies it whenever it has more than one worker
   d <- toy_design()
   ng <- 4
   A0 <- matrix(0, ng, ncol(d$W), dimnames = list(paste0("G", seq_len(ng)),
@@ -510,10 +534,9 @@ test_that("forked polish workers run BLAS single-threaded and leave the parent a
     rnbinom(nrow(d$W), mu = as.numeric(mu), size = 1 / 0.4)
   }, numeric(nrow(d$W))))
   dimnames(Y) <- list(rownames(A0), NULL)
-  re_group <- ifelse(d$nested, "SampleCellTypeInt", NA_character_)
   msgs <- capture_messages(
-    spiDE:::.polishFit(Y, d$W, A0, rep(0.4, ng), d$pen, re_group,
-                       BPPARAM = bp, verbose = TRUE))
+    SpaNorm::polishNB(Y, d$W, A0, rep(0.4, ng), lambda.a = d$pen,
+                      absorb = d$nested, BPPARAM = bp, verbose = TRUE))
   expect_match(paste(msgs, collapse = " "), "one BLAS thread per worker")
   expect_equal(RhpcBLASctl::blas_get_num_procs(), 2L)
 })

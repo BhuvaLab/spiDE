@@ -100,10 +100,14 @@ magnitude per gene); the parent process is left as it was.}
 \item{engine}{\code{"batch"} (the default) converges a block of genes
 together, so the design is read once per batch rather than once per gene;
 \code{"gene"} is the original per-gene loop, kept as the reference
-implementation. The two agree to ~5e-13 on the coefficients with identical
-convergence flags and iteration counts, but \code{"batch"} is not
-invariant to the batch boundary at machine precision -- BLAS blocks a
-many-row product differently from a one-row one.}
+implementation. With the dispersion held fixed the two agree to ~5e-13 on
+the coefficients with identical convergence flags and iteration counts,
+but \code{"batch"} is not invariant to the batch boundary at machine
+precision -- BLAS blocks a many-row product differently from a one-row
+one. Under the default \code{psi = "profile"} the two dispersion searches
+differ (a fixed-iteration bisection on the score for \code{"batch"},
+\code{stats::optimize()} for \code{"gene"}), so they agree only to the
+per-gene search's tolerance, about 1e-4 in \code{psi}.}
 
 \item{batch.size}{genes per batched Newton. The default comes from a memory
 budget (\code{options(spiDE.polish.mem.budget = )}, bytes per worker),

@@ -566,14 +566,18 @@ $$
   - \frac1\psi\log\big(1+\psi\hat\mu_{c,g}\big)\Big] ,
 $$
 
-maximise it over $\log\psi$ on a bounded interval (`psi.range`, by default
-$[10^{-3}, 10^{3}]$) with a one-dimensional search (`stats::optimize`),
-re-polish the coefficients at the new $\psi_g$, and repeat the pair once, so
-the returned $(\hat\theta, \hat\psi_g)$ is a joint optimum to the stated
-tolerance. A gene that carries no information about overdispersion — all
-zero, or effectively Poisson — has a profile likelihood that is monotone in
-$\psi$, so the search returns a *bound*, not an estimate; such a gene keeps
-the moderated value and is flagged `psi_bound` in `@polish`.
+maximise it over $\log\psi$ on a bounded interval (`SpaNorm::polishNB()`'s
+`psi.range`, by default $[10^{-3}, 10^{3}]$ and not itself an argument of
+`polishSpiDE()`) with a fixed-iteration bisection on the score, the default
+engine's own search (`engine = "batch"`, `SpaNorm::.psiProfileBatch()`); the
+per-gene reference engine (`engine = "gene"`) instead calls `stats::optimize()`
+on the same interval, at that function's own tolerance. Either way, the
+search re-polishes the coefficients at the new $\psi_g$ and repeats the pair
+once, so the returned $(\hat\theta, \hat\psi_g)$ is a joint optimum to the
+stated tolerance. A gene that carries no information about overdispersion —
+all zero, or effectively Poisson — has a profile likelihood that is monotone
+in $\psi$, so the search returns a *bound*, not an estimate; such a gene
+keeps the moderated value and is flagged `psi_bound` in `@polish`.
 
 `psi = "moderated"` keeps `fitNB`'s value and converges only the
 coefficients, which skips the profile search and the two re-polishes it
@@ -629,9 +633,10 @@ makes the per-gene polish affordable on a cohort.
 The Schur complement is the Frisch–Waugh–Lovell theorem in matrix form:
 $S$ is precisely the information of the dense columns *after the group
 indicators have been partialled out* — the centring described earlier, done
-by algebra rather than by subtracting means. `.newtonSolver()` verifies the
-partition (each row of $Z$ sums to one) before relying on it, and
-`.blockedInference()` uses the same absorption to form each gene's covariance.
+by algebra rather than by subtracting means. `SpaNorm::nbNewtonSolver()`, which
+the polish runs on, verifies the partition (each row of $Z$ sums to one) before
+relying on it, and `.blockedInference()` uses the same absorption to form each
+gene's covariance.
 
 ## The variance components from the converged fit
 
