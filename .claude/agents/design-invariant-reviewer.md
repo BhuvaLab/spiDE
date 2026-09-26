@@ -15,11 +15,12 @@ the hunk *fails* to do, not by what it adds.
 
 1. **Fit whole, infer blocked.** `fitSpiDE()` passes the entire gene set to
    one `SpaNorm::fitNB()` call per bandwidth, because `fitNB` moderates
-   dispersion across all genes. Only `.blockedInference()` and `.polishFit()`
-   chunk genes (`.chunkGenes()`, `block.size`, `BPPARAM`). Flag any gene
-   subsetting of `Y` before or inside the fit, and any inference or polish
-   code that reaches across gene blocks (a per-gene quantity is fine; a
-   cross-gene statistic computed inside a block is not).
+   dispersion across all genes. Only `.blockedInference()` (in spiDE) and
+   `SpaNorm::polishNB()` (the polish stage's blocking, which moved into
+   SpaNorm) chunk genes (`.chunkGenes()`, `block.size`, `BPPARAM`). Flag any
+   gene subsetting of `Y` before or inside the fit, and any inference or
+   polish code that reaches across gene blocks (a per-gene quantity is fine;
+   a cross-gene statistic computed inside a block is not).
 
 2. **No covtype literals downstream.** Which tag is the tested tag is decided
    only by `.testedCols()` / `.nicheTestCols()` in `R/design.R`, keyed off the
@@ -47,7 +48,8 @@ the hunk *fails* to do, not by what it adds.
    warning. A new inversion must follow the treatment of its site type.
 
 6. **Backends behave identically.** Helpers in `R/inference-batch.R`
-   (`.rowsOf()`, `.gramBatch()`, ...) take a base matrix or a torch tensor.
+   (`.rowsOf()`, ...) and `SpaNorm::nbGramBatch()` (the batched gram, moved
+   out of spiDE's own `.gramBatch()`) take a base matrix or a torch tensor.
    Flag a new code path that only works for one, a hard `torch::` call
    outside a `requireNamespace` guard (torch is in Suggests), and a memory
    budget (`.inferenceBlockSize()`, `.covBatchSize()`) bypassed on either

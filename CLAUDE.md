@@ -508,9 +508,11 @@ gene by profile ML (`psi = "profile"`, the default) and can keep edgeR's cross-g
 cohort's calls, but the moderated value is whatever the shared fit left (fifteen times the
 converged value on `.toyClustered()`), and the variance-component step needs the converged one. The nested indicator block
 is absorbed by a Schur complement inside `SpaNorm::nbNewtonSolver()`, so the per-gene Newton cost is one
-dense-column gram regardless of how many groups exist — but `.blockedInference()` still forms
-a **dense** per-gene gram over the full design, so with ~660 extra columns real-cohort
-inference is ~8× slower; absorbing it there is deferred to its own spec. And two corollaries
+dense-column gram regardless of how many groups exist — and `.blockedInference()` absorbs the
+same block when it forms each gene's covariance (5136adb): the CPU path via `absorb$solver$xcov`,
+the batched/device path via `SpaNorm::nbAbsorbGramBatch()`, both exact (agreeing with the dense
+inverse to 7e-21) and a 6.2× saving at the real cohort's shape (77,454 cells, 345 dense + 660
+nested columns). And two corollaries
 of the finding itself: the shuffle null is a complete null only for within-group slopes, so under the shipped
 design it carried the same confound as the real data (why real and null were indistinguishable); and
 the between-sample association is real and should be tested at the patient level, not reported as
