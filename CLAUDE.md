@@ -47,7 +47,10 @@ Regenerate the shipped example dataset (`data/toySpiDE.rda`) with `source("data-
 
 `longtests/testthat/` holds the slow numerical checks (mixed-effects numerics, GSEA numerics,
 niche-only calibration). `devtools::test()` does **not** run them and neither does CI — run one
-explicitly, e.g. `testthat::test_file("longtests/testthat/test-mixed-numerics.R")`.
+explicitly, e.g. `testthat::test_file("longtests/testthat/test-mixed-numerics.R")`. One of them,
+`test-polish-golden.R`, is a tolerance-0 local move gate (not a cross-platform check) and is
+opt-in even within `longtests/`: it skips unless `SPIDE_RUN_GOLDEN=true`, e.g.
+`SPIDE_RUN_GOLDEN=true Rscript -e 'testthat::test_file("longtests/testthat/test-polish-golden.R")'`.
 
 Project automations live in `.claude/` (allowlisted in `.gitignore`, so they are shared):
 two hooks (`r-parse-check.sh` parses every edited `.R` file; `protect-canonical-tables.sh` blocks
