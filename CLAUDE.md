@@ -159,8 +159,8 @@ report one as the other.
    threads (the gram is memory-bound). Both blocked stages (`.polishFit()`, now
    `SpaNorm::polishNB()`, and `.blockedInference()`) dispatch through
    `.bplapplySingleBLAS()` — spiDE's own copy for inference, SpaNorm's own copy for the polish —
-   which sets one BLAS thread inside each worker (RhpcBLASctl in
-   Suggests); any driver that forks workers must do the same for code that predates it. (2) **The re-polish is warm** (`.polishGene(warm =
+   which sets one BLAS thread inside each worker (RhpcBLASctl: an Import in spiDE, in Suggests
+   and guarded in SpaNorm); any driver that forks workers must do the same for code that predates it. (2) **The re-polish is warm** (`.polishGene(warm =
    TRUE)`, now `SpaNorm::polishNB(warm = TRUE)`): a few Newton steps at the held dispersion, no psi search, no restart check (that
    check threw ~100 of 769 genes back to the sane start on every re-polish at bandwidth 10).
    (3) **The loop converges**: Schall's map is linear and slow for the nested block (6-12% above
