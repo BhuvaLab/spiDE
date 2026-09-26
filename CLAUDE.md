@@ -131,8 +131,13 @@ report one as the other.
 
 2b. **Polish** — `polishSpiDE()` (`R/polish.R`). Per gene, damped Newton on the gene's own
    penalised NB log-likelihood from a sane start (blocked and dispatched like inference), the
-   dispersion by profile ML at the converged mean (or `psi = "moderated"` to keep `fitNB`'s), then
-   for a mixed fit the variance components re-estimated from the converged fit: one Schall step
+   dispersion by profile ML at the converged mean (or `psi = "moderated"` to keep `fitNB`'s). The
+   per-gene engine itself — the damped Newton solver, the sane restart, the profile dispersion —
+   now lives in SpaNorm (2026-09-26, spiDE 0.99.22 / SpaNorm 1.7.13): `SpaNorm::polishNB()` and
+   `SpaNorm::nbProfilePsi()` do the per-gene work; `polishSpiDE()` keeps which columns the solver
+   absorbs and starts from (`.absorbSpec()`/`.absorbBatchSpec()`, `.testedStartCols()`), the
+   penalty it must respect, and the variance-component loop around it. For a mixed fit the
+   variance components are re-estimated from the converged fit: one Schall step
    (`.schallStep()`, shared with the fit's loop) with the polished coefficients and the
    gene-averaged weights at the polished mean and dispersion, a re-polish at the new penalty,
    iterated to `tau2.tol`, and `.satterthwaiteDF()` recomputed. **Why the re-estimate exists**
@@ -151,10 +156,12 @@ report one as the other.
    then forks `NCPU` polish workers, each inheriting that count -- 4 x 8 threads on 8 cores.
    At the cohort's design shape, 4 workers x 4 threads on 4 cores take 2.3-2.6 s per Newton
    step against 0.24-0.28 s at one thread each (9x), and one worker gains only 1.5x from four
-   threads (the gram is memory-bound). Both blocked stages (`.polishFit()` and `.blockedInference()`) now dispatch through
-   `.bplapplySingleBLAS()`, which sets one BLAS thread inside each worker (RhpcBLASctl in
+   threads (the gram is memory-bound). Both blocked stages (`.polishFit()`, now
+   `SpaNorm::polishNB()`, and `.blockedInference()`) dispatch through
+   `.bplapplySingleBLAS()` — spiDE's own copy for inference, SpaNorm's own copy for the polish —
+   which sets one BLAS thread inside each worker (RhpcBLASctl in
    Suggests); any driver that forks workers must do the same for code that predates it. (2) **The re-polish is warm** (`.polishGene(warm =
-   TRUE)`): a few Newton steps at the held dispersion, no psi search, no restart check (that
+   TRUE)`, now `SpaNorm::polishNB(warm = TRUE)`): a few Newton steps at the held dispersion, no psi search, no restart check (that
    check threw ~100 of 769 genes back to the sane start on every re-polish at bandwidth 10).
    (3) **The loop converges**: Schall's map is linear and slow for the nested block (6-12% above
    its limit after the old cap of three, in 13 of 15 runs), so `.tau2Iterate()` is
@@ -208,8 +215,10 @@ approximation. When modifying either stage, preserve this split.
 
 Both stages take `backend = c("auto", "cpu", "gpu")`, forwarded to `fitNB` for the fit and used by
 `.blockedInference()` for the batched per-gene Wald covariance. The batching helpers live in
-`R/inference-batch.R` and must behave identically on a base R matrix and a torch tensor (`.rowsOf()`,
-`.gramBatch()`); two independent memory budgets bound them (`.inferenceBlockSize()` for the gene
+`R/inference-batch.R` and must behave identically on a base R matrix and a torch tensor (`.rowsOf()`
+here; the Gram matrices themselves, plain and with the nested block absorbed, are built by
+`SpaNorm::nbGramBatch()`/`SpaNorm::nbAbsorbGramBatch()`); two independent memory budgets bound them
+(`.inferenceBlockSize()` for the gene
 block, `.covBatchSize()` for the covariance sub-batch — the latter applies on **both** backends), and
 `gpu.mem.budget` overrides the GPU one. GPU is opt-in via `SpaNorm::checkGPU()`; `torch` is only in
 `Suggests`, so nothing here may hard-depend on it.
@@ -495,7 +504,7 @@ gene by profile ML (`psi = "profile"`, the default) and can keep edgeR's cross-g
 (`psi = "moderated"`, the cheaper rule); the two are indistinguishable on the null and in the
 cohort's calls, but the moderated value is whatever the shared fit left (fifteen times the
 converged value on `.toyClustered()`), and the variance-component step needs the converged one. The nested indicator block
-is absorbed by a Schur complement inside `.newtonSolver()`, so the per-gene Newton cost is one
+is absorbed by a Schur complement inside `SpaNorm::nbNewtonSolver()`, so the per-gene Newton cost is one
 dense-column gram regardless of how many groups exist — but `.blockedInference()` still forms
 a **dense** per-gene gram over the full design, so with ~660 extra columns real-cohort
 inference is ~8× slower; absorbing it there is deferred to its own spec. And two corollaries

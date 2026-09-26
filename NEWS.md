@@ -1,3 +1,15 @@
+# spiDE 0.99.22
+
+## Changes
+
+* **The per-gene polish engine moved to SpaNorm.** `polishSpiDE()`'s damped Newton solver,
+  sane restart and profile dispersion are now `SpaNorm::polishNB()` and
+  `SpaNorm::nbProfilePsi()` (requires SpaNorm >= 1.7.13); spiDE keeps what is its own --
+  which columns the solver absorbs and starts from (`.absorbSpec()`/`.absorbBatchSpec()`,
+  `.testedStartCols()`), the ridge penalty, and the variance-component (`tau2`) loop around
+  the polish. Outputs are unchanged: `longtests/testthat/test-polish-golden.R` pins the
+  golden fixture to tolerance 0 before and after the rewire.
+
 # spiDE 0.99.21
 
 ## Changes
