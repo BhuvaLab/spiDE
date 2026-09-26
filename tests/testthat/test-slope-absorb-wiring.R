@@ -182,7 +182,12 @@ test_that("the batched (shared-factor) polish of a slope fit runs and matches th
   testthat::local_mocked_bindings(
     checkGPU = function(...) TRUE,
     toGPUMatrix = function(x, ...) x,
-    .requireFloat64 = function(...) invisible(TRUE),
+    # SpaNorm::polishNB() calls the internal .requireFloat64() with no
+    # arguments, whose default `dtype = getBackendDtype()` is evaluated at
+    # that call (test-polish-backend.R relies on the same mechanism), so
+    # mocking the exported getBackendDtype() reaches the real refusal check
+    # instead of mocking the internal directly.
+    getBackendDtype = function(...) "float64",
     .package = "SpaNorm"
   )
   dev <- SpaNorm::polishNB(d$Y, f@W, f@alpha, f@psi, lambda.a = d$pen,
