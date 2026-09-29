@@ -1,5 +1,6 @@
 # Generics for the spiDE user-facing API. Methods are defined in the
-# corresponding implementation files (buildNiches.R, fitSpiDE.R, etc.).
+# corresponding implementation files (buildNiches.R, fitSpiDE.R, testSpiDE.R,
+# ...). Add a new exported generic here, not inline in its implementation file.
 
 #' @rdname buildNiches
 #' @export
@@ -9,17 +10,13 @@ setGeneric("buildNiches", function(spe, ...) standardGeneric("buildNiches"))
 #' @export
 setGeneric("mergeNiches", function(spe, groups, ...) standardGeneric("mergeNiches"))
 
-#' @rdname computeSizeFactors
-#' @export
-setGeneric("computeSizeFactors", function(spe, ...) standardGeneric("computeSizeFactors"))
-
 #' @rdname fitSpiDE
 #' @export
 setGeneric("fitSpiDE", function(spe, condition = NULL, ...) standardGeneric("fitSpiDE"))
 
 #' @rdname testSpiDE
 #' @export
-setGeneric("testSpiDE", function(object, ...) standardGeneric("testSpiDE"))
+setGeneric("testSpiDE", function(object, condition = NULL, ...) standardGeneric("testSpiDE"))
 
 #' @rdname spiDE
 #' @export
@@ -29,26 +26,14 @@ setGeneric("spiDE", function(spe, condition = NULL, ...) standardGeneric("spiDE"
 #' @export
 setGeneric("results", function(object, ...) standardGeneric("results"))
 
-#' @rdname fits
+#' @rdname patientSlopes
 #' @export
-setGeneric("fits", function(object) standardGeneric("fits"))
+setGeneric("patientSlopes", function(object, ...) standardGeneric("patientSlopes"))
 
-#' @rdname bandwidths
+#' @rdname testNicheAbundance
 #' @export
-setGeneric("bandwidths", function(object) standardGeneric("bandwidths"))
+setGeneric("testNicheAbundance", function(spe, ...) standardGeneric("testNicheAbundance"))
 
 #' @rdname spiGSEA
 #' @export
-# `spe` defaults to NULL in the GENERIC as well as the method: testSpiDE()
-# stores the inter-gene correlation on each fit, so the counts are usually not
-# needed, and a generic without the default makes the argument mandatory no
-# matter what the method signature says.
-setGeneric("spiGSEA", function(object, spe = NULL, genesets, ...)
-  standardGeneric("spiGSEA"))
-#' @rdname compositionTest
-#' @export
-setGeneric("compositionTest", function(spe, ...) standardGeneric("compositionTest"))
-
-#' @rdname polishSpiDE
-#' @export
-setGeneric("polishSpiDE", function(object, spe, ...) standardGeneric("polishSpiDE"))
+setGeneric("spiGSEA", function(object, genesets, ...) standardGeneric("spiGSEA"))

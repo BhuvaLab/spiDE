@@ -1,12 +1,18 @@
 #' spiDE: context-specific, neighbourhood-dependent differential expression
 #'
-#' spiDE tests how gene expression within an *index* cell type changes with an
-#' experimental *condition* as a function of the local density (*niche*) of
-#' surrounding cell types, in spatial transcriptomics data. The workflow is:
-#' build niche covariates ([buildNiches()]), fit a per-gene negative binomial
-#' GLM over an interaction design ([fitSpiDE()]) using the SpaNorm engine, and
-#' test neighbourhood effects with combined Wald statistics and a hierarchical
-#' FDR ([testSpiDE()]). [spiDE()] wraps the three steps.
+#' spiDE asks, in spatial transcriptomics data, whether a gene's expression in
+#' an \emph{index} cell type changes with the local density (the \emph{niche})
+#' of another cell type, within patients, and whether that dependence differs
+#' between two conditions. Build niche covariates with [buildNiches()], fit the
+#' per-patient niche models with [fitSpiDE()] (the slopes or sandwich engine),
+#' and test them with [testSpiDE()]: the pooled niche test, and the
+#' condition-specific test when a condition is given. [spiDE()] chains the
+#' three. [testNicheAbundance()] asks the different, between-patient question
+#' of whether patients with more of a niche type express genes differently.
+#'
+#' The mixed-effects engine of spiDE <= 0.99.22 is archived as the research
+#' package spiDEmixed (research/mixed in the spiDE repository); read objects
+#' saved by it with \code{spiDEmixed::readSpiDE()}.
 #'
 #' @keywords internal
 #' @name spiDE-package
