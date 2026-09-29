@@ -37,7 +37,12 @@
 #'   fit's slope), \code{mean_expr} and \code{ncells}. For the sandwich engine
 #'   it holds \code{genes}, \code{niches} and a data.frame \code{coef} of the
 #'   tested coefficients (\code{test} = "pooled" or "condition") with their
-#'   CR2 standard errors and Bell-McCaffrey degrees of freedom.
+#'   CR2 standard errors and Bell-McCaffrey degrees of freedom. Both hold
+#'   \code{status} (genes fitted, genes the solver could not fit, which are
+#'   left out, and genes whose dispersion is on its search bound) and, under
+#'   \code{depth = "spatial_spline"}, \code{depth_r2} (patients x niches: the
+#'   \eqn{R^2} of each niche column on the patient's library-size spline, a
+#'   diagnostic of how much of the niche covariate the spline could absorb).
 #' @return An object of class \code{SpiDEFit}, created by [fitSpiDE()]; its
 #'   \code{$} accessor returns a slot, and \code{show()} prints a summary.
 #' @exportClass SpiDEFit
@@ -138,10 +143,16 @@ setMethod("show", "SpiDEResults", function(object) {
 #' @param x a SpiDEFit or SpiDEResults.
 #' @param name a slot name.
 #' @export
-setMethod("$", "SpiDEFit", function(x, name) methods::slot(x, name))
+setMethod("$", "SpiDEFit", function(x, name) {
+  .assertCurrent(x)
+  methods::slot(x, name)
+})
 
 #' @rdname SpiDEResults-class
 #' @param x a SpiDEResults.
 #' @param name a slot name.
 #' @export
-setMethod("$", "SpiDEResults", function(x, name) methods::slot(x, name))
+setMethod("$", "SpiDEResults", function(x, name) {
+  .assertCurrent(x)
+  methods::slot(x, name)
+})

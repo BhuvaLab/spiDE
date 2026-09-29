@@ -83,4 +83,7 @@ setMethod("patientSlopes", "SpiDEFit", function(object, gene = NULL, index = NUL
 
 #' @rdname patientSlopes
 #' @export
-setMethod("patientSlopes", "SpiDEResults", function(object, ...) patientSlopes(object@fit, ...))
+setMethod("patientSlopes", "SpiDEResults", function(object, ...) {
+  .assertCurrent(object)
+  patientSlopes(object@fit, ...)
+})

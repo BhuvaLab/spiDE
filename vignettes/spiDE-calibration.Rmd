@@ -127,7 +127,8 @@ patients, or as a check.
 # Not yet measured
 
 - **Depth.** `depth = "loglib"` (one slope per gene on the centred log library
-  size) is the only option measured. A benchmark with a spatially varying,
+  size) is the only option measured; `"nonlinear"`, `"spatial_spline"` and a
+  SpaNorm offset are implemented and unmeasured. A benchmark with a spatially varying,
   gene-specific library-size model fitted to real cohorts, judging depth
   handling against the estimand rather than by residual library-size
   association, is under way; this section will report it.

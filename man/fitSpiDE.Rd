@@ -18,7 +18,7 @@ fitSpiDE(spe, condition = NULL, ...)
   sample_id = "sample_id",
   section = NULL,
   covariates = character(),
-  depth = c("loglib", "nonlinear", "none"),
+  depth = c("loglib", "nonlinear", "spatial_spline", "none"),
   offset = NULL,
   strata = NULL,
   assay = "counts",
@@ -68,8 +68,13 @@ for (centred; patient-level ones are absorbed by the patient intercepts).}
 \item{depth}{how sequencing depth enters: \code{"loglib"} (default, the
 centred log library size as a covariate with a slope per gene),
 \code{"nonlinear"} (a natural cubic spline of it with 3 df, knots at the
-index type's quantiles, so the depth response of each gene may bend) or
-\code{"none"} (e.g. when \code{offset} carries depth).}
+index type's quantiles, so the depth response of each gene may bend),
+\code{"spatial_spline"} (a library-size spline within each patient: per
+section, log library size and its product with a smooth tensor spline of
+position, absorbed with the patient's intercept, so each gene's depth
+effect may vary over the section as in SpaNorm's \eqn{\log LS \cdot
+h_g(x, y)} term, fitted jointly with the niche terms) or \code{"none"}
+(e.g. when \code{offset} carries depth).}
 
 \item{offset}{\code{NULL} or the name of an assay holding a log-scale
 offset per gene and cell (added to every linear predictor with its

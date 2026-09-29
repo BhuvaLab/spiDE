@@ -144,6 +144,17 @@ checkSample <- function(spe, condition = NULL, sample_id = "sample_id",
 
 # fdr must be a single value in (0, 1]; 1 is allowed as the "show everything"
 # threshold (see testSpiDE()'s documentation).
+# A colData column named by an optional argument (NULL = not used).
+checkColumn <- function(spe, column, what) {
+  if (is.null(column)) return(invisible(TRUE))
+  if (!is.character(column) || length(column) != 1L ||
+      !column %in% colnames(SummarizedExperiment::colData(spe))) {
+    stop(sprintf("%s column '%s' not found in colData(spe)", what, paste(column, collapse = ", ")),
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 checkFdr <- function(fdr) {
   if (!is.numeric(fdr) || length(fdr) != 1 || is.na(fdr) || fdr <= 0 || fdr > 1) {
     stop("'fdr' should be a single numeric value in (0, 1]")

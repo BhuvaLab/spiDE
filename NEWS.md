@@ -18,6 +18,18 @@ and the API changes with it. Nothing below is backward compatible.
   with a within-patient spatial sandwich variance; `engine = "sandwich"` fits
   the condition-specific model and uses a patient-clustered CR2 sandwich with
   Bell-McCaffrey degrees of freedom. One bandwidth per fit.
+* **Depth.** `depth = "loglib"` (default, one slope per gene on the centred
+  log library size), `"nonlinear"` (a 3-df natural spline of it),
+  `"spatial_spline"` (a library-size spline within each patient: per
+  section, log library size times a smooth tensor spline of position,
+  absorbed with the patient's intercept, as in SpaNorm's library-size term)
+  or `"none"`, and `offset =` an assay of per-gene log offsets (e.g. SpaNorm's
+  library-size component). Only `"loglib"` has been through the calibration
+  nulls; the others are being benchmarked (`research/bench2/`).
+* **Fit status.** A gene the solver cannot fit is left out rather than
+  tested at its starting values, and a gene whose dispersion optimum is on
+  its search bound takes that bound, with its mean refitted there; both are
+  counted per index type in the fit (`status`).
 * **`testSpiDE()`** always runs the **pooled** test (is the niche slope
   non-zero across patients?) and, given a `condition`, the
   **condition-specific** test (does it differ between conditions?). By default

@@ -35,6 +35,9 @@
   nt <- length(des$tested_niche)
   jn <- des$niche_cols                       # pooled slope columns in W, tested first
   rows_of <- split(seq_along(des$patient), factor(des$patient, levels = seq_len(S)))
+  # each patient's absorbed block (its intercept, and under depth =
+  # "spatial_spline" its library-size spline) over its own cells
+  Z_of <- lapply(seq_len(S), function(s) des$W[rows_of[[s]], des$block_cols[[s]], drop = FALSE])
   one <- function(gi) {
     b <- v <- vm <- matrix(NA_real_, length(gi), S * nt)
     for (a in seq_along(gi)) {
@@ -50,9 +53,13 @@
         i <- rows_of[[s]]
         if (length(i) < min.cells) next
         ws <- w[i]; Ls <- L[i, , drop = FALSE]
-        Lt <- sweep(Ls, 2, colSums(Ls * ws) / sum(ws))
+        Lt <- .partialBlock(Ls, ws, Z_of[[s]])
+        if (is.null(Lt)) next
         Is <- crossprod(Lt * sqrt(ws))
         us <- colSums(Lt * r[i])
+        # a non-finite weight or residual (an overflowing mean) would make
+        # eigen() stop and take the whole gene block with it: this patient drops
+        if (!all(is.finite(Is)) || !all(is.finite(us))) next
         e <- eigen(Is, symmetric = TRUE)
         # a patient whose niche columns are (near) collinear within its cells
         # gives no usable slope for this gene: it drops out, not the gene

@@ -47,8 +47,13 @@
 #' @param depth how sequencing depth enters: \code{"loglib"} (default, the
 #'   centred log library size as a covariate with a slope per gene),
 #'   \code{"nonlinear"} (a natural cubic spline of it with 3 df, knots at the
-#'   index type's quantiles, so the depth response of each gene may bend) or
-#'   \code{"none"} (e.g. when \code{offset} carries depth).
+#'   index type's quantiles, so the depth response of each gene may bend),
+#'   \code{"spatial_spline"} (a library-size spline within each patient: per
+#'   section, log library size and its product with a smooth tensor spline of
+#'   position, absorbed with the patient's intercept, so each gene's depth
+#'   effect may vary over the section as in SpaNorm's \eqn{\log LS \cdot
+#'   h_g(x, y)} term, fitted jointly with the niche terms) or \code{"none"}
+#'   (e.g. when \code{offset} carries depth).
 #' @param offset \code{NULL} or the name of an assay holding a log-scale
 #'   offset per gene and cell (added to every linear predictor with its
 #'   coefficient fixed at 1), e.g. the library-size component of a SpaNorm
@@ -87,7 +92,7 @@ setMethod(
   "fitSpiDE", "SpatialExperiment",
   function(spe, condition = NULL, engine = c("slopes", "sandwich"), index = NULL,
            niche = NULL, sigma = NULL, cell_type = "cell_type", sample_id = "sample_id",
-           section = NULL, covariates = character(), depth = c("loglib", "nonlinear", "none"),
+           section = NULL, covariates = character(), depth = c("loglib", "nonlinear", "spatial_spline", "none"),
            offset = NULL, strata = NULL, assay = "counts", name = "Niche", min.cells = 10L,
            min.patients = 6L, min.detect = 0.1, tile = NULL, min.tiles = 5L,
            BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
@@ -100,12 +105,8 @@ setMethod(
     sigma <- .pickSigma(spe, sigma, name)
     checkNiche(spe, sigma, name)
     cd <- SummarizedExperiment::colData(spe)
-    if (!is.null(strata) && !strata %in% colnames(cd)) {
-      stop(sprintf("strata column '%s' not found in colData(spe)", strata), call. = FALSE)
-    }
-    if (!is.null(section) && !section %in% colnames(cd)) {
-      stop(sprintf("section column '%s' not found in colData(spe)", section), call. = FALSE)
-    }
+    checkColumn(spe, strata, "strata")
+    checkColumn(spe, section, "section")
     Y <- SummarizedExperiment::assay(spe, assay)
     checkCounts(Y, integer.only = TRUE)
     if (!is.null(offset)) {
@@ -154,11 +155,14 @@ setMethod(
       pat <- factor(smp[ik])
       Yk <- Y[gk, ik, drop = FALSE]
       covk <- .indexCovariates(cov[ik, , drop = FALSE], depth)
+      blk <- if (depth == "spatial_spline") {
+        .depthBlocks(cov[ik, "loglib"], xy, sec, ik, factor(smp[ik]), L)
+      } else NULL
       Ok <- if (is.null(offset)) NULL else .indexOffset(spe, offset, gk, ik)
       if (verbose) message(sprintf("fitSpiDE: %s engine, index %s: %d genes, %d cells, %d patients, %d niches",
                                    engine, k, length(gk), length(ik), nlevels(pat), length(nc$tested)))
       stk <- if (!is.null(str_of) && engine == "sandwich") factor(str_of[as.character(pat)]) else NULL
-      des0 <- .indexDesign(L, covk, pat, strata = stk, tested = nc$tested)
+      des0 <- .indexDesign(L, covk, pat, strata = stk, tested = nc$tested, blocks = blk)
       fit0 <- .fitIndexGLM(Yk, des0, offset = Ok, BPPARAM = BPPARAM)
       if (engine == "slopes") {
         ps <- .patientSlopes(fit0, des0, Yk, L, tiles[ik], min.cells = min.cells,
@@ -166,18 +170,21 @@ setMethod(
         fits[[k]] <- c(list(genes = gk, niches = nc$tested, adjusted = setdiff(nc$cols, nc$tested),
                             patients = des0$patients), ps,
                        list(factor = .patientFactor(ps$v_tile, ps$v_model),
-                            mean_expr = Matrix::rowMeans(Yk), psi = fit0$psi))
+                            mean_expr = Matrix::rowMeans(Yk), psi = fit0$psi, status = fit0$status,
+                            depth_r2 = if (!is.null(blk)) blk$r2[, nc$tested, drop = FALSE]))
       } else {
         coef <- cbind(test = "pooled", .sandwichCR2(fit0, des0, Yk, offset = Ok, BPPARAM = BPPARAM))
         if (!is.null(trt_of)) {
           des1 <- .indexDesign(L, covk, pat, trt = unname(trt_of[as.character(pat)]), strata = stk,
-                               tested = nc$tested)
+                               tested = nc$tested, blocks = blk)
           fit1 <- .fitIndexGLM(Yk, des1, offset = Ok, BPPARAM = BPPARAM)
           coef <- rbind(coef, cbind(test = "condition", .sandwichCR2(fit1, des1, Yk, offset = Ok,
                                                                      BPPARAM = BPPARAM)))
         }
         fits[[k]] <- list(genes = gk, niches = nc$tested, adjusted = setdiff(nc$cols, nc$tested),
-                          patients = des0$patients, coef = coef, mean_expr = Matrix::rowMeans(Yk))
+                          patients = des0$patients, coef = coef, mean_expr = Matrix::rowMeans(Yk),
+                          status = fit0$status,
+                          depth_r2 = if (!is.null(blk)) blk$r2[, nc$tested, drop = FALSE])
       }
     }
     if (!length(fits)) stop("no index cell type could be fitted", call. = FALSE)
@@ -228,7 +235,10 @@ setMethod(
 # so the knots are per index type.
 .indexCovariates <- function(covk, depth) {
   if (!ncol(covk)) return(NULL)
-  if (depth == "nonlinear") {
+  if (depth == "spatial_spline") {
+    covk <- covk[, colnames(covk) != "loglib", drop = FALSE]   # depth enters through the blocks
+    if (!ncol(covk)) return(NULL)
+  } else if (depth == "nonlinear") {
     B <- splines::ns(covk[, "loglib"], df = 3L)
     colnames(B) <- paste0("loglib_ns", seq_len(ncol(B)))
     covk <- cbind(B, covk[, colnames(covk) != "loglib", drop = FALSE])

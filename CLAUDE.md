@@ -103,7 +103,12 @@ bandwidth per fit. `testNicheAbundance()` and `spiGSEA()` sit beside it.
    (`.indexDesign()`); one NB GLM per gene with `SpaNorm::polishNB()`, the patient block absorbed
    by Schur complement, profile-ML dispersion. By Frisch-Waugh-Lovell every niche coefficient is a
    within-patient slope; the patient intercepts absorb the condition main effect and every
-   between-patient composition effect.
+   between-patient composition effect. Depth: `"loglib"` (default), `"nonlinear"` (ns, 3 df),
+   `"spatial_spline"` (`.depthBlocks()`: per section, `[l, l * B]` with `B` the section's
+   tensor spline `.sectionBasis()` = `SpaNorm::tpsBasis()`, absorbed with the patient's
+   intercept as one block; inference residualises on each patient's block, `.partialBlock()`),
+   `"none"`, and `offset =` an assay of per-gene log offsets. `.fitStatus()`: genes polishNB
+   could not fit drop out; a dispersion on its search bound takes the bound, mean refitted.
    - **slopes engine** (default): one condition-free fit, then `.patientSlopes()`: each patient's
      one-step NB slope from the shared fit, with `v_model` and a within-patient spatial tile
      sandwich `v_tile` (tiles of `3 * sigma`); `.patientFactor()` = per-(patient, niche)
@@ -175,6 +180,9 @@ numbers.** Before changing a default, read:
 ### Open items
 
 - `spiGSEA()` is experimental: no gene-set null has been run.
+- Under `depth = "spatial_spline"` the sandwich engine's CR2 SE sits within ~1.5% of
+  clubSandwich's full-design CR2, whose own absorbed and full answers differ by up to 2.4% with
+  multi-column blocks; the df agree to two decimals (`tests/testthat/test-depth.R`).
 - The niche covariate's own spatial autocorrelation is unmodelled; the block null keeps it.
 
 ## Data hazards

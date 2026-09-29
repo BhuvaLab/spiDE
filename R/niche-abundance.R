@@ -34,8 +34,12 @@
     ik <- ik[ok]; grp <- grp[ok]
     # pseudobulk: sum counts over the type-k cells of each sample, then
     # log2-CPM against that sample's own type-k library size
-    Yk <- as.matrix(Y[, ik, drop = FALSE])
-    sums <- t(rowsum(t(Yk), group = grp, reorder = TRUE))         # genes x samples
+    # a product with a sparse sample indicator, so the counts are never
+    # densified whole (only genes x samples is)
+    ind <- Matrix::sparseMatrix(i = seq_along(grp), j = as.integer(grp), x = 1,
+                                dims = c(length(grp), nlevels(grp)))
+    sums <- as.matrix(Y[, ik, drop = FALSE] %*% ind)                 # genes x samples
+    colnames(sums) <- levels(grp)
     lib <- colSums(sums)
     lcpm <- log2(t((t(sums) + prior.count) / (lib + 2 * prior.count)) * 1e6)
     nm <- rowsum(log1p(NM[ik, , drop = FALSE]), group = grp, reorder = TRUE) /

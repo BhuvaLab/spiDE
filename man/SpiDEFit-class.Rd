@@ -30,7 +30,12 @@ per-patient variance factor), \code{pooled} (genes x niches: the shared
 fit's slope), \code{mean_expr} and \code{ncells}. For the sandwich engine
 it holds \code{genes}, \code{niches} and a data.frame \code{coef} of the
 tested coefficients (\code{test} = "pooled" or "condition") with their
-CR2 standard errors and Bell-McCaffrey degrees of freedom.
+CR2 standard errors and Bell-McCaffrey degrees of freedom. Both hold
+\code{status} (genes fitted, genes the solver could not fit, which are
+left out, and genes whose dispersion is on its search bound) and, under
+\code{depth = "spatial_spline"}, \code{depth_r2} (patients x niches: the
+\eqn{R^2} of each niche column on the patient's library-size spline, a
+diagnostic of how much of the niche covariate the spline could absorb).
 }
 \section{Slots}{
 

@@ -25,6 +25,8 @@
   jt <- match(des$tested, des$dense)
   pid <- des$patient; S <- des$npat
   rows_of <- split(seq_along(pid), factor(pid, levels = seq_len(S)))
+  Z_of <- lapply(seq_len(S), function(s) des$W[rows_of[[s]], des$block_cols[[s]], drop = FALSE])
+  intercept_only <- all(lengths(des$block_cols) == 1L)
   one <- function(gi) {
     out <- vector("list", length(gi))
     for (a in seq_along(gi)) {
@@ -34,11 +36,29 @@
       wr <- .workingWR(as.numeric(Yk[g, ]), des$W, al, psi,
                        offset = if (is.null(offset)) 0 else offset[g, ])
       w <- wr$w; r <- wr$r
-      sw <- rowsum(w, pid, reorder = TRUE)[, 1]
-      xbar <- rowsum(Xd * w, pid, reorder = TRUE) / sw
-      Xt <- Xd - xbar[pid, , drop = FALSE]
+      if (intercept_only) {
+        sw <- rowsum(w, pid, reorder = TRUE)[, 1]
+        xbar <- rowsum(Xd * w, pid, reorder = TRUE) / sw
+        Xt <- Xd - xbar[pid, , drop = FALSE]
+      } else {
+        # residualise on each patient's absorbed block (Frisch-Waugh-Lovell);
+        # the blocks nest within patients, so CR2 on the residualised design
+        # equals CR2 on the full one (checked against clubSandwich in
+        # tests/testthat/test-depth.R)
+        Xt <- Xd
+        for (s in seq_len(S)) {
+          i <- rows_of[[s]]
+          if (!length(i)) next
+          xs <- .partialBlock(Xd[i, , drop = FALSE], w[i], Z_of[[s]])
+          if (is.null(xs)) { Xt <- NULL; break }
+          Xt[i, ] <- xs
+        }
+        if (is.null(Xt)) next
+      }
+      if (!all(is.finite(w)) || !all(is.finite(r))) next   # an overflowing mean: the gene drops out
       Info <- crossprod(Xt * sqrt(w))
       B <- tryCatch(solve(Info), error = function(e) NULL)
+      if (!is.null(B) && !all(is.finite(B))) B <- NULL
       if (is.null(B)) next           # singular information for this gene: it drops out
       d <- ncol(Xd)
       Us <- matrix(0, d, S)

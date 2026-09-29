@@ -117,3 +117,27 @@ test_that("a mixed-model object from spiDE <= 0.99.22 is refused with the archiv
   expect_error(testSpiDE(legacy), "spiDEmixed::readSpiDE")
   expect_output(show(legacy), "legacy spiDE mixed-model fit")
 })
+
+test_that("a gene the solver could not fit drops out; a bound dispersion is refitted at the bound", {
+  set.seed(9)
+  pat <- factor(rep(sprintf("p%d", 1:6), each = 60))
+  L <- matrix(rnorm(360), 360, 1, dimnames = list(NULL, "B"))
+  des <- spiDE:::.indexDesign(L, NULL, pat, tested = "B")
+  mu <- exp(1 + 0.3 * L[, 1])
+  Y <- rbind(pois = rpois(360, mu), nb = rnbinom(360, size = 2, mu = mu))
+  rownames(Y) <- c("pois", "nb")
+  fit <- spiDE:::.fitIndexGLM(Y, des)
+  expect_equal(unname(fit$status["genes"]), 2)
+  expect_equal(unname(fit$status["psi_at_bound"]), 1)   # the Poisson gene
+  expect_equal(unname(fit$psi["pois"]), 1e-3)
+  expect_equal(unname(fit$alpha["pois", des$niche_cols]), 0.3, tolerance = 0.1)
+  expect_gt(unname(fit$psi["nb"]), 0.1)
+  # a gene marked unpolished keeps no estimate
+  fake <- fit
+  fake$polish$polished <- c(TRUE, FALSE)
+  fake$polish$psi_bound <- c(FALSE, FALSE)
+  out <- spiDE:::.fitStatus(fake, Y, des, NULL)
+  expect_true(all(is.na(out$alpha["nb", ])))
+  expect_true(is.na(out$psi["nb"]))
+  expect_equal(unname(out$status["not_fitted"]), 1)
+})
