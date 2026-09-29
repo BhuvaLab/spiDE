@@ -88,10 +88,13 @@ a change inside `research/mixed`.
 4. **Absorbed blocks nest within patients.** Each patient's absorbed block
    is its intercept plus, under `depth = "spatial_spline"`, its library-size
    spline columns (`.depthBlocks()`), zero outside the patient's cells.
-   `.indexDesign()` records them in `des$block_cols` (columns per patient) and
-   `des$absorb` (a logical for intercept-only designs, else `polishNB()`'s
-   per-column grouping by patient with `NA` for dense columns); `des$start`
-   marks the intercepts only, for `start.cols`. Downstream code assumes this:
+   Without depth blocks `.indexDesign()` returns a dense `W` whose patient
+   indicators `polishNB()` absorbs as 1x1 blocks (`des$absorb` logical). With
+   them `W` is a compact `SpaNorm::nbBlockDesign()` (dense columns first, then
+   each patient's `q` block columns, zero-padded; `des$absorb = NULL`), and
+   `des$Zs` holds each patient's own unpadded block over its cells. `des$start`
+   and `des$intercept_cols` mark the intercepts; the linear predictor is always
+   `.linPred()` and the dense columns `.denseX()`. Downstream code assumes this:
    - `.sandwichCR2()` residualises the dense columns on each patient's block
      (`.partialBlock()`, Frisch-Waugh-Lovell; plain weighted centring when
      every block is an intercept) and clusters on patients;
@@ -99,8 +102,9 @@ a change inside `research/mixed`.
      columns before the one-step slope.
 
    A new absorbed block (e.g. section or (patient x cell type) indicators)
-   must nest within patients, be added to `block_cols`, and be one group of
-   the absorb grouping.
+   must nest within patients and enter as columns of the patient's block in
+   `.depthBlocks()`-style `Zs`/`Zc`; flag any `W %*% alpha` or `W[, ...]`
+   that bypasses `.linPred()` / `.denseX()`, which a compact design breaks.
    Flag a block that crosses patients (slide, batch, condition), or an absorbed
    block whose centring the two downstream functions do not reproduce.
    Patient-level nuisance enters as `strata` x niche **dense** columns, not

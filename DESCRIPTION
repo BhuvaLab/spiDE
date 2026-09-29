@@ -35,7 +35,7 @@ Depends:
     R (>= 4.5.0)
 Imports:
     Matrix,
-    SpaNorm (>= 1.7.14),
+    SpaNorm (>= 1.7.15),
     SpatialExperiment,
     SingleCellExperiment,
     SummarizedExperiment,

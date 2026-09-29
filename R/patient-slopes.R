@@ -37,7 +37,7 @@
   rows_of <- split(seq_along(des$patient), factor(des$patient, levels = seq_len(S)))
   # each patient's absorbed block (its intercept, and under depth =
   # "spatial_spline" its library-size spline) over its own cells
-  Z_of <- lapply(seq_len(S), function(s) des$W[rows_of[[s]], des$block_cols[[s]], drop = FALSE])
+  Z_of <- .patientBlocks(des, rows_of)
   one <- function(gi) {
     b <- v <- vm <- matrix(NA_real_, length(gi), S * nt)
     for (a in seq_along(gi)) {

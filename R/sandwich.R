@@ -21,12 +21,12 @@
 
 .sandwichCR2 <- function(fit, des, Yk, offset = NULL, BPPARAM = BiocParallel::SerialParam()) {
   genes <- rownames(Yk)
-  Xd <- des$W[, des$dense, drop = FALSE]
+  Xd <- .denseX(des)
   jt <- match(des$tested, des$dense)
   pid <- des$patient; S <- des$npat
   rows_of <- split(seq_along(pid), factor(pid, levels = seq_len(S)))
-  Z_of <- lapply(seq_len(S), function(s) des$W[rows_of[[s]], des$block_cols[[s]], drop = FALSE])
-  intercept_only <- all(lengths(des$block_cols) == 1L)
+  Z_of <- .patientBlocks(des, rows_of)
+  intercept_only <- is.null(des$Zs)
   one <- function(gi) {
     out <- vector("list", length(gi))
     for (a in seq_along(gi)) {

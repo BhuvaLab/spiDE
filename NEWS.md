@@ -22,7 +22,9 @@ and the API changes with it. Nothing below is backward compatible.
   log library size), `"nonlinear"` (a 3-df natural spline of it),
   `"spatial_spline"` (a library-size spline within each patient: per
   section, log library size times a smooth tensor spline of position,
-  absorbed with the patient's intercept, as in SpaNorm's library-size term)
+  absorbed with the patient's intercept through SpaNorm's compact
+  `nbBlockDesign()` (requires SpaNorm >= 1.7.15), as in SpaNorm's
+  library-size term)
   or `"none"`, and `offset =` an assay of per-gene log offsets (e.g. SpaNorm's
   library-size component). Only `"loglib"` has been through the calibration
   nulls; the others are being benchmarked (`research/bench2/`).

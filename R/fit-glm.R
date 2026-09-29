@@ -16,14 +16,14 @@
                               dims = c(length(des$patient), des$npat))
   lm <- as.matrix(Yk %*% ind) / rep(npc, each = nrow(Yk))
   a <- matrix(0, nrow(Yk), ncol(des$W))
-  a[, seq_len(des$npat)] <- log(lm + 1e-3)
+  a[, des$intercept_cols] <- log(lm + 1e-3)
   if (!is.null(offset)) {
     mo <- if (is.matrix(offset)) {
       t(rowsum(t(offset), des$patient, reorder = TRUE)) / rep(npc, each = nrow(Yk))
     } else {
       matrix(tapply(offset, des$patient, mean), nrow(Yk), des$npat, byrow = TRUE)
     }
-    a[, seq_len(des$npat)] <- a[, seq_len(des$npat)] - mo
+    a[, des$intercept_cols] <- a[, des$intercept_cols] - mo
   }
   a
 }
@@ -58,7 +58,7 @@
   bnd <- which(!bad & (if (is.null(pol$psi_bound)) FALSE else pol$psi_bound))
   for (g in bnd) {
     o <- if (is.null(offset)) 0 else if (is.matrix(offset)) offset[g, ] else offset
-    mu <- exp(as.numeric(des$W %*% fit$alpha[g, ]) + o)
+    mu <- exp(.linPred(des$W, fit$alpha[g, ]) + o)
     y <- as.numeric(Yk[g, ])
     ll <- vapply(psi.range, function(p) sum(stats::dnbinom(y, size = 1 / p, mu = mu, log = TRUE)), numeric(1))
     fit$psi[g] <- psi.range[which.max(ll)]
@@ -83,7 +83,7 @@
 # Per-gene working quantities at the converged fit: weights w and working
 # residuals r of the NB score, w = mu / (1 + psi mu), r = (y - mu) / (1 + psi mu).
 .workingWR <- function(y, W, alpha, psi, offset = 0) {
-  mu <- exp(as.numeric(W %*% alpha) + offset)
+  mu <- exp(.linPred(W, alpha) + offset)
   list(w = mu / (1 + psi * mu), r = (y - mu) / (1 + psi * mu), mu = mu)
 }
 

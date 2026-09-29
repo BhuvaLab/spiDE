@@ -105,8 +105,10 @@ bandwidth per fit. `testNicheAbundance()` and `spiGSEA()` sit beside it.
    within-patient slope; the patient intercepts absorb the condition main effect and every
    between-patient composition effect. Depth: `"loglib"` (default), `"nonlinear"` (ns, 3 df),
    `"spatial_spline"` (`.depthBlocks()`: per section, `[l, l * B]` with `B` the section's
-   tensor spline `.sectionBasis()` = `SpaNorm::tpsBasis()`, absorbed with the patient's
-   intercept as one block; inference residualises on each patient's block, `.partialBlock()`),
+   `SpaNorm::tpsBasis()`, absorbed with the patient's intercept as one block through a compact
+   `SpaNorm::nbBlockDesign()` (SpaNorm >= 1.7.15; 3.3x faster than a dense grouped block,
+   identical fit); inference residualises on each patient's block, `.partialBlock()`;
+   `.linPred()`/`.denseX()` serve either design),
    `"none"`, and `offset =` an assay of per-gene log offsets. `.fitStatus()`: genes polishNB
    could not fit drop out; a dispersion on its search bound takes the bound, mean refitted.
    - **slopes engine** (default): one condition-free fit, then `.patientSlopes()`: each patient's

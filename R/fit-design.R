@@ -41,24 +41,20 @@
 # patient-level factor per cell, entered as strata x niche nuisance columns (its
 # main effect is absorbed by the patient intercepts) -- needed where the
 # condition is confounded with a slide or batch, whose niche slopes would
-# otherwise load onto the condition contrast. blocks: NULL or list(Z, group),
-# further per-patient absorbed columns (.depthBlocks(): the within-patient
-# library-size spline), Z zero outside its patient's cells, group the patient
-# (1..S) of each column. Each patient's intercept and its block columns are one
-# absorbed block (SpaNorm::polishNB()'s grouped absorption); block_cols lists
-# them per patient, and inference residualises on them (.partialBlock()).
+# otherwise load onto the condition contrast.
+#
+# Without blocks, W is a dense matrix [patient indicators | dense columns] and
+# polishNB() absorbs the indicators as 1x1 blocks. With blocks (.depthBlocks():
+# the within-patient library-size spline), each patient's intercept and spline
+# columns form one absorbed block, held compactly as a SpaNorm::nbBlockDesign()
+# ([dense columns | patient 1's q | patient 2's q | ...], each patient's block
+# zero-padded to the widest; the 1e-3 ridge keeps the padding at 0), which
+# costs one gram of the dense columns plus the block's q per Newton step
+# whatever the number of patients. Zs then holds each patient's own, unpadded
+# block over its cells, which inference residualises on (.partialBlock()).
 .indexDesign <- function(L, cov, patient, trt = NULL, strata = NULL, tested = colnames(L),
                          blocks = NULL) {
-  P <- stats::model.matrix(~ 0 + patient)
-  colnames(P) <- paste0("patient:", levels(patient))
-  np <- ncol(P)
-  if (!is.null(blocks)) {
-    P <- cbind(P, blocks$Z)
-    grp <- c(seq_len(np), blocks$group)
-  } else {
-    grp <- seq_len(np)
-  }
-  nb <- ncol(P)
+  np <- nlevels(patient)
   C <- if (is.null(cov)) matrix(0, nrow(L), 0) else cov
   if (!is.null(strata)) {
     st <- droplevels(factor(strata))
@@ -70,22 +66,52 @@
     }
   }
   if (is.null(trt)) {
-    W <- cbind(P, C, L)
+    X <- cbind(C, L)
     tcols <- tested
   } else {
     TN <- L * trt
     colnames(TN) <- paste0("condition:", colnames(L))
-    W <- cbind(P, C, L, TN)
+    X <- cbind(C, L, TN)
     tcols <- paste0("condition:", tested)
   }
-  absorb <- if (nb > np) c(grp, rep(NA_integer_, ncol(W) - nb)) else c(rep(TRUE, np), rep(FALSE, ncol(W) - np))
+  if (!is.null(blocks)) {
+    W <- SpaNorm::nbBlockDesign(X, blocks$Zc, patient)
+    px <- ncol(X); q <- ncol(blocks$Zc)
+    return(list(W = W, patient = as.integer(patient), patients = levels(patient), npat = np,
+                absorb = NULL, start = c(rep(FALSE, px), TRUE, rep(FALSE, q - 1L)),
+                pen = c(rep(0, px), rep(1e-3, q)), dense = seq_len(px),
+                intercept_cols = px + (seq_len(np) - 1L) * q + 1L, Zs = blocks$Zs,
+                tested = match(tcols, colnames(W)), niche_cols = match(colnames(L), colnames(W)),
+                tested_niche = tested))
+  }
+  P <- stats::model.matrix(~ 0 + patient)
+  colnames(P) <- paste0("patient:", levels(patient))
+  W <- cbind(P, X)
   list(W = W, patient = as.integer(patient), patients = levels(patient), npat = np,
-       absorb = absorb, start = c(rep(TRUE, np), rep(FALSE, ncol(W) - np)),
-       block_cols = split(seq_len(nb), factor(grp, levels = seq_len(np))),
-       pen = c(rep(1e-3, nb), rep(0, ncol(W) - nb)),
-       dense = if (ncol(W) > nb) (nb + 1L):ncol(W) else integer(),
+       absorb = c(rep(TRUE, np), rep(FALSE, ncol(X))), start = c(rep(TRUE, np), rep(FALSE, ncol(X))),
+       pen = c(rep(1e-3, np), rep(0, ncol(X))), dense = if (ncol(X)) np + seq_len(ncol(X)) else integer(),
+       intercept_cols = seq_len(np), Zs = NULL,
        tested = match(tcols, colnames(W)), niche_cols = match(colnames(L), colnames(W)),
        tested_niche = tested)
+}
+
+# The linear predictor W alpha of one gene, for a dense design or a compact
+# SpaNorm::nbBlockDesign().
+.linPred <- function(W, alpha) {
+  if (inherits(W, "nbBlockDesign")) {
+    return(as.numeric(W$X %*% alpha[W$xi]) + as.numeric(W$Zsp %*% alpha[W$zi]))
+  }
+  as.numeric(W %*% alpha)
+}
+
+# The non-absorbed (dense) columns of the design, and each patient's absorbed
+# block over its own cells (its intercept alone without depth blocks).
+.denseX <- function(des) {
+  if (inherits(des$W, "nbBlockDesign")) des$W$X else des$W[, des$dense, drop = FALSE]
+}
+.patientBlocks <- function(des, rows_of) {
+  if (!is.null(des$Zs)) return(des$Zs)
+  lapply(seq_along(rows_of), function(s) matrix(1, length(rows_of[[s]]), 1L))
 }
 
 # X residualised on a patient's absorbed block Z with weights w (Frisch-Waugh-
@@ -102,59 +128,48 @@
 # The within-patient library-size spline of depth = "spatial_spline": for each
 # section of each patient, the columns [l, l * B] over that section's index
 # cells, where l is log library size centred within (section, index type) and
-# B the section's centred natural-spline tensor basis of position (the basis
-# SpaNorm's library-size function h(x, y) is built from; .sectionBasis()), so
-# each gene's depth effect is logLS * (a + h(x, y)) within the patient, as in
-# SpaNorm, fitted jointly with -- and competing with -- the niche terms. The
-# basis has df x df columns, df = 3 for a section with >= 200 index cells,
-# 2 with >= 100, and 0 (l alone) below. Returns list(Z, group, r2) with r2 the
-# patients x niches R^2 of each niche column on the patient's block (a
-# diagnostic: how much of the niche covariate the spline could absorb).
+# B the section's centred natural-spline tensor basis of position
+# (SpaNorm::tpsBasis() on the whole section's coordinates: the basis SpaNorm's
+# library-size function h(x, y) is built from), so each gene's depth effect is
+# logLS * (a + h(x, y)) within the patient, as in SpaNorm, fitted jointly with
+# -- and competing with -- the niche terms. The basis has df x df columns,
+# df = 3 for a section with >= 200 index cells, 2 with >= 100, and 0 (l alone)
+# below. Returns Zs (per patient: [1 | its sections' columns] over its cells,
+# ascending), Zc (every cell's row of its patient's Zs, zero-padded to the
+# widest patient) and r2 (patients x niches: the R^2 of each niche column on
+# the patient's block, a diagnostic of how much of the niche covariate the
+# spline could absorb).
 .depthBlocks <- function(ell, xy_all, sec_all, ik, patient, L) {
   if (!all(is.finite(ell))) stop("depth = \"spatial_spline\" needs a finite log library size for every cell", call. = FALSE)
   sec <- sec_all[ik]
   S <- nlevels(patient); pid <- as.integer(patient)
-  cols <- list(); grp <- integer(); nm <- character()
+  Zs <- vector("list", S)
   r2 <- matrix(NA_real_, S, ncol(L), dimnames = list(levels(patient), colnames(L)))
   for (s in seq_len(S)) {
-    Zs <- list()
-    for (sg in unique(sec[pid == s])) {
-      i <- which(pid == s & sec == sg)
-      n <- length(i)
-      l <- ell[i] - mean(ell[i])
-      df <- if (n >= 200L) 3L else if (n >= 100L) 2L else 0L
-      z <- matrix(0, length(ell), 1L + if (df) df^2 else 0L)
-      z[i, 1] <- l
+    i <- which(pid == s)
+    cols <- list()
+    for (sg in unique(sec[i])) {
+      j <- which(sec[i] == sg)
+      l <- ell[i[j]] - mean(ell[i[j]])
+      df <- if (length(j) >= 200L) 3L else if (length(j) >= 100L) 2L else 0L
+      z <- matrix(0, length(i), 1L + if (df) df^2 else 0L)
+      z[j, 1] <- l
       if (df) {
         ref <- which(sec_all == sg)
-        B <- .sectionBasis(xy_all[ik[i], 1], xy_all[ik[i], 2], df, xy_all[ref, 1], xy_all[ref, 2])
-        z[i, -1] <- l * B
+        B <- SpaNorm::tpsBasis(xy_all[ik[i[j]], 1], xy_all[ik[i[j]], 2], df = c(df, df),
+                               ref.x = xy_all[ref, 1], ref.y = xy_all[ref, 2])
+        z[j, -1] <- l * B
       }
-      colnames(z) <- paste0("depth:", levels(patient)[s], ":", sg, ":", c("l", if (df) paste0("lB", seq_len(df^2))))
-      Zs[[length(Zs) + 1L]] <- z
+      cols[[length(cols) + 1L]] <- z
     }
-    Zs <- do.call(cbind, Zs)
-    cols[[s]] <- Zs; grp <- c(grp, rep(s, ncol(Zs)))
-    i <- which(pid == s)
-    Zi <- cbind(1, Zs[i, , drop = FALSE])
-    for (j in seq_len(ncol(L))) {
-      y <- L[i, j]; tss <- sum((y - mean(y))^2)
-      if (tss > 0) r2[s, j] <- 1 - sum(stats::lm.fit(Zi, y)$residuals^2) / tss
+    Zs[[s]] <- cbind(1, do.call(cbind, cols))
+    for (k in seq_len(ncol(L))) {
+      y <- L[i, k]; tss <- sum((y - mean(y))^2)
+      if (tss > 0) r2[s, k] <- 1 - sum(stats::lm.fit(Zs[[s]], y)$residuals^2) / tss
     }
   }
-  list(Z = do.call(cbind, cols), group = grp, r2 = r2)
-}
-
-# The centred natural-spline tensor basis of position over a section: ns(x, df)
-# x ns(y, df), knots at the quantiles of the whole section's coordinates
-# (ref.x, ref.y; all cell types) and columns centred over the section. Equal to
-# SpaNorm::tpsBasis(x, y, df = c(df, df), ref.x, ref.y) (SpaNorm >= 1.7.15;
-# tests/testthat/test-depth.R checks it when available).
-.sectionBasis <- function(x, y, df, ref.x, ref.y) {
-  bx <- splines::ns(ref.x, df = df); by <- splines::ns(ref.y, df = df)
-  ev <- function(b, v) stats::predict(b, v)
-  tens <- function(X, Y) do.call(cbind, lapply(seq_len(df), function(a) X[, a] * Y))
-  Bref <- tens(bx, by)
-  B <- tens(ev(bx, x), ev(by, y))
-  sweep(B, 2, colMeans(Bref))
+  q <- max(vapply(Zs, ncol, integer(1)))
+  Zc <- matrix(0, length(ell), q, dimnames = list(NULL, c("intercept", paste0("depth", seq_len(q - 1L)))))
+  for (s in seq_len(S)) Zc[which(pid == s), seq_len(ncol(Zs[[s]]))] <- Zs[[s]]
+  list(Zc = Zc, Zs = Zs, r2 = r2)
 }

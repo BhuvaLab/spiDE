@@ -9,18 +9,7 @@ spe_d <- buildNiches(.toySPE(n_samples = 8, n_per = 650, n_genes = 4, seed = 11)
 lib_d <- Matrix::colSums(SummarizedExperiment::assay(spe_d, "counts"))
 ct_d <- ifelse(lib_d > 0, as.character(spe_d$cell_type), NA_character_)
 
-test_that("the section basis is SpaNorm's tensor spline basis", {
-  set.seed(1)
-  x <- runif(300, 0, 500); y <- runif(300, 0, 300); sub <- x < 250
-  B <- spiDE:::.sectionBasis(x[sub], y[sub], 3L, x, y)
-  expect_equal(dim(B), c(sum(sub), 9L))
-  expect_equal(unname(colMeans(spiDE:::.sectionBasis(x, y, 3L, x, y))), rep(0, 9), tolerance = 1e-12)
-  skip_if_not("tpsBasis" %in% getNamespaceExports("SpaNorm"))
-  ref <- getExportedValue("SpaNorm", "tpsBasis")(x[sub], y[sub], df = c(3, 3), ref.x = x, ref.y = y)
-  expect_equal(unname(B), unname(ref[, ]), tolerance = 1e-10, ignore_attr = TRUE)
-})
-
-test_that("depth blocks: df by section size, zero outside the patient, R2 diagnostic", {
+test_that("depth blocks: df by section size, padded compactly, R2 diagnostic", {
   ct <- ct_d; smp <- as.character(spe_d$sample_id)
   ik <- spiDE:::.indexCells(ct, smp, "A", 10L)
   NM <- SingleCellExperiment::reducedDim(spe_d, "Niche30")
@@ -29,9 +18,15 @@ test_that("depth blocks: df by section size, zero outside the patient, R2 diagno
   pat <- factor(smp[ik])
   blk <- spiDE:::.depthBlocks(ell, SpatialExperiment::spatialCoords(spe_d), smp, ik, pat, L)
   n <- as.numeric(table(pat))
-  expect_equal(as.numeric(table(blk$group)), ifelse(n >= 200, 10, ifelse(n >= 100, 5, 1)))
+  # one section per patient here: intercept + l + l * B (df^2 columns)
+  expect_equal(vapply(blk$Zs, ncol, integer(1)), 1L + ifelse(n >= 200, 10L, ifelse(n >= 100, 5L, 1L)))
+  expect_equal(ncol(blk$Zc), max(vapply(blk$Zs, ncol, integer(1))))
   for (s in seq_len(nlevels(pat))) {
-    expect_true(all(blk$Z[as.integer(pat) != s, blk$group == s] == 0))
+    i <- which(as.integer(pat) == s)
+    w <- ncol(blk$Zs[[s]])
+    expect_equal(unname(blk$Zc[i, seq_len(w)]), unname(blk$Zs[[s]]))
+    if (w < ncol(blk$Zc)) expect_true(all(blk$Zc[i, -seq_len(w)] == 0))
+    expect_true(all(blk$Zs[[s]][, 1] == 1))
   }
   expect_true(all(blk$r2 >= 0 & blk$r2 <= 1, na.rm = TRUE))
 })
@@ -56,11 +51,14 @@ test_that("spatial_spline: the sandwich engine's CR2 and df agree with clubSandw
   Y <- SummarizedExperiment::assay(spe_d, "counts")[c("G1", "G2"), ik, drop = FALSE]
   fit <- spiDE:::.fitIndexGLM(Y, des)
   got <- spiDE:::.sandwichCR2(fit, des, Y)
-  nb <- max(unlist(des$block_cols))
-  Zf <- des$W[, seq_len(nb)]; Xd <- des$W[, -seq_len(nb), drop = FALSE]
+  # the full design: each patient's own block columns, zero elsewhere, then the dense columns
+  pid <- as.integer(pat)
+  Zf <- do.call(cbind, lapply(seq_along(des$Zs), function(s) {
+    z <- matrix(0, length(pid), ncol(des$Zs[[s]])); z[pid == s, ] <- des$Zs[[s]]; z }))
+  Xd <- des$W$X
   colnames(Xd) <- make.names(colnames(Xd))
   for (g in rownames(Y)) {
-    eta <- as.numeric(des$W %*% fit$alpha[g, ]); mu <- exp(eta)
+    eta <- spiDE:::.linPred(des$W, fit$alpha[g, ]); mu <- exp(eta)
     w <- mu / (1 + fit$psi[g] * mu); z <- eta + (as.numeric(Y[g, ]) - mu) / mu
     m <- stats::lm(z ~ 0 + Zf + Xd, weights = w)
     V <- clubSandwich::vcovCR(m, cluster = pat, type = "CR2", inverse_var = TRUE)
@@ -90,7 +88,7 @@ test_that("spatial_spline: a patient slope is one Fisher step with the block par
   g <- 1L; s <- 2L
   i <- which(des$patient == s)
   wr <- spiDE:::.workingWR(as.numeric(Y[g, ]), des$W, f$alpha[g, ], f$psi[g])
-  Z <- des$W[i, des$block_cols[[s]], drop = FALSE]
+  Z <- des$Zs[[s]]
   Lt <- stats::lm.wfit(Z, L[i, , drop = FALSE], wr$w[i])$residuals
   step <- solve(crossprod(Lt * sqrt(wr$w[i])), colSums(Lt * wr$r[i]))
   b <- f$alpha[g, des$niche_cols] + step
