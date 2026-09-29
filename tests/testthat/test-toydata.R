@@ -27,3 +27,12 @@ test_that(".toySPE(composition = 0) is unchanged and composition plants a betwee
   isA0 <- cd0$cell_type == "A"
   expect_true(all(tapply(cd0$x[isA0], cd0$sample_id[isA0], min) < 0.3 * 500))
 })
+
+# BiocCheck flags the set.seed() inside .localSeed(); it must stay, because
+# the helper restores the caller's RNG stream. withr::local_seed() (3.0.2) does
+# not restore it in this use (measured 2026-09-30), so it is no substitute.
+test_that("a seeded toy generator leaves the user's random stream untouched", {
+  set.seed(3); x1 <- runif(1)
+  set.seed(3); invisible(spiDE:::.toySPE(n_samples = 2, n_per = 20, n_genes = 2, seed = 1)); x2 <- runif(1)
+  expect_identical(x1, x2)
+})
