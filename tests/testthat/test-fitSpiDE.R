@@ -87,3 +87,12 @@ test_that("a log-depth offset replaces the depth covariate", {
   expect_true(all(is.finite(r@table$t[!is.na(r@table$t)])))
   expect_identical(f@params$offset, "logdepth")
 })
+
+test_that("genes restricts the tested genes but not the library size", {
+  spe <- buildNiches(.toySPE(n_samples = 8, n_per = 120, n_genes = 6, seed = 3), sigma = 20,
+                     verbose = FALSE)
+  f <- fitSpiDE(spe, index = "A", sigma = 20, genes = c("G1", "G2"), verbose = FALSE)
+  expect_setequal(f@index$A$genes, c("G1", "G2"))
+  full <- fitSpiDE(spe, index = "A", sigma = 20, verbose = FALSE)
+  expect_equal(f@index$A$beta["G1", , ], full@index$A$beta["G1", , ], tolerance = 1e-8)
+})

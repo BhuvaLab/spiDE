@@ -26,6 +26,7 @@ fitSpiDE(spe, condition = NULL, ...)
   min.cells = 10L,
   min.patients = 6L,
   min.detect = 0.1,
+  genes = NULL,
   tile = NULL,
   min.tiles = 5L,
   BPPARAM = BiocParallel::SerialParam(),
@@ -96,6 +97,10 @@ engine in \code{\link[=testSpiDE]{testSpiDE()}}.}
 
 \item{min.detect}{minimum fraction of an index type's cells in which a gene
 is detected for it to be tested in that type.}
+
+\item{genes}{\code{NULL} (every gene) or a character vector of the genes to
+test. Library size is always computed from every row of the assay, so a
+panel can be tested in part without changing each cell's depth.}
 
 \item{tile}{side of the square tiles of the spatial variance estimate, in
 coordinate units (default 3 x the bandwidth).}

@@ -68,6 +68,9 @@
 #' @param min.patients minimum patients an index type needs.
 #' @param min.detect minimum fraction of an index type's cells in which a gene
 #'   is detected for it to be tested in that type.
+#' @param genes \code{NULL} (every gene) or a character vector of the genes to
+#'   test. Library size is always computed from every row of the assay, so a
+#'   panel can be tested in part without changing each cell's depth.
 #' @param tile side of the square tiles of the spatial variance estimate, in
 #'   coordinate units (default 3 x the bandwidth).
 #' @param min.tiles minimum tiles a patient needs for its own spatial variance.
@@ -94,7 +97,7 @@ setMethod(
            niche = NULL, sigma = NULL, cell_type = "cell_type", sample_id = "sample_id",
            section = NULL, covariates = character(), depth = c("loglib", "nonlinear", "spatial_spline", "none"),
            offset = NULL, strata = NULL, assay = "counts", name = "Niche", min.cells = 10L,
-           min.patients = 6L, min.detect = 0.1, tile = NULL, min.tiles = 5L,
+           min.patients = 6L, min.detect = 0.1, genes = NULL, tile = NULL, min.tiles = 5L,
            BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     engine <- match.arg(engine)
     depth <- match.arg(depth)
@@ -149,6 +152,7 @@ setMethod(
       if (!length(nc$tested)) next
       det <- Matrix::rowMeans(Y[, ik, drop = FALSE] > 0)
       gk <- rownames(Y)[det >= min.detect]
+      if (!is.null(genes)) gk <- intersect(gk, genes)
       if (!length(gk)) next
       cols <- c(nc$tested, setdiff(nc$cols, nc$tested))
       L <- log1p(NM[ik, cols, drop = FALSE])
