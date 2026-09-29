@@ -66,7 +66,7 @@ while (i <= length(args)) {
 .cls <- function(o) if (isS4(o)) .a(o, "class")[1] else class(o)[1]
 .legacy <- function(o) {
   an <- names(attributes(o))
-  any(c("covtype", "coefmap", "fits", "results.celltype") %in% an) || !any(c("engine", "table") %in% an)
+  any(c("covtype", "coefmap", "fits", "results.celltype") %in% an) || !any(c("engine", "table") %in% an)  # legacy slots
 }
 .legacyStop <- function(path) {
   stop(path, " is a spiDE <= 0.99.22 mixed-model object. Read it with ",
