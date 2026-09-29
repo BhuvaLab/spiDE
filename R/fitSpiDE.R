@@ -80,6 +80,7 @@
 #' @importFrom SingleCellExperiment reducedDim
 #' @importFrom SpatialExperiment spatialCoords
 #' @importFrom S4Vectors metadata
+#' @importFrom utils packageVersion
 #' @rdname fitSpiDE
 #' @export
 setMethod(

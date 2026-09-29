@@ -13,6 +13,10 @@
 
 \item{name}{a slot name.}
 }
+\value{
+An object of class \code{SpiDEResults}, created by \code{\link[=testSpiDE]{testSpiDE()}};
+its \code{$} accessor returns a slot, and \code{show()} prints a summary.
+}
 \description{
 Returned by \code{\link[=testSpiDE]{testSpiDE()}} and \code{\link[=spiDE]{spiDE()}}; read it with \code{\link[=results]{results()}}.
 }

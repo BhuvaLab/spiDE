@@ -38,6 +38,8 @@
 #'   it holds \code{genes}, \code{niches} and a data.frame \code{coef} of the
 #'   tested coefficients (\code{test} = "pooled" or "condition") with their
 #'   CR2 standard errors and Bell-McCaffrey degrees of freedom.
+#' @return An object of class \code{SpiDEFit}, created by [fitSpiDE()]; its
+#'   \code{$} accessor returns a slot, and \code{show()} prints a summary.
 #' @exportClass SpiDEFit
 setClass("SpiDEFit", representation(
   engine = "character", sigma = "numeric", condition = "character",
@@ -54,6 +56,8 @@ setClass("SpiDEFit", representation(
 #' @slot procedure a character, \code{"filtered"} or \code{"all"}.
 #' @slot fdr a numeric, the FDR level of the filter.
 #' @slot fit the [SpiDEFit-class] tested.
+#' @return An object of class \code{SpiDEResults}, created by [testSpiDE()];
+#'   its \code{$} accessor returns a slot, and \code{show()} prints a summary.
 #' @exportClass SpiDEResults
 setClass("SpiDEResults", representation(
   table = "data.frame", condition = "character", contrast = "character",
