@@ -9,7 +9,12 @@
 # the intercepts, zeros elsewhere.
 .glmStart <- function(Yk, des, offset = NULL) {
   npc <- as.numeric(table(factor(des$patient, levels = seq_len(des$npat))))
-  lm <- t(rowsum(t(as.matrix(Yk)), des$patient, reorder = TRUE)) / rep(npc, each = nrow(Yk))
+  # per-patient sums as a product with a sparse indicator, so a sparse or
+  # DelayedArray count matrix is never densified whole (genes x cells of a
+  # WTA tumour compartment is several GB dense); only genes x patients is
+  ind <- Matrix::sparseMatrix(i = seq_along(des$patient), j = des$patient, x = 1,
+                              dims = c(length(des$patient), des$npat))
+  lm <- as.matrix(Yk %*% ind) / rep(npc, each = nrow(Yk))
   a <- matrix(0, nrow(Yk), ncol(des$W))
   a[, seq_len(des$npat)] <- log(lm + 1e-3)
   if (!is.null(offset)) {

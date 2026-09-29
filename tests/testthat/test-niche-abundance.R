@@ -14,13 +14,13 @@ spe_c <- buildNiches(.toySPE(n_samples = 12, n_per = 200, n_genes = 12,
 test_that("testNicheAbundance returns the documented tidy schema", {
   ct <- testNicheAbundance(spe_c, condition = "condition", sigma = 50, verbose = FALSE)
   expect_s3_class(ct, "data.frame")
-  expect_true(all(c("gene", "ct_index", "ct_niche", "term", "coef", "t", "p",
-                    "fdr", "fdr.global", "n_samples") %in% names(ct)))
+  expect_true(all(c("gene", "index", "niche", "term", "estimate", "t", "p",
+                    "n_patients", "q", "q.global") %in% names(ct)))
   expect_setequal(unique(ct$term), c("niche", "condition:niche"))
   # an index type is never tested against its own niche
-  expect_false(any(ct$ct_index == ct$ct_niche))
+  expect_false(any(ct$index == ct$niche))
   expect_true(all(ct$p >= 0 & ct$p <= 1))
-  expect_true(all(ct$fdr >= ct$p - 1e-12))
+  expect_true(all(ct$q >= ct$p - 1e-12))
 })
 
 test_that("the planted between-sample confound is a patient-level finding", {
@@ -30,12 +30,12 @@ test_that("the planted between-sample confound is a patient-level finding", {
   # around A -- exactly what this test exists to report, on the
   # condition:niche term since the shift is condition-specific.
   ct <- testNicheAbundance(spe_c, condition = "condition", sigma = 50, verbose = FALSE)
-  g2 <- ct[ct$gene == "G2" & ct$ct_index == "A" & ct$ct_niche == "B" &
+  g2 <- ct[ct$gene == "G2" & ct$index == "A" & ct$niche == "B" &
              ct$term == "condition:niche", ]
   expect_equal(nrow(g2), 1L)
   expect_gt(g2$t, 2)
   # and it is the strongest interaction in the A x B pair
-  ab <- ct[ct$ct_index == "A" & ct$ct_niche == "B" & ct$term == "condition:niche", ]
+  ab <- ct[ct$index == "A" & ct$niche == "B" & ct$term == "condition:niche", ]
   expect_equal(ab$gene[which.max(ab$t)], "G2")
 })
 
@@ -51,8 +51,8 @@ test_that("min.cells drops thin samples and a sample-level covariate enters the 
   # leaving enough to fit
   ct_strict <- testNicheAbundance(spe_c, condition = "condition", sigma = 50,
                                min.cells = 70L, verbose = FALSE)
-  expect_true(min(ct_strict$n_samples) <= min(ct_all$n_samples))
-  expect_true(all(ct_strict$n_samples >= 3L))
+  expect_true(min(ct_strict$n_patients) <= min(ct_all$n_patients))
+  expect_true(all(ct_strict$n_patients >= 3L))
   # Age is constant within sample; it must be accepted here (fitSpiDE() rejects
   # it because the per-patient intercepts absorb it)
   ct_cov <- testNicheAbundance(spe_c, condition = "condition", sigma = 50,
@@ -63,6 +63,6 @@ test_that("min.cells drops thin samples and a sample-level covariate enters the 
 test_that("index and niche restrictions are honoured", {
   ct <- testNicheAbundance(spe_c, condition = "condition", sigma = 50,
                         index = "A", niche = c("B", "C"), verbose = FALSE)
-  expect_equal(unique(ct$ct_index), "A")
-  expect_setequal(unique(ct$ct_niche), c("B", "C"))
+  expect_equal(unique(ct$index), "A")
+  expect_setequal(unique(ct$niche), c("B", "C"))
 })

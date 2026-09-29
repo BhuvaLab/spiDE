@@ -52,7 +52,7 @@ condition-specific test when a \code{condition} is given.
 }
 \examples{
 data(toySpiDE)
-res <- spiDE(toySpiDE, condition = "condition", sigma = 20, index = "A",
-             min.patients = 6, procedure = "all")
+res <- spiDE(toySpiDE, condition = "condition", sigma = 30, index = "A",
+             procedure = "all")
 head(results(res))
 }

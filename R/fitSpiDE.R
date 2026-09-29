@@ -20,8 +20,9 @@
 #'     is simpler, and strongest for effects shared by all patients, but needs
 #'     the condition at fit time.}
 #' }
-#' Both are calibrated on the null grids of five spatial cohorts; see the
-#' calibration vignette.
+#' The slopes engine passes every calibration null of five comparisons in
+#' four spatial cohorts, the sandwich engine all but one borderline tail; see
+#' the calibration vignette.
 #'
 #' @param spe a SpatialExperiment with raw counts and a niche reducedDim from
 #'   [buildNiches()].
@@ -65,8 +66,8 @@
 #' @return a [SpiDEFit-class].
 #' @examples
 #' data(toySpiDE)
-#' spe <- buildNiches(toySpiDE, sigma = 20)
-#' fit <- fitSpiDE(spe, index = "A", sigma = 20, min.patients = 6)
+#' spe <- buildNiches(toySpiDE, sigma = 30)
+#' fit <- fitSpiDE(spe, index = "A", sigma = 30)
 #' fit
 #' @seealso [testSpiDE()], [spiDE()], [testNicheAbundance()]
 #' @importFrom SummarizedExperiment assay colData

@@ -68,8 +68,9 @@
 #' This is the association that [fitSpiDE()]'s per-patient intercepts
 #' deliberately absorb. It is a between-patient effect with \eqn{S} experimental units; it is not
 #' neighbourhood-dependent differential expression, and the two must not be
-#' conflated (see the model vignette). Up to spiDE 0.99.22 this function was
-#' \code{compositionTest()}. Samples contributing fewer than
+#' conflated (see the model vignette).
+#' It was \code{compositionTest()} up to spiDE 0.99.22.
+#' Samples contributing fewer than
 #' \code{min.cells} cells of the index type are dropped for that index type,
 #' and an index type with fewer than three remaining samples is skipped.
 #'
@@ -90,14 +91,14 @@
 #' @param verbose report progress.
 #' @param ... further arguments passed to the method.
 #' @return a data.frame with one row per (gene, index type, niche type, term):
-#'   \code{gene}, \code{ct_index}, \code{ct_niche}, \code{term}, \code{coef}
-#'   (log2-CPM per unit log1p density), \code{t}, \code{p}, \code{fdr} (BH
-#'   within each (index, niche, term) over genes), \code{fdr.global} (BH over
-#'   every row), and \code{n_samples}.
+#'   \code{gene}, \code{index}, \code{niche}, \code{term}, \code{estimate}
+#'   (log2-CPM per unit log1p density), \code{t}, \code{p},
+#'   \code{n_patients}, \code{q} (BH within each (index, niche, term) over
+#'   genes) and \code{q.global} (BH over every row).
 #' @examples
 #' data(toySpiDE)
-#' spe <- buildNiches(toySpiDE, sigma = 20)
-#' na <- testNicheAbundance(spe, condition = "condition", sigma = 20)
+#' spe <- buildNiches(toySpiDE, sigma = 30)
+#' na <- testNicheAbundance(spe, condition = "condition", sigma = 30)
 #' head(na[order(na$p), ])
 #' @importFrom limma lmFit eBayes
 #' @importFrom stats model.matrix p.adjust
@@ -163,19 +164,19 @@ setMethod(
         terms <- intersect(c("niche", grep("^niche:condition", colnames(X), value = TRUE)), colnames(X))
         for (tm in terms) {
           rows[[length(rows) + 1L]] <- data.frame(
-            gene = rownames(b$Y), ct_index = k, ct_niche = n,
+            gene = rownames(b$Y), index = k, niche = n,
             term = if (tm == "niche") "niche" else "condition:niche",
-            coef = fit$coefficients[, tm], t = fit$t[, tm], p = fit$p.value[, tm],
-            n_samples = nrow(X), row.names = NULL, stringsAsFactors = FALSE)
+            estimate = fit$coefficients[, tm], t = fit$t[, tm], p = fit$p.value[, tm],
+            n_patients = nrow(X), row.names = NULL, stringsAsFactors = FALSE)
         }
       }
     }
     if (!length(rows)) stop("no (index, niche) pair had enough samples to fit")
     out <- do.call(rbind, rows)
     out <- out[is.finite(out$p), , drop = FALSE]
-    key <- paste(out$ct_index, out$ct_niche, out$term)
-    out$fdr <- stats::ave(out$p, key, FUN = function(p) stats::p.adjust(p, "BH"))
-    out$fdr.global <- stats::p.adjust(out$p, "BH")
+    key <- paste(out$index, out$niche, out$term)
+    out$q <- stats::ave(out$p, key, FUN = function(p) stats::p.adjust(p, "BH"))
+    out$q.global <- stats::p.adjust(out$p, "BH")
     rownames(out) <- NULL
     out
   }

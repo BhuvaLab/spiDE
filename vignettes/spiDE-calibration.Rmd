@@ -1,0 +1,136 @@
+---
+title: "Calibration: what spiDE's tests were measured against"
+author: "Dharmesh D. Bhuva"
+package: spiDE
+output:
+  BiocStyle::html_document:
+    toc_float: true
+vignette: >
+  %\VignetteIndexEntry{Calibration: what spiDE's tests were measured against}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+This is the one place in the package that quotes benchmark numbers. Every
+number below comes from the simplification study of 2026-09-28/29, whose
+report, scripts and findings live in the research repository
+(`research/simplify/`: `FINDINGS.md`, and the report *Simplifying spiDE* on
+the [research site](https://bhuvalab.github.io/spiDE-research/)). When a
+default changes on new evidence, this vignette changes with it.
+
+# What "calibrated" means here
+
+A spiDE test is calibrated if, on data where the hypothesis it tests is true
+by construction, its $z$ statistics have unit spread in every expression band
+and a Benjamini-Hochberg screen at 0.05 rarely makes any call. Two nulls,
+both built from real cohorts:
+
+- **the block null** (the niche is shuffled): each section's niche field is
+  shifted toroidally by a random offset, and every cell takes the niche
+  densities found at its shifted position. This destroys the association
+  between a cell's niche and its expression while keeping the niche field's
+  spatial smoothness. Every niche slope is zero, so both tests
+  are null.
+- **the permutation null** (the condition is shuffled): the condition label
+  is permuted across patients within slide, so a slide effect cannot pass for
+  a condition effect. The niche slopes are the real ones, so only the
+  condition-specific test, and the filtered procedure, are null.
+
+The pass criteria, fixed before the validation nulls were scored:
+
+| reading | criterion |
+|---|---|
+| per-band spread: median RMS of null $z$ in each quintile of expression, per index type | in [0.90, 1.10], for the condition test on both nulls and the pooled test on the block null |
+| tail, block null: fraction of null grids with at least one BH call at 0.05 | at most 0.10, both tests |
+| tail, permutation null: fraction of permutations with at least one BH call at 0.05 | at most 0.07, condition test over every triplet and over the filtered family |
+
+# The cohorts
+
+Five comparisons in four cohorts, each at the bandwidth of its earlier runs,
+restricted to the five best-covered index types:
+
+| cohort | platform, tissue | condition | patients | bandwidth |
+|---|---|---|---|---|
+| GSE250346 | Xenium, lung (pulmonary fibrosis) | control 9, disease 26 | 35 | 60 µm |
+| GSE282639 | CosMx 1k, lung (IPF) | control 13, IPF 15 | 28 | 30 µm |
+| GSE289194 | CosMx 1k, lymph node | extranodal 20, nodal 24 | 44 | 30 µm |
+| YTMA | CosMx WTA, NSCLC | non-responder 30, responder 25 | 55 | 30 µm |
+| YTMA stage | CosMx WTA, LUAD | early 123, late 40 | 163 | 30 µm |
+
+**The three public cohorts carry the decisions.** The YTMA data are under
+review for suspected data issues (a decision of 2026-09-29), and enter only
+as a sensitivity analysis at a quarter of a public cohort's weight.
+
+# Results
+
+## The slopes engine (the default)
+
+With its effective-patient df and expression-trended prior, on fresh
+validation nulls (ten block grids and 1,000 permutations per cohort, never
+used in its development), the slopes engine passes every criterion in all
+five comparisons:
+
+- per-band null RMS 0.909-0.984;
+- worst permutation tail 0.034;
+- worst block tail 0.10 (GSE250346, pooled test), at the limit.
+
+Without the effective-patient df the pooled test's block tail reached 0.40
+(the weights can rest on a few cell-rich patients when the between-patient
+variance truncates to zero); without the trend, bright genes' spread was
+tilted. Both fixes were required by public cohorts, not only by YTMA.
+
+## The sandwich engine
+
+On 160 null grids across the five comparisons, the per-band null RMS lies in
+0.94-1.10 and the condition-specific test over every triplet made no false
+call. Its filtered procedure made a false call in 9 of 100 permutations on
+GSE289194 (95% interval roughly 0.04-0.16, against the 0.07 limit), its one
+miss.
+
+## The mixed model of spiDE 0.99.22
+
+On every cohort and both nulls, every grid produced false calls (21 to 3,593
+per grid on average), with per-band null RMS as high as 5.95. Its standard errors
+had no between-patient variance in the niche slopes. Replacing only its
+standard errors (patient-clustered sandwiches with an effective df) moved it
+most of the way but left 5-25% excess spread. It is archived as the research
+package `spiDEmixed`.
+
+# Power
+
+Paired plasmode on the public cohorts: effects of 0.25 and 0.5 SD of the
+niche covariate planted into real counts by binomial thinning, shared by all
+patients or varying between them; true-positive rate at BH 0.05, averaged
+over both tests and both kinds of effect.
+
+| | slopes engine | sandwich engine |
+|---|---|---|
+| true-positive rate, public cohorts | 0.679 | 0.499 |
+| effects varying between patients | 0.589 | 0.283 |
+| effects shared by all patients | 0.768 | 0.715 |
+| realised false discovery proportion | 0.023 | 0.048 |
+| GSE250346 / GSE289194 / GSE282639 | 0.853 / 0.719 / 0.464 | 0.577 / 0.494 / 0.425 |
+
+On the two YTMA comparisons the order reverses (0.089 against 0.140, and
+0.253 against 0.365): in sparse whole-transcriptome data, with effects shared
+by all patients, the effective-patient df costs the slopes engine the most.
+With YTMA at a quarter weight the slopes engine still leads (0.61 against
+0.46). Across all five comparisons the effective-patient df costs about 0.03
+in true-positive rate (0.476 against 0.508 without it), which is the price of
+the calibration above.
+
+**The default is the slopes engine** because it passes every null and is the
+more powerful where it matters most, on effects that vary between patients.
+Use the sandwich engine when effects are expected to be shared by all
+patients, or as a check.
+
+# Not yet measured
+
+- **Depth.** `depth = "loglib"` (one slope per gene on the centred log library
+  size) is the only option measured. A benchmark with a spatially varying,
+  gene-specific library-size model fitted to real cohorts, judging depth
+  handling against the estimand rather than by residual library-size
+  association, is under way; this section will report it.
+- **Gene sets.** `spiGSEA()` has not been through a gene-set null and is
+  experimental.
+- **Bandwidth.** Each cohort was measured at one bandwidth.

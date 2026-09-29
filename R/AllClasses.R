@@ -61,10 +61,10 @@ setClass("SpiDEResults", representation(
 ))
 
 # A spiDE <= 0.99.22 mixed-model object read with readRDS(): it carries the
-# old slots (covtype, W, alpha, fits, ...) and none of the new ones.
+# old legacy slots (covtype, W, alpha, fits, ...) and none of the new ones.
 .isLegacy <- function(object) {
   a <- names(attributes(object))
-  any(c("covtype", "coefmap", "fits", "results.celltype") %in% a) ||
+  any(c("covtype", "coefmap", "fits", "results.celltype") %in% a) ||  # legacy slots
     !any(c("engine", "table") %in% a)
 }
 

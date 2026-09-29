@@ -3,7 +3,7 @@
 # "A", gene "G1" is up-regulated in the "Responder" condition in proportion to
 # the local density of the niche cell type "B" (B cells are concentrated at high
 # x, so the B-niche density increases with x). This lets end-to-end tests check
-# that spiDE recovers a known ResponseNiche effect.
+# that spiDE recovers a known condition x niche effect.
 #
 # The count model is a negative-binomial model shared by every generator
 # (`.simGeneParams()` + `.simCounts()`), adapting the Splat model of splatter
@@ -163,11 +163,11 @@
 #' calibration conclusion drawn from them.
 #'
 #' What genuinely remains is two gene-independent scalings: a \strong{sample
-#' level} depth bias, which a per-sample random intercept absorbs, and
+#' level} depth bias, which the per-patient intercepts absorb, and
 #' \strong{cell-type level} differences in total RNA that are real biology
 #' rather than technical (a tumour cell carries far more transcript than a
-#' lymphocyte), which the \code{CellType} main effects absorb. Because both are
-#' absorbed exactly, the fitted NB model is correctly specified and a
+#' lymphocyte), which fitting each index type on its own absorbs. Because both
+#' are absorbed exactly, the fitted NB model is correctly specified and a
 #' miscalibration is attributable to the inference rather than to the fixture.
 #'
 #' @param sample_id,cell_type per-cell labels.
@@ -209,8 +209,9 @@
 #'   \strong{non-monotonic}: G1's own dynamic range inflates its estimated NB
 #'   dispersion, which inflates its standard error, so past \code{beta ~ 2} the
 #'   induced noise outgrows the signal and the statistic collapses (measured
-#'   t: 2.22, 2.87, 5.28, 2.49, 1.42, 0.25 at beta 1, 1.5, 2, 2.5, 3, 4). The
-#'   default is the peak; do not raise it expecting a stronger effect.
+#'   under the archived mixed model, spiDE <= 0.99.22: t 5.28 at beta 2 and
+#'   0.25 at beta 4; not re-measured on the per-patient engines). The default
+#'   is the peak; do not raise it expecting a stronger effect.
 #' @param seed random seed.
 #' @return a SpatialExperiment with counts, cell_type, sample_id, condition, Age,
 #'   Area, and spatial coordinates.
@@ -295,11 +296,12 @@
 
   # A planted CONFOUND, not a signal: G2's baseline in A cells shifts with the
   # sample's B-cell prevalence and is CONSTANT within (sample, A), so the true
-  # within-sample niche slope is exactly zero. The old design (a per-sample
-  # intercept shared across cell types) has nothing to absorb it and reports it
-  # as a niche effect; a nested (sample x cell type) intercept absorbs it
-  # exactly. A shuffle that permutes within (sample, cell type) preserves it,
-  # which is why it cannot be detected by permutation alone.
+  # within-sample niche slope is exactly zero. A design with one intercept per
+  # sample shared across cell types has nothing to absorb it and reports it as
+  # a niche effect; per-patient intercepts fitted within the index type (as
+  # spiDE's engines do) absorb it exactly, and testNicheAbundance() is the test
+  # that sees it. A shuffle that permutes within (sample, cell type) preserves
+  # it, which is why it cannot be detected by permutation alone.
   if (composition != 0 && n_genes >= 2) {
     log_effect["G2", ] <- composition * is_A * is_resp *
       (a_shift[cd$sample_id] - 0.3)
@@ -392,17 +394,16 @@
   )
 }
 
-#' Synthetic data with patient-level clustering (for the mixed-effects tests)
+#' Synthetic null with patient-level clustering
 #'
-#' Like \code{.toySPE()} but plants a per-(gene, sample) random intercept shared
-#' by every cell of a sample, and NO response effect. Because the response is a
-#' sample-level label, treating cells as independent makes the response tests
-#' anti-conservative (cell-level pseudo-replication); the random-intercept fit
-#' should test the response effect against between-sample variability and recover
-#' calibration. \code{sd_patient} is the planted between-sample SD (variance
-#' \code{sd_patient^2} is what \code{random = "intercept"} should recover). Genes
-#' here are moderately expressed (not the very-low regime of \code{.toySPE()}) so
-#' the between-sample variance component is estimable in a small fixture.
+#' Like \code{.toySPE()} but plants a per-(gene, sample) intercept shared by
+#' every cell of a sample, and NO niche or condition effect. Because the
+#' condition is a sample-level label, treating cells as independent makes a
+#' condition test anti-conservative (cell-level pseudo-replication); a test
+#' that takes patients as its units stays calibrated. \code{sd_patient} is the
+#' planted between-sample SD. Genes here are moderately expressed (not the
+#' very-low regime of \code{.toySPE()}) so the between-sample variation is
+#' visible in a small fixture.
 #'
 #' @inheritParams .toySPE
 #' @param sd_patient the planted between-sample (patient) intercept SD.
@@ -430,19 +431,18 @@
   n <- nrow(cd)
   cd$cell_id <- sprintf("cell%d", seq_len(n))
 
-  # Moderate, tightly-spread abundances with a mild dispersion trend: the shared
-  # between-sample variance component (tau2) is estimated across all genes, so a
-  # few highly-overdispersed low-mean genes would inflate it. This fixture
-  # exercises the mixed-effects machinery, not the low-count realism.
+  # Moderate, tightly-spread abundances with a mild dispersion trend, so a few
+  # highly-overdispersed low-mean genes do not dominate the null. This fixture
+  # exercises patient-level clustering, not the low-count realism.
   gene_params <- .simGeneParams(gene_names, mean.shape = 8, mean.rate = 1.5,
                                 bcv.disp = 0.3, out.prob = 0, mean.min = 1)
   # per-(gene, sample) random intercept applied to every cell of the sample
   u <- matrix(rnorm(n_genes * n_samples, 0, sd_patient), nrow = n_genes,
               dimnames = list(gene_names, sample_ids))
   log_effect <- u[, cd$sample_id, drop = FALSE]
-  # an optional per-(gene, sample, cell type) intercept on top: the nested
-  # variance component the (sample x cell type) block estimates. Drawn only
-  # when asked for, so the default fixture's random stream is unchanged.
+  # an optional per-(gene, sample, cell type) intercept on top, which the
+  # per-patient intercepts of each index type's fit absorb. Drawn only when
+  # asked for, so the default fixture's random stream is unchanged.
   if (sd_nested > 0) {
     key <- paste(cd$sample_id, cd$cell_type, sep = ":")
     keys <- sort(unique(key))

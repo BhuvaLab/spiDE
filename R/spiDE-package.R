@@ -18,10 +18,3 @@
 #' @name spiDE-package
 #' @aliases spiDE-package
 "_PACKAGE"
-
-# Symbols used in non-standard evaluation (data.frame/model.matrix building)
-# to keep R CMD check quiet about undefined globals.
-utils::globalVariables(c(
-  "sample_id", "cell_type", "CellType", "Response",
-  "ct_index", "ct_niche", "gene", "bandwidth", "value"
-))

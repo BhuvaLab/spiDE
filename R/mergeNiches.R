@@ -38,9 +38,9 @@
 #' @examples
 #' data(toySpiDE)
 #' spe <- toySpiDE
-#' spe <- buildNiches(spe, sigma = 20)
-#' spe <- mergeNiches(spe, groups = list(AC = c("A", "C")), sigma = 20)
-#' colnames(SingleCellExperiment::reducedDim(spe, "Niche20"))
+#' spe <- buildNiches(spe, sigma = 30)
+#' spe <- mergeNiches(spe, groups = list(AC = c("A", "C")), sigma = 30)
+#' colnames(SingleCellExperiment::reducedDim(spe, "Niche30"))
 #'
 #' @rdname mergeNiches
 #' @importFrom SingleCellExperiment reducedDim reducedDim<- reducedDimNames

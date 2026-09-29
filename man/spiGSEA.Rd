@@ -55,8 +55,8 @@ on the new engines, so its calls should be treated as exploratory.
 }
 \examples{
 data(toySpiDE)
-res <- spiDE(toySpiDE, condition = "condition", sigma = 20, index = "A",
-             min.patients = 6, procedure = "all")
+res <- spiDE(toySpiDE, condition = "condition", sigma = 30, index = "A",
+             procedure = "all")
 sets <- list(first = paste0("G", 1:5), second = paste0("G", 6:12))
 spiGSEA(res, sets, test = "pooled", min.size = 3)
 }

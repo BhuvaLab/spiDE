@@ -1,0 +1,220 @@
+---
+title: "The spiDE model"
+author: "Dharmesh D. Bhuva"
+package: spiDE
+output:
+  BiocStyle::html_document:
+    toc_float: true
+vignette: >
+  %\VignetteIndexEntry{The spiDE model}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+This vignette states the model top-down: the question, the per-patient
+regression that answers it, the two engines that estimate its between-patient
+error, and the testing procedure. The quick start
+(`vignette("spiDE")`) shows the functions; the calibration vignette
+(`vignette("spiDE-calibration")`) what the choices below were measured
+against.
+
+# The question
+
+Let $y_{gi}$ be the count of gene $g$ in cell $i$, $k(i)$ the cell's type,
+$s(i)$ its patient, and $d_{in}$ the density of cell type $n$ around cell $i$
+(a Gaussian kernel density at bandwidth $\sigma$, from `buildNiches()`). For
+an **index** type $k$ and a **niche** type $n \neq k$, spiDE asks how
+$\log \mathrm{E}[y_{gi}]$ in type-$k$ cells changes with
+$\ell_{in} = \log(1 + d_{in})$:
+
+- **pooled**: is the within-patient slope $\beta_{gkn}$ non-zero, on average
+  across patients?
+- **condition-specific**: for a two-level patient-level condition $c_s$, does
+  the slope differ between the conditions,
+  $\Delta_{gkn} = \bar\beta_{gkn}(c = 1) - \bar\beta_{gkn}(c = 0)$?
+
+One (gene, index, niche) combination is a *triplet*. Both questions are about
+patients: the condition is constant within a patient, and a niche slope is a
+property of a patient's tissue. So the unit of replication is the patient,
+and the variance a test needs is the variance of the slope **between
+patients**, not the sampling variance of a slope estimated from many cells.
+Treating cells as replicates of a patient-level contrast gives a standard
+error that shrinks with the number of cells while the between-patient spread
+does not, which is the failure the per-patient design exists to avoid.
+
+# The per-index-type model
+
+Every index type is fitted on its own, over its cells in every patient with
+at least `min.cells` of them. For gene $g$:
+
+$$
+y_{gi} \sim \mathrm{NB}(\mu_{gi}, \psi_g), \qquad
+\log \mu_{gi} = a_{g,s(i)} + \gamma_g^\top z_i + \sum_{n} \beta_{gn} \ell_{in}
+  \;\big[ + \sum_n \delta_{gn}\, c_{s(i)} \ell_{in} \big]
+$$
+
+- $a_{gs}$ is an **intercept per patient**. It absorbs everything constant
+  within a patient's type-$k$ cells: the patient's baseline expression, its
+  sequencing batch, its condition's main effect, and its mean niche density.
+  By the Frisch-Waugh-Lovell theorem every remaining coefficient is then
+  estimated from variation *within* patients, so $\beta_{gn}$ is a
+  within-patient slope.
+- $z_i$ holds cell-level covariates, centred: by default the log library
+  size (`depth = "loglib"`), with a slope per gene, plus any `covariates`.
+- $\ell_{in}$ are the niche columns: every cell type but $k$ itself
+  (`mergeNiches()` groups are respected, so a group containing $k$ is also
+  excluded). Columns not in `niche` stay in the model as adjustments.
+- the bracketed $c_s \ell_{in}$ columns enter only in the sandwich engine's
+  condition-specific model.
+- $\psi_g$ is the gene's dispersion, estimated by profile maximum likelihood
+  at the converged mean.
+
+The fit is `SpaNorm::polishNB()`: damped Newton on each gene's own
+likelihood, with the patient intercepts absorbed by a Schur complement, so the
+cost per gene is one dense Gram matrix of the non-intercept columns whatever
+the number of patients. Genes are independent given the design, so they are
+blocked and fitted in parallel (`BPPARAM`); nothing in the fit is shared
+across genes.
+
+What the patient intercepts absorb is a real association: patients whose
+type-$k$ cells sit in denser type-$n$ neighbourhoods may express a gene
+differently as a whole. That is a between-patient question with $S$ units and
+`testNicheAbundance()` asks it, on pseudobulk profiles. It is not
+neighbourhood-dependent expression and the two are never reported as each
+other.
+
+# The slopes engine
+
+The default engine estimates every patient's own slope and tests those slopes
+across patients.
+
+**One fit, no condition.** The model above is fitted once, without condition
+terms, giving pooled slopes $\hat\beta_{gn}$, covariate effects
+$\hat\gamma_g$ and $\hat\psi_g$.
+
+**Each patient's slopes.** For patient $s$, with working weights and
+residuals of the NB score at the shared fit,
+$w_i = \mu_i / (1 + \psi \mu_i)$ and $r_i = (y_i - \mu_i)/(1 + \psi\mu_i)$,
+and $\tilde\ell_i$ the niche columns centred within the patient with weights
+$w$:
+
+$$
+\hat\beta_{gs} = \hat\beta_g + I_s^{-1} u_s, \qquad
+I_s = \sum_{i \in s} w_i \tilde\ell_i \tilde\ell_i^\top, \quad
+u_s = \sum_{i \in s} \tilde\ell_i r_i ,
+$$
+
+one Fisher-scoring step from the pooled slope toward the patient's own NB
+optimum, holding $\gamma$ and $\psi$ at the shared fit and profiling out the
+patient's intercept. It uses every cell's count through the NB likelihood; a
+patient whose niche columns are collinear within its cells drops out for that
+gene.
+
+**Two variances per patient slope.**
+
+- $v^{\text{model}}_{gs} = \mathrm{diag}(I_s^{-1})$ treats the patient's
+  cells as independent.
+- $v^{\text{tile}}_{gs}$ is a within-patient **spatial sandwich**: residual
+  expression is spatially autocorrelated, so neighbouring cells are not
+  independent. The patient's sections are cut into square tiles of side
+  `tile` (default $3\sigma$), and with $U_t = \sum_{i \in t}\tilde\ell_i r_i$
+  over the $T$ tiles,
+  $v^{\text{tile}} = \mathrm{diag}\big(I_s^{-1} (\textstyle\sum_t U_t U_t^\top) I_s^{-1}\big)\, T/(T-1)$.
+  Patients with fewer than `min.tiles` tiles take $v^{\text{model}}$ times the
+  gene's median tile-to-model ratio (at least 1).
+
+The condition-specific test uses $v^{\text{tile}}$. The pooled test uses
+$v^{\text{model}} f_{sn}$, with one factor per (patient, niche),
+$f_{sn} = \max\{1, \mathrm{median}_g(v^{\text{tile}}_{gsn}/v^{\text{model}}_{gsn})\}$:
+the per-gene tile sandwich is noisy on sparse genes, and a pooled null
+calibrated on it was not.
+
+**Combining patients.** For each (index, niche) column, the slopes of all
+genes are combined across patients with `limma`, weighted by
+$1/(v_{gs} + \tau^2_g)$, where $\tau^2_g$ is the gene's DerSimonian-Laird
+between-patient variance of the slope (computed without the condition). The
+design is an intercept (pooled test) or an intercept and the condition, plus
+optional `strata` (a slide or batch confounded with the condition). Two
+further choices complete the test:
+
+- an **expression-trended prior**: `eBayes(trend = TRUE, robust = TRUE)` on
+  the gene's log mean expression in the index type, so a bright gene's
+  residual variance is not shrunk toward a typical gene's;
+- an **effective-patient df**: the $t$ statistic is referred to
+  $\min(\nu_{\text{limma}}, n_{\text{eff}} - p)$, where
+  $n_{\text{eff}} = (\sum_s w_s)^2 / \sum_s w_s^2$ is the Kish effective
+  number of patients behind the weights and $p$ the design's columns. When
+  $\tau^2_g$ truncates to zero, the weights can rest on a few cell-rich
+  patients, and limma's df would count every patient as a full replicate.
+
+The eBayes prior, its trend and the per-patient factors are computed over the
+whole gene family of a column, never within a block of genes.
+
+**The fit never sees the condition.** Any patient-level condition can be
+tested afterwards (`testSpiDE(fit, condition = ...)`), and a permutation of
+the condition reruns only the test.
+
+# The sandwich engine
+
+The sandwich engine fits the model with the condition terms $c_s\ell_{in}$
+when given a condition (and without them otherwise), and tests the tested
+coefficients directly. The standard error is a **patient-clustered CR2
+sandwich** (Bell and McCaffrey 2002; Pustejovsky and Tipton 2018) in the
+working-weights space of the converged fit, with the patient intercepts
+absorbed, and the reference distribution a $t$ with the **Bell-McCaffrey
+Satterthwaite degrees of freedom**. It is computed in low rank, per patient,
+never forming an $n_s \times n_s$ matrix.
+
+The sandwich engine assumes one slope shared by all patients in a condition,
+and lets the cluster-robust variance absorb departures from it; the slopes
+engine models the between-patient variance of the slope explicitly. The
+second is the more powerful when effects vary between patients; the first is
+competitive when they do not. The condition-specific model needs the
+condition at fit time, so the sandwich engine cannot test a different
+condition without refitting.
+
+# Testing
+
+`testSpiDE()` returns one row per (gene, index, niche, test):
+
+- the **pooled** test, always, with Benjamini-Hochberg over every tested
+  triplet;
+- the **condition-specific** test, when a condition is given. By default
+  (`procedure = "filtered"`) its BH family is the triplets whose pooled test
+  passes at `fdr`. The pooled statistic does not depend on the condition, so
+  the filtered family is the same under any relabelling of patients, and its
+  error rate is what the permutation nulls of the calibration vignette
+  measure. It spends the multiplicity correction on the triplets with a niche
+  dependence to modify.
+  `procedure = "all"` uses every triplet.
+
+The estimate is on the log scale per unit $\log(1 + d)$: the pooled slope, or
+the difference in slope between the conditions (second level minus first).
+
+# What the model does not address
+
+- **Spatial autocorrelation of the niche covariate.** The tile sandwich
+  accounts for autocorrelated residuals within a patient; a niche covariate
+  that is itself smooth over space can still carry unmodelled spatial
+  structure. The calibration nulls include block permutations that preserve
+  it.
+- **Depth beyond one slope on the log library size.** Whether a
+  gene-specific, spatially varying library-size term does better is being
+  measured; the calibration vignette records the outcome.
+- **Composition.** Between-patient differences in niche abundance are
+  absorbed, by design; `testNicheAbundance()` tests them separately.
+
+# The mixed model of spiDE 0.99.22 and earlier
+
+Before 0.99.30, spiDE fitted one joint negative binomial mixed model over all
+index types, with a condition by niche interaction per index type and random
+intercepts per patient and per (patient, cell type). It had no
+between-patient variance in the niche slopes, so its standard errors shrank
+with the number of cells, and it was anti-conservative on every cohort it was
+measured on. It is archived,
+with its tests, vignettes and documentation, as the research package
+`spiDEmixed` (`research/mixed` in the spiDE repository).

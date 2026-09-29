@@ -34,7 +34,7 @@ conditions.
 }
 \examples{
 data(toySpiDE)
-spe <- buildNiches(toySpiDE, sigma = 20)
-fit <- fitSpiDE(spe, index = "A", sigma = 20, min.patients = 6)
+spe <- buildNiches(toySpiDE, sigma = 30)
+fit <- fitSpiDE(spe, index = "A", sigma = 30)
 head(patientSlopes(fit, gene = "G1"))
 }

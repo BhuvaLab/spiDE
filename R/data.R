@@ -1,8 +1,8 @@
 #' A small synthetic SpatialExperiment for spiDE examples
 #'
-#' A seeded toy dataset of 20 genes across 480 cells from 6 samples (three
-#' Responders, three Non-responders) with three cell types (A, B, C) laid out on
-#' a 500 x 500 field. Cell type B is concentrated in the right of the field, and
+#' A seeded toy dataset of 20 genes across 2,400 cells from 16 patients (eight
+#' Responders, eight Non-responders; one sample of 150 cells each) with three
+#' cell types (A, B, C) laid out on a 500 x 500 field. Cell type B is concentrated in the right of the field, and
 #' a neighbourhood-dependent signal is planted: gene `G1` is up-regulated in the
 #' index cell type A, in Responders, in proportion to the local density of the
 #' niche cell type B. Used throughout the examples and vignette.

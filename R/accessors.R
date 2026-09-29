@@ -14,8 +14,8 @@
 #'   family have \code{q = NA}.
 #' @examples
 #' data(toySpiDE)
-#' res <- spiDE(toySpiDE, condition = "condition", sigma = 20, index = "A",
-#'              min.patients = 6, procedure = "all")
+#' res <- spiDE(toySpiDE, condition = "condition", sigma = 30, index = "A",
+#'              procedure = "all")
 #' results(res, test = "pooled")
 #' @rdname results
 #' @export
@@ -48,8 +48,8 @@ setMethod("results", "SpiDEResults", function(object, test = NULL, fdr = NULL, .
 #'   patient-level colData columns recorded by [fitSpiDE()].
 #' @examples
 #' data(toySpiDE)
-#' spe <- buildNiches(toySpiDE, sigma = 20)
-#' fit <- fitSpiDE(spe, index = "A", sigma = 20, min.patients = 6)
+#' spe <- buildNiches(toySpiDE, sigma = 30)
+#' fit <- fitSpiDE(spe, index = "A", sigma = 30)
 #' head(patientSlopes(fit, gene = "G1"))
 #' @rdname patientSlopes
 #' @export

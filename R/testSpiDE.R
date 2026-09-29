@@ -29,8 +29,8 @@
 #' @return a [SpiDEResults-class]; read it with [results()].
 #' @examples
 #' data(toySpiDE)
-#' spe <- buildNiches(toySpiDE, sigma = 20)
-#' fit <- fitSpiDE(spe, index = "A", sigma = 20, min.patients = 6)
+#' spe <- buildNiches(toySpiDE, sigma = 30)
+#' fit <- fitSpiDE(spe, index = "A", sigma = 30)
 #' res <- testSpiDE(fit, condition = "condition", procedure = "all")
 #' res
 #' head(results(res))
