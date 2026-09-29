@@ -3,164 +3,60 @@
 \name{spiGSEA}
 \alias{spiGSEA}
 \alias{spiGSEA,SpiDEResults-method}
-\title{Gene-set enrichment on a fitted spiDE model}
+\title{Gene-set tests on spiDE's niche results (experimental)}
 \usage{
-spiGSEA(object, spe = NULL, genesets, ...)
+spiGSEA(object, genesets, ...)
 
 \S4method{spiGSEA}{SpiDEResults}(
   object,
-  spe = NULL,
   genesets,
-  type = c("niche", "celltype"),
-  test = c("competitive", "self-contained"),
-  fdr = 0.05,
+  test = NULL,
   min.size = 5L,
   max.size = 500L,
   rho = NULL,
-  rho.genes = 2000L,
-  block.size = NULL,
-  backend = c("auto", "cpu", "gpu"),
-  gpu.mem.budget = NULL,
-  BPPARAM = BiocParallel::SerialParam(),
-  verbose = TRUE
+  ...
 )
 }
 \arguments{
-\item{object}{a \link{SpiDEResults} from \code{\link[=testSpiDE]{testSpiDE()}} or \code{\link[=spiDE]{spiDE()}}.}
+\item{object}{a \link[=SpiDEResults-class]{SpiDEResults}.}
 
-\item{spe}{the \link[SpatialExperiment:SpatialExperiment]{SpatialExperiment::SpatialExperiment} the model was fitted
-on. Only needed when the inter-gene correlation has to be estimated --
-\code{\link[=testSpiDE]{testSpiDE()}} normally stores it on each fit, in which case this can be
-omitted and no pass over the counts happens at all.}
+\item{genesets}{a named list of character vectors of gene names.}
 
-\item{genesets}{a named list of gene identifiers (character, matched against
-\code{rownames}) or integer row indices.}
+\item{...}{unused.}
 
-\item{...}{ignored; present for compatibility with the generic.}
+\item{test}{\code{NULL} (the condition-specific test if run, else pooled),
+\code{"condition"} or \code{"pooled"}.}
 
-\item{type}{on a condition-free fit (\code{condition = NULL}) "niche" tests
-the two-way \code{celltype:niche} statistics, which are the tested effects
-in that mode, and "celltype" has nothing to test and errors. Otherwise:
-"niche" (default) tests the three-way celltype:condition:niche
-statistics; "celltype" tests the CellType:condition statistics, which are
-empty unless the design carries that block.}
+\item{min.size, max.size}{set size limits after intersecting with the tested
+genes of each index type.}
 
-\item{test}{"competitive" (default) compares the set's mean statistic with
-the genes outside the set, as \code{limma::camera} does;
-"self-contained" compares it with zero. See the section below: the
-benchmark shows the self-contained form does not control error on
-correlated data, which is why it is not the default.}
-
-\item{fdr}{the FDR threshold applied at every level of the cascade.}
-
-\item{min.size, max.size}{sets outside this size range (after intersecting
-with the fitted genes) are dropped. The lower bound keeps the mean from
-being dominated by one gene; the upper bound drops sets so broad that the
-competitive null they are tested against is largely themselves.}
-
-\item{rho}{the average inter-gene correlation. \code{NULL} (default) uses
-the value \code{\link[=testSpiDE]{testSpiDE()}} stored on each fit, and falls back to estimating
-it from Pearson residuals -- separately per bandwidth, since each is a
-different design and leaves different residuals -- only if the fit does
-not carry one. Supply a scalar to use one value throughout, or one value
-per bandwidth, to override. Pass 0 only if you are certain the
-genes are independent -- they are not, and the test is severely
-anti-conservative without this term.}
-
-\item{rho.genes}{number of genes to subsample when estimating \code{rho}
-(\code{NULL} uses all). A random subset of genes gives a random subset of
-gene PAIRS, so the estimate is unbiased; the default trades a little
-precision on a nuisance scalar for a large saving on the counts pass.}
-
-\item{block.size}{genes per block when streaming the counts. \code{NULL}
-auto-sizes against the device memory budget on the GPU backend.}
-
-\item{backend}{the compute backend for the inter-gene correlation pass
-("auto", "cpu" or "gpu"), which is the only step that touches the counts
-and so the only one worth accelerating -- the gene-set arithmetic
-downstream is a sets x contrasts matrix and negligible by comparison.
-Ignored when \code{rho} is supplied, since no pass is then needed.}
-
-\item{gpu.mem.budget}{device memory budget in bytes for the GPU block sizer.}
-
-\item{BPPARAM}{a BiocParallelParam. Gene blocks contribute additive partial
-sums, so they parallelise exactly; a multi-worker param is downgraded to
-serial on the GPU backend to stop workers contending for one device.}
-
-\item{verbose}{report progress.}
+\item{rho}{\code{NULL} (estimate it, slopes engine) or a fixed inter-gene
+correlation.}
 }
 \value{
-a data.frame of significant sets, keyed by (geneset, ct_index) and
-additionally ct_niche when \code{type = "niche"}, with the set size, the
-z-statistic at its most informative bandwidth, the direction, and the
-q-value from each level of the cascade. Empty if nothing survives.
+a data.frame: \code{set}, \code{index}, \code{niche}, \code{test},
+\code{size}, \code{mean_z}, \code{t}, \code{p}, \code{q} (BH within each
+(index, niche) column), \code{direction} and \code{rho}.
 }
 \description{
-Tests whether the genes of a set shift coherently in their response-niche
-(or cell-type response) statistics. Gene-set statistics average over tens to
-hundreds of genes, which recovers the power the per-gene niche tests lose on
-sparse spatial data, with the inter-gene correlation carried explicitly so
-that co-regulation is not mistaken for evidence.
+For every (index cell type, niche cell type) column of a test, asks whether
+the genes of a set change with the niche more than the other tested genes
+(a competitive test, as in \code{limma::camera()}): per-gene signed
+\eqn{z}-scores from the test's p-values are averaged over the set and
+compared with the rest, with the set's variance inflated by
+\eqn{1 + (m - 1)\rho} for inter-gene correlation \eqn{\rho}. With the slopes
+engine \eqn{\rho} is the mean correlation between genes of the per-patient
+slopes in that column; otherwise it is \code{rho} (default 0).
 }
 \details{
-Evidence is combined across bandwidths with the same log-likelihood-weighted
-Cauchy combination used for the gene-level results, then gated by a nested
-Benjamini-Hochberg cascade: set level, then index cell type within surviving
-sets, then (for \code{type = "niche"}) niche cell type within those.
+\strong{Experimental.} This replaces the mixed model's \code{spiGSEA()}
+(archived in spiDEmixed); it has not yet passed a gene-set null benchmark
+on the new engines, so its calls should be treated as exploratory.
 }
-\section{Which test, and what it licenses you to say}{
-
-\code{test = "competitive"} (the default) asks whether the set's mean
-differs from the mean of the genes \strong{outside} it, as \code{limma::camera}
-does -- null: the set responds no more than the assayed background.
-
-\code{test = "self-contained"} asks whether the set's mean differs from
-\strong{zero} -- null: no gene in the set responds. It reproduces the flat-script
-pipeline this replaces, and is offered for that comparison, but \strong{it does
-not control error on correlated data and should not be used for inference.}
-
-The simulation benchmark (\code{research/}, scenario \code{gsea}) measured
-this on ground truth: with nothing planted, at realistic inter-gene
-correlation and a nominal FDR of 0.05, the self-contained test called 20.6
-of 208 sets per replicate -- every one of them false, a realised FDP of 1.00
--- while the competitive test called 0.05 sets. The cause is not the
-correlation term: it is that the self-contained form assumes the gene-level
-statistics being averaged have unit spread, which holds under the null but
-not under signal (observed spread 1.8 at the largest effect tested). The
-competitive form divides by the observed spread and so is immune.
-
-Two consequences worth knowing. Under a \strong{global} shift affecting most
-genes, the self-contained test called 96.3\% of random sets and the
-competitive test 0.7\%. And because spiDE's per-gene statistics track
-expression, the self-contained test's false calls concentrate in abundant
-sets: its called sets sat at the 86th expression percentile against the 51st
-for random sets. Where that distinction is load bearing, also compare each
-set against expression-matched random sets of the same size rather than
-reading the q-value alone.
-}
-
 \examples{
 data(toySpiDE)
-spe <- buildNiches(toySpiDE, sigma = 20)
-res <- spiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
-gs <- list(setA = rownames(spe)[1:5], setB = rownames(spe)[6:10])
-spiGSEA(res, spe, gs, min.size = 3, fdr = 1)
-}
-\references{
-Wu D, Smyth GK (2012). "Camera: a competitive gene set test
-accounting for inter-gene correlation." \emph{Nucleic Acids Research}
-40(17):e133. (Source of the variance inflation factor, and of the
-two-sample form used by \code{test = "competitive"}.)
-
-Wu D, Lim E, Vaillant F, Asselin-Labat ML, Visvader JE, Smyth GK
-(2010). "ROAST: rotation gene set tests for complex microarray
-experiments." \emph{Bioinformatics} 26(17):2176-2182. (Self-contained
-gene-set null.)
-}
-\seealso{
-The \emph{Gene-set inference} benchmark report on the spiDE-research
-site (\url{https://bhuvalab.github.io/spiDE-research/}) for the calibration
-study behind the competitive default: on a fully null benchmark at realistic
-inter-gene correlation the self-contained test's realised FDP is 1.00
-against a reported 0.05, and no choice of \code{rho} repairs it.
+res <- spiDE(toySpiDE, condition = "condition", sigma = 20, index = "A",
+             min.patients = 6, procedure = "all")
+sets <- list(first = paste0("G", 1:5), second = paste0("G", 6:12))
+spiGSEA(res, sets, test = "pooled", min.size = 3)
 }

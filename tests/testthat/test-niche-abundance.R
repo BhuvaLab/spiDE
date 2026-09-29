@@ -1,6 +1,7 @@
-# compositionTest(): the between-sample composition association, at the
-# patient level. This is what the nested intercept ABSORBS in fitSpiDE(); here
-# it is tested on its own terms, with S units and a limma moderated t.
+# testNicheAbundance(): the between-patient niche-abundance association (up to
+# spiDE 0.99.22, compositionTest()). This is what the per-patient intercepts of
+# fitSpiDE() ABSORB; here it is tested on its own terms, with S units and a
+# limma moderated t.
 
 # 200 cells per sample and a bandwidth of 50: at lower density the niche
 # covariate's per-sample MEAN is dominated by cell-placement noise (between-
@@ -10,8 +11,8 @@
 spe_c <- buildNiches(.toySPE(n_samples = 12, n_per = 200, n_genes = 12,
                              composition = 3, seed = 3), sigma = 50)
 
-test_that("compositionTest returns the documented tidy schema", {
-  ct <- compositionTest(spe_c, condition = "condition", sigma = 50, verbose = FALSE)
+test_that("testNicheAbundance returns the documented tidy schema", {
+  ct <- testNicheAbundance(spe_c, condition = "condition", sigma = 50, verbose = FALSE)
   expect_s3_class(ct, "data.frame")
   expect_true(all(c("gene", "ct_index", "ct_niche", "term", "coef", "t", "p",
                     "fdr", "fdr.global", "n_samples") %in% names(ct)))
@@ -28,7 +29,7 @@ test_that("the planted between-sample confound is a patient-level finding", {
   # That is a between-sample association of expression in A with B density
   # around A -- exactly what this test exists to report, on the
   # condition:niche term since the shift is condition-specific.
-  ct <- compositionTest(spe_c, condition = "condition", sigma = 50, verbose = FALSE)
+  ct <- testNicheAbundance(spe_c, condition = "condition", sigma = 50, verbose = FALSE)
   g2 <- ct[ct$gene == "G2" & ct$ct_index == "A" & ct$ct_niche == "B" &
              ct$term == "condition:niche", ]
   expect_equal(nrow(g2), 1L)
@@ -39,28 +40,28 @@ test_that("the planted between-sample confound is a patient-level finding", {
 })
 
 test_that("without a condition only the pooled niche term is reported", {
-  ct <- compositionTest(spe_c, condition = NULL, sigma = 50, verbose = FALSE)
+  ct <- testNicheAbundance(spe_c, condition = NULL, sigma = 50, verbose = FALSE)
   expect_equal(unique(ct$term), "niche")
 })
 
 test_that("min.cells drops thin samples and a sample-level covariate enters the design", {
-  ct_all <- compositionTest(spe_c, condition = "condition", sigma = 50,
+  ct_all <- testNicheAbundance(spe_c, condition = "condition", sigma = 50,
                             min.cells = 1L, verbose = FALSE)
   # ~55-85 A cells per sample, so min.cells = 70 drops some samples while
   # leaving enough to fit
-  ct_strict <- compositionTest(spe_c, condition = "condition", sigma = 50,
+  ct_strict <- testNicheAbundance(spe_c, condition = "condition", sigma = 50,
                                min.cells = 70L, verbose = FALSE)
   expect_true(min(ct_strict$n_samples) <= min(ct_all$n_samples))
   expect_true(all(ct_strict$n_samples >= 3L))
-  # Age is constant within sample; it must be accepted here (fitSpiDE rejects
-  # it under random != "none" because the per-sample intercept absorbs it)
-  ct_cov <- compositionTest(spe_c, condition = "condition", sigma = 50,
+  # Age is constant within sample; it must be accepted here (fitSpiDE() rejects
+  # it because the per-patient intercepts absorb it)
+  ct_cov <- testNicheAbundance(spe_c, condition = "condition", sigma = 50,
                             covariates = "Age", verbose = FALSE)
   expect_true(nrow(ct_cov) > 0)
 })
 
 test_that("index and niche restrictions are honoured", {
-  ct <- compositionTest(spe_c, condition = "condition", sigma = 50,
+  ct <- testNicheAbundance(spe_c, condition = "condition", sigma = 50,
                         index = "A", niche = c("B", "C"), verbose = FALSE)
   expect_equal(unique(ct$ct_index), "A")
   expect_setequal(unique(ct$ct_niche), c("B", "C"))

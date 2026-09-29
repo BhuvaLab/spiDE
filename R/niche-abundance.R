@@ -1,17 +1,18 @@
-# The between-sample composition association, tested at the patient level.
+# The between-patient niche-abundance association, tested at the patient level.
 #
-# spiDE's niche slopes are now within-(sample, cell type) slopes (the nested
-# intercept, fitSpiDE(re.celltype = TRUE)). What that intercept ABSORBS is a
-# real association in the data: samples whose type-k cells sit, on average, in
-# a denser type-n neighbourhood also have a different mean expression in type
-# k. It was found because it leaked into the niche slopes and inflated the
-# triplet FDR on the real cohort (research/fdr-ordering/REPORT.md, section 5d);
-# it is not neighbourhood-dependent DE, and reporting it as such was the
-# defect. But "do patients whose tumour compartment is fibroblast-rich express
-# this gene differently IN tumour cells?" is a legitimate question with S
-# experimental units, and this is where it is asked -- at the patient level,
-# on pseudobulk means, with limma, so the standard error is the between-sample
-# one that the question needs.
+# spiDE's niche slopes are within-patient slopes: fitSpiDE() gives every patient
+# its own intercept in each index cell type, so the tests compare cells WITHIN a
+# patient. What those intercepts absorb is a real association in the data:
+# patients whose type-k cells sit, on average, in a denser type-n neighbourhood
+# may also have a different mean expression in type k. It is not
+# neighbourhood-dependent differential expression (it was found in 0.99.16 when
+# it leaked into the mixed model's niche slopes and inflated the triplet FDR on
+# the real cohort; research/fdr-ordering/REPORT.md, section 5d). But "do
+# patients whose tumour compartment is fibroblast-rich express this gene
+# differently IN tumour cells?" is a legitimate question with S experimental
+# units, and this is where it is asked -- at the patient level, on pseudobulk
+# means, with limma, so the standard error is the between-patient one that the
+# question needs. (Up to spiDE 0.99.22 this function was compositionTest().)
 
 #' Per-(sample, index type) pseudobulk profiles and mean niche densities
 #'
@@ -45,7 +46,13 @@
   out
 }
 
-#' Patient-level test of the between-sample composition association
+#' Test whether patients with more of a niche cell type express genes differently
+#'
+#' A between-patient question that the within-patient engines cannot see:
+#' does a gene's expression in index cell type \eqn{k} differ between patients
+#' whose type-\eqn{k} cells sit, on average, among more type-\eqn{n} cells?
+#' ([fitSpiDE()] and [testSpiDE()] instead ask whether expression changes with
+#' niche density WITHIN each patient.)
 #'
 #' For each index cell type \eqn{k} and niche cell type \eqn{n}, regresses the
 #' per-sample pseudobulk log2-CPM of every gene in the type-\eqn{k} cells on
@@ -54,15 +61,15 @@
 #' \code{condition} the design is \code{~ niche * condition + covariates} and
 #' two terms are reported: \code{"niche"}, the association pooled across
 #' conditions, and \code{"condition:niche"}, its difference between conditions
-#' -- the patient-level counterpart of the \code{CellType:condition:niche}
-#' term that [fitSpiDE()] tests within samples. Without a condition only
+#' -- the patient-level counterpart of the condition-specific niche test that
+#' [testSpiDE()] runs within patients. Without a condition only
 #' \code{"niche"} is reported.
 #'
-#' This is the association that [fitSpiDE()]'s nested (sample x cell type)
-#' intercept (\code{re.celltype = TRUE}) deliberately absorbs. It is a
-#' between-patient effect with \eqn{S} experimental units; it is not
+#' This is the association that [fitSpiDE()]'s per-patient intercepts
+#' deliberately absorb. It is a between-patient effect with \eqn{S} experimental units; it is not
 #' neighbourhood-dependent differential expression, and the two must not be
-#' conflated (see the model vignette). Samples contributing fewer than
+#' conflated (see the model vignette). Up to spiDE 0.99.22 this function was
+#' \code{compositionTest()}. Samples contributing fewer than
 #' \code{min.cells} cells of the index type are dropped for that index type,
 #' and an index type with fewer than three remaining samples is skipped.
 #'
@@ -90,14 +97,14 @@
 #' @examples
 #' data(toySpiDE)
 #' spe <- buildNiches(toySpiDE, sigma = 20)
-#' ct <- compositionTest(spe, condition = "condition", sigma = 20)
-#' head(ct[order(ct$p), ])
+#' na <- testNicheAbundance(spe, condition = "condition", sigma = 20)
+#' head(na[order(na$p), ])
 #' @importFrom limma lmFit eBayes
 #' @importFrom stats model.matrix p.adjust
-#' @rdname compositionTest
+#' @rdname testNicheAbundance
 #' @export
 setMethod(
-  "compositionTest",
+  "testNicheAbundance",
   signature = "ANY",
   definition = function(spe, condition = NULL, sigma, index = NULL, niche = NULL,
                         covariates = character(), assay = "counts",
@@ -135,7 +142,7 @@ setMethod(
     for (k in names(pb)) {
       b <- pb[[k]]
       for (n in setdiff(niches, k)) {
-        if (verbose) message(sprintf("compositionTest: %s x %s (%d samples)", k, n, length(b$samples)))
+        if (verbose) message(sprintf("testNicheAbundance: %s x %s (%d samples)", k, n, length(b$samples)))
         df <- data.frame(niche = as.numeric(b$niche[b$samples, n]))
         if (!is.null(cond_s)) df$condition <- droplevels(cond_s[b$samples])
         for (cv in covariates) df[[cv]] <- cov_s[[cv]][b$samples]

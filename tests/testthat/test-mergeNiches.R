@@ -35,18 +35,6 @@ test_that("re-merging composes membership back to fine cell types", {
   expect_setequal(gm[["ACB"]], c("A", "B", "C"))
 })
 
-test_that("a mergeNiches run makes nicheDesign drop member interactions", {
-  spe <- .toySPE()
-  spe <- buildNiches(spe, sigma = 20)
-  spe <- mergeNiches(spe, groups = list(AC = c("A", "C")), sigma = 20)
-
-  des <- nicheDesign(spe, condition = "condition", sigma = 20)
-  cm <- des$coefmap
-  ac <- cm[!is.na(cm$niche) & cm$niche == "AC", ]
-  expect_false(any(ac$index %in% c("A", "C")))
-  expect_true(any(ac$index == "B" & ac$type == "ResponseNiche"))
-})
-
 test_that("mergeNiches errors on a missing bandwidth", {
   spe <- .toySPE()
   spe <- buildNiches(spe, sigma = 20)

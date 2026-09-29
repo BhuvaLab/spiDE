@@ -2,101 +2,63 @@
 % Please edit documentation in R/AllGenerics.R, R/testSpiDE.R
 \name{testSpiDE}
 \alias{testSpiDE}
-\alias{testSpiDE,SpiDEResults-method}
-\title{Test neighbourhood-dependent differential expression}
+\alias{testSpiDE,SpiDEFit-method}
+\title{Test niche-dependent differential expression}
 \usage{
-testSpiDE(object, ...)
+testSpiDE(object, condition = NULL, ...)
 
-\S4method{testSpiDE}{SpiDEResults}(
+\S4method{testSpiDE}{SpiDEFit}(
   object,
-  spe = NULL,
-  assay = "counts",
+  condition = NULL,
+  procedure = c("filtered", "all"),
   fdr = 0.05,
-  weight.thresh = 0.1,
-  combine = c("cauchy", "brown"),
-  block.size = NULL,
-  backend = c("auto", "cpu", "gpu"),
-  gpu.mem.budget = NULL,
-  BPPARAM = BiocParallel::SerialParam(),
-  ...,
-  dispersion = c("ql", "pearson")
+  strata = NULL,
+  ...
 )
 }
 \arguments{
-\item{object}{a \link{SpiDEResults} from \code{\link[=fitSpiDE]{fitSpiDE()}}.}
+\item{object}{a \link[=SpiDEFit-class]{SpiDEFit} from \code{\link[=fitSpiDE]{fitSpiDE()}}.}
 
-\item{...}{ignored.}
+\item{condition}{\code{NULL} (use the condition recorded by \code{\link[=fitSpiDE]{fitSpiDE()}},
+if any) or a character naming a two-level, patient-level colData column.
+With the sandwich engine it must be the condition the model was fitted
+with. The contrast is second level minus first (factor levels, else
+sorted values).}
 
-\item{spe}{the SpatialExperiment used for fitting (required to compute the
-Wald/Brown inference if it is not already present on the fits).}
+\item{...}{unused.}
 
-\item{assay}{a character, the counts assay (used only if inference must be
-computed).}
+\item{procedure}{\code{"filtered"} or \code{"all"}, see Details.}
 
-\item{fdr}{a numeric in (0, 1], the target false discovery rate (default
-0.05). Up/Down association directions are tested separately and combined,
-which is mathematically equivalent to gating the reported, combined
-\code{fdr.gene}/\code{fdr.index}/\code{fdr.niche} values at \code{fdr} directly - so
-\code{fdr = 1} returns every (gene, index, niche) result, unfiltered.}
+\item{fdr}{the FDR level of the filter.}
 
-\item{weight.thresh}{a numeric, Cauchy weights below this are set to zero.}
-
-\item{combine}{one of "cauchy" or "brown", the within-gene combiner for the
-correlated niche p-values (gene-level and per-index-cell-type). "cauchy"
-(default) is the correlation-agnostic Cauchy combination test (ACAT), which
-controls type-I error under correlation without estimating a correlation
-matrix; "brown" is the correlation-aware Brown's method. Used only if the
-Wald inference is not already present on the fits.}
-
-\item{block.size}{a numeric, genes per inference block (NULL = a single
-block on the CPU backend, or a memory-bounded auto-selected size on the
-GPU backend).}
-
-\item{backend}{a character, the compute backend for the inference stage
-("auto", "cpu", or "gpu"). The GPU backend batches the per-gene Wald
-covariance and NB math across each block via \code{SpaNorm}'s tensor
-engine; it also forces a serial \code{BPPARAM} (with a warning) to avoid
-multiple processes contending for one GPU device. Used only if the Wald
-inference is not already present on the fits.}
-
-\item{gpu.mem.budget}{a numeric, the GPU memory budget in bytes used to
-size inference blocks (NULL auto-detects; only relevant for the GPU
-backend). The batched Wald covariance is bounded separately, by a gene
-sub-batch sized from this budget on the GPU path and from
-\code{getOption("spiDE.cov.mem.budget", 2e9)} on the CPU path -- raise
-the latter to trade memory for speed on wide (random-slope) designs.}
-
-\item{BPPARAM}{a BiocParallelParam for the inference stage.}
-
-\item{dispersion}{the scale of the standard errors: \code{"ql"} (default),
-the edgeR-v4 quasi-likelihood dispersion of each gene (its adjusted
-deviance over its effective residual df, \code{SpaNorm::qlDispersion()})
-moderated across genes with \code{limma::squeezeVar()}; or
-\code{"pearson"}, the working Pearson dispersion of the fit. The QL
-scale is the only one measured to hold the nominal type-I error at every
-sample size, including four samples, where the Pearson scale rejects at
-0.09 against a nominal 0.05 (see \code{vignette("spiDE-calibration")}).
-It runs on either backend. A fixed-effects, unconverged fit
-(\code{random = "none", converge = FALSE}) has neither scale and keeps its
-legacy NB-dispersion scale with a message.}
+\item{strata}{\code{NULL} (the fit's) or a patient-level column adjusted for
+in the slopes engine's condition test (e.g. slide, where the condition is
+confounded with it).}
 }
 \value{
-the input \code{object} with combined p-values and the tidy results
-table populated.
+a \link[=SpiDEResults-class]{SpiDEResults}; read it with \code{\link[=results]{results()}}.
 }
 \description{
-Completes a spiDE analysis: for each bandwidth, per-gene Wald/Brown inference
-is computed (block-wise, in parallel) if not already present; p-values are
-combined across bandwidths by a log-likelihood-weighted Cauchy combination;
-and a hierarchical (gene -> index cell type -> niche cell type) Benjamini-
-Hochberg procedure identifies significant neighbourhood-dependent DE. Results
-are returned as a tidy table via \code{\link[=results]{results()}}.
+Always runs the \strong{pooled} test: for every (gene, index cell type, niche
+cell type), whether the gene's expression in the index type changes with the
+density of the niche type, within patients, consistently across patients.
+If a \code{condition} is given (here, or recorded by \code{\link[=fitSpiDE]{fitSpiDE()}}), it also
+runs the \strong{condition-specific} test: whether that slope differs
+between the two conditions -- a between-patient contrast of within-patient
+slopes.
+}
+\details{
+By default (\code{procedure = "filtered"}) the condition-specific test is
+carried out only among triplets whose pooled test passes at \code{fdr}: the
+filter never looks at the condition, so it is exact under any relabelling of
+patients, and it spends the multiplicity budget on triplets with a niche
+effect to modify. \code{procedure = "all"} tests every triplet.
 }
 \examples{
 data(toySpiDE)
 spe <- buildNiches(toySpiDE, sigma = 20)
-res <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
-res <- testSpiDE(res, spe = spe)
+fit <- fitSpiDE(spe, index = "A", sigma = 20, min.patients = 6)
+res <- testSpiDE(fit, condition = "condition", procedure = "all")
+res
 head(results(res))
-
 }
