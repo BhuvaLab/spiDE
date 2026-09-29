@@ -16,37 +16,21 @@ navbar:
         href: articles/spiDE.html
       - text: The spiDE model
         href: articles/spiDE-model.html
-      - text: Calibration — reading lambda, and what the benchmarks measured
+      - text: Calibration — what the tests were measured against
         href: articles/spiDE-calibration.html
     validation:
-      text: Statistical validation
+      text: Validation
       menu:
-      - text: Simulation study — calibration, power, FDR
-        href: articles/spiDE-simulation.html
-      - text: The real cohort — the null tail, its cause, the fix
-        href: articles/spiDE-cohort.html
-      - text: Combining niche p-values — Brown vs Cauchy
-        href: articles/spiDE-cauchy-vs-brown.html
-      - text: Gene-set inference — spiGSEA calibration
-        href: articles/spiDE-gsea-benchmark.html
-      - text: What was tried and rejected
-        href: articles/spiDE-rejected.html
-      - text: -------
-      - text: Standalone mirror (research site)
-        href: https://bhuvalab.github.io/spiDE-research/
+      - text: Simplifying spiDE — the study behind the engines (research site)
+        href: https://bhuvalab.github.io/spiDE-research/simplify-top5.html
 
-# The validation reports live in the research repo (submodule `research/`) and
-# are published by reports/benchmarks/build_site.R to the research repo's
-# GitHub Pages. pkgdown navbar entries take absolute external URLs, so each
-# The validation reports are pkgdown ARTICLES rendered from symlinks in
-# vignettes/articles/ into the research submodule (sources and canonical
-# tables stay versioned there; ^vignettes/articles$ is .Rbuildignore'd so the
-# tarball is untouched). CI reads the private submodule with a deploy key
-# (secret RESEARCH_DEPLOY_KEY; see pkgdown.yaml). The research repo's own
-# Pages site remains as a standalone mirror, restyled to match this site
-# (research: reports/benchmarks/site/navbar.html replicates this navbar).
-# Adding or renaming a report touches: the symlink, this menu, the articles
-# index below, the research build_site.R list, and the navbar replica.
+# The package site carries only the package's own vignettes. The validation
+# reports are rendered and published by the research repository (submodule
+# `research/`, research/reports/benchmarks/build_site.R) to its own GitHub
+# Pages site, which also holds the archive of the mixed-model reports of
+# spiDE <= 0.99.22. By decision of 2026-09-29, this site links only to the
+# CURRENT validation reports, never to the archive. A new current report is a
+# new entry in the Validation menu above, pointing at its research-site page.
 articles:
 - title: Articles
   navbar: ~
@@ -54,13 +38,3 @@ articles:
   - spiDE
   - spiDE-model
   - spiDE-calibration
-- title: Statistical validation
-  desc: >
-    The measurement record behind the package defaults. Sources and canonical
-    tables live in the research submodule; these pages are rendered from them.
-  contents:
-  - articles/spiDE-simulation
-  - articles/spiDE-cohort
-  - articles/spiDE-rejected
-  - articles/spiDE-cauchy-vs-brown
-  - articles/spiDE-gsea-benchmark

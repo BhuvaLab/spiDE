@@ -159,6 +159,33 @@ policy unless the user explicitly asked to push straight to it.
   release blocker; `deploy.R` counts check+BiocCheck warnings toward the gate too.
 - **`document()` can change `NAMESPACE` unexpectedly.** Always diff it after step 1.
 
+## This repository (spiDE >= 0.99.30)
+
+The steps above are package-agnostic. In spiDE, also check the following:
+
+- **SpaNorm version.** spiDE imports `SpaNorm (>= 1.7.14)` (from `Remotes:
+  bhuvad/SpaNorm`), and the cluster's default user library holds an older
+  SpaNorm, and an old spiDE (0.99.19, the mixed model). Run the check phases
+  with the pinned library first on the path:
+  `R_LIBS=$PWD/research/libs/simplify Rscript .claude/skills/deploy-bioc/deploy.R check`.
+  Use an absolute path, because R CMD check runs in another directory.
+  Otherwise the install step fails, or loads the wrong build.
+- **Step 2 (vignettes).** There are three: `spiDE` (quickstart),
+  `spiDE-model` and `spiDE-calibration`. Benchmark numbers go **only** in
+  `vignettes/spiDE-calibration.Rmd`. A new feature gets a usage section, never
+  a quoted measurement elsewhere. Name engines in words (the slopes engine,
+  the sandwich engine).
+- **Step 3 (review).** For a change to `R/`, also run the
+  `design-invariant-reviewer` and `numerical-robustness-reviewer` agents.
+- **Step 4 (tests).** `devtools::test()` and `check` skip `longtests/`, so run
+  any slow numerical check the change touches by hand.
+- **The site.** The package site has only the three vignettes. There is no
+  article sync any more; build it with the `build-site` skill (plain
+  `pkgdown::build_site()` underneath) before pushing `main`.
+- **Legacy objects.** An example or vignette must not read a saved spiDE
+  <= 0.99.22 object; those are read only with `spiDEmixed::readSpiDE()`
+  (`research/mixed`).
+
 ## Troubleshooting
 
 - **`check: build aborted` → `could not find function "<verb>"` in a vignette

@@ -1,3 +1,73 @@
+# spiDE 0.99.30
+
+## A new model; the mixed model is archived
+
+spiDE 0.99.30 replaces the joint mixed-effects model with per-patient models,
+and the API changes with it. Nothing below is backward compatible.
+
+* **Why.** On five comparisons in four spatial cohorts the mixed model of
+  0.99.22 made false calls on every null grid: it had no between-patient
+  variance in the niche slopes, so its standard errors shrank with the number
+  of cells. The simplification study (`research/simplify/`, 2026-09-28/29)
+  measured the replacement engines; the calibration vignette quotes the
+  numbers.
+* **`fitSpiDE()`** now fits, for every index cell type, one negative binomial
+  GLM per gene with an intercept per patient (`SpaNorm::polishNB()`, patient
+  intercepts absorbed), so every niche coefficient is a within-patient slope.
+  `engine = "slopes"` (the default) then estimates each patient's own slopes
+  with a within-patient spatial sandwich variance; `engine = "sandwich"` fits
+  the condition-specific model and uses a patient-clustered CR2 sandwich with
+  Bell-McCaffrey degrees of freedom. One bandwidth per fit.
+* **Depth.** `depth = "loglib"` (default, one slope per gene on the centred
+  log library size), `"nonlinear"` (a 3-df natural spline of it),
+  `"spatial_spline"` (a library-size spline within each patient: per
+  section, log library size times a smooth tensor spline of position,
+  absorbed with the patient's intercept through SpaNorm's compact
+  `nbBlockDesign()` (requires SpaNorm >= 1.7.15), as in SpaNorm's
+  library-size term)
+  or `"none"`, and `offset =` an assay of per-gene log offsets (e.g. SpaNorm's
+  library-size component). Only `"loglib"` has been through the calibration
+  nulls; the others are being benchmarked (`research/bench2/`).
+* **Fit status.** A gene the solver cannot fit is left out rather than
+  tested at its starting values, and a gene whose dispersion optimum is on
+  its search bound takes that bound, with its mean refitted there; both are
+  counted per index type in the fit (`status`).
+* **`testSpiDE()`** always runs the **pooled** test (is the niche slope
+  non-zero across patients?) and, given a `condition`, the
+  **condition-specific** test (does it differ between conditions?). By default
+  (`procedure = "filtered"`) the condition-specific test is corrected only
+  among triplets whose pooled test passes; the filter never looks at the
+  condition. The slopes engine combines patients with weighted `limma`, an
+  expression-trended prior and an effective-patient df.
+* **`spiDE()`** chains `buildNiches()`, `fitSpiDE()` and `testSpiDE()`.
+  **`results()`** returns one table per test (`test = "pooled"`,
+  `"condition"` or `"both"`) with columns `gene`, `index`, `niche`, `test`,
+  `estimate`, `se`, `t`, `df`, `p`, `n_patients`, `q`, `in_family`.
+  **`patientSlopes()`** (new) returns every patient's slopes.
+* **`compositionTest()` is renamed `testNicheAbundance()`**, and its columns
+  now match `results()` (`index`, `niche`, `estimate`, `n_patients`, `q`,
+  `q.global`). It asks a between-patient question the within-patient models
+  absorb by design.
+* **`spiGSEA()`** is reimplemented on the new results and is experimental: no
+  gene-set null has been run.
+* **Removed:** `polishSpiDE()`, `nicheDesign()`, `computeSizeFactors()`,
+  `fits()`, `bandwidths()`, the arguments `random`, `df.method`,
+  `re.celltype`, `dispersion`, `combine`, `polish`, `backend` and the GPU
+  path, multi-bandwidth fits and the cross-bandwidth combination, and the
+  hierarchical FDR cascade.
+* **The mixed model is archived**, with its tests, long tests, fixtures,
+  vignettes, design documents and this file's history, as the research
+  package `spiDEmixed` (`research/mixed`), numerically identical to 0.99.22.
+  Objects saved by spiDE 0.99.22 or earlier are refused by this version with
+  a pointer to `spiDEmixed::readSpiDE()`, which reads them. Research code
+  that calls the old functions calls them as `spiDEmixed::` or loads the
+  pinned library `research/libs/mixed-final`.
+* **`toySpiDE`** now has 16 patients of 150 cells (6 of 80 before): the tests
+  take patients as their units.
+* **Vignettes:** a new quick start, a model vignette and a calibration
+  vignette. The mixed model's validation reports are no longer on the package
+  site; they are archived on the research site.
+
 # spiDE 0.99.22
 
 ## Changes

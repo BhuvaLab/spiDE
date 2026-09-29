@@ -1,6 +1,6 @@
 Package: spiDE
 Title: Context-specific, neighbourhood-dependent differential expression
-Version: 0.99.22
+Version: 0.99.30
 Authors@R: c(
             person(given = "Dharmesh D.",
                    family = "Bhuva",
@@ -15,16 +15,16 @@ Authors@R: c(
             )
 Description: spiDE identifies context-specific, neighbourhood-dependent
     differential expression in spatial transcriptomics data. Within an index
-    cell type, it tests how gene expression changes with an experimental
-    condition as a function of the local density (niche) of surrounding cell
-    types. Niche covariates are constructed from Gaussian kernel density
-    estimates at multiple bandwidths; a per-gene negative binomial GLM is fit
-    using the SpaNorm fitting engine; and neighbourhood effects are tested via
-    Wald statistics combined across correlated covariates (Cauchy combination by
-    default, or Brown's method), across bandwidths (Cauchy combination), and
-    corrected with a hierarchical false discovery rate procedure. A
-    condition-free mode tests how expression varies with niche composition
-    alone, without an experimental contrast.
+    cell type, it asks whether a gene's expression changes with the local
+    density (niche) of another cell type within patients, and whether that
+    dependence differs between two conditions. Niche covariates are Gaussian
+    kernel density estimates of each cell type. For every index cell type a
+    per-gene negative binomial GLM with a patient intercept is fitted with
+    SpaNorm's Newton solver; its niche slopes are then tested across patients,
+    either from each patient's own slopes with weighted limma (the slopes
+    engine) or with a patient-clustered CR2 sandwich (the sandwich engine).
+    The pooled test asks whether a slope is consistently non-zero; the
+    condition-specific test whether it differs between conditions.
 License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -34,9 +34,8 @@ biocViews: Software, Spatial, DifferentialExpression, GeneExpression,
 Depends:
     R (>= 4.5.0)
 Imports:
-    RhpcBLASctl,
-    BiocGenerics,
-    SpaNorm (>= 1.7.13),
+    Matrix,
+    SpaNorm (>= 1.7.15),
     SpatialExperiment,
     SingleCellExperiment,
     SummarizedExperiment,
@@ -45,26 +44,19 @@ Imports:
     spatstat.explore,
     BiocParallel,
     limma,
-    matrixStats,
     methods,
+    splines,
     stats,
     utils
 Suggests:
-    edgeR,
     testthat (>= 3.1.2),
     knitr,
     rmarkdown,
     BiocStyle,
-    covr,
-    torch,
-    poolr,
-    DelayedArray,
-    HDF5Array,
     ggplot2,
+    RhpcBLASctl,
+    clubSandwich,
     MASS,
-    nlme,
-    lme4,
-    lmerTest,
     withr
 Remotes:
     bhuvad/SpaNorm

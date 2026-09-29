@@ -18,243 +18,208 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 # Introduction
 
 `spiDE` finds **neighbourhood-dependent differential expression** in spatial
-transcriptomics. Within an *index* cell type, it tests whether a gene's
-response to an experimental *condition* changes with the local density (the
-*niche*) of a surrounding cell type. One hypothesis is one (gene, index type,
-niche type) *triplet*.
+transcriptomics. Within an *index* cell type, it asks whether a gene's
+expression changes with the local density (the *niche*) of another cell type.
+One hypothesis is one (gene, index type, niche type) *triplet*, and spiDE asks
+two questions of it:
 
-Four stages:
+- **the pooled test**: within patients, does the gene's expression in the
+  index type change with the density of the niche type, consistently across
+  patients?
+- **the condition-specific test**: does that dependence differ between two
+  conditions (responders and non-responders, early and late stage)?
 
-1. **Niches** — `buildNiches()`: per sample and per bandwidth, a Gaussian
-   kernel density of every cell type evaluated at every cell.
-2. **Fit** — `fitSpiDE()`: one negative binomial GLM per gene over a design
-   with `cell type : condition : niche` interactions and patient-level random
-   effects, all genes in one shared fit.
-3. **Polish** — `polishSpiDE()`: converge each gene to its own optimum, set
-   its dispersion there, and re-estimate the variance components from the
-   converged fit. A stage the user runs, or skips, according to their data.
-4. **Test** — `testSpiDE()`: per-gene Wald statistics, combined across a
-   gene's correlated niches and across bandwidths, then a hierarchical FDR.
-   `spiGSEA()` then tests gene sets on the same statistics.
+Both are questions about patients. The condition is a property of a patient,
+not of a cell, so spiDE takes the patient as its unit of replication: a
+triplet's evidence is the variation of its niche slope *between* patients,
+never the number of cells.
 
-`spiDE()` runs the first four (`polish = TRUE` by default). The model is stated in full in
-`vignette("spiDE-model")`; every benchmark number quoted about it is in
-`vignette("spiDE-calibration")`.
+Three steps:
 
-```{r load, message = FALSE}
+1. **Niches**: `buildNiches()` evaluates, per sample, a Gaussian kernel
+   density of every cell type at every cell.
+2. **Fit**: `fitSpiDE()` fits, for every index cell type, one negative
+   binomial GLM per gene of its expression on the niche densities, with an
+   intercept per patient, so each niche coefficient is a *within-patient*
+   slope.
+3. **Test**: `testSpiDE()` tests those slopes across patients. It always runs
+   the pooled test, and runs the condition-specific test when it is given a
+   condition.
+
+`spiDE()` runs all three. The model is stated in full in the *model*
+vignette (`vignette("spiDE-model")`), and what its calibration rests on in
+the *calibration* vignette (`vignette("spiDE-calibration")`).
+
+# Data
+
+spiDE needs a `SpatialExperiment` with
+
+- **raw integer counts** (the `counts` assay), not normalised or
+  back-transformed values;
+- a **cell type** per cell (`cell_type`);
+- a **patient** per cell (`sample_id`). One sample per patient: if a patient
+  has several sections, give the patient in `sample_id` and the section in
+  `section`, so the spatial variance is estimated per section;
+- for the condition-specific test, a **two-level condition that is constant
+  within a patient**.
+
+The shipped example has 16 patients (eight responders, eight
+non-responders), three cell types and 20 genes. It plants one effect: gene
+`G1` is up-regulated in index type `A`, in responders only, in proportion to
+the local density of niche type `B`.
+
+```{r data, message = FALSE}
 library(spiDE)
 library(SpatialExperiment)
-```
-
-# Example data
-
-The package ships a small synthetic `SpatialExperiment`, `toySpiDE`: 20 genes,
-480 cells, 6 samples (3 Responders, 3 Non-responders), three cell types. Gene
-`G1` is planted up-regulated in index type **A**, in Responders, in proportion
-to the local density of niche type **B**.
-
-```{r data}
 data(toySpiDE)
 toySpiDE
-table(toySpiDE$cell_type, toySpiDE$condition)
+patients <- unique(as.data.frame(colData(toySpiDE))[, c("sample_id", "condition")])
+table(patients$condition)
+table(toySpiDE$cell_type)
 ```
 
-# One call
+# Niches
 
-```{r full}
-res <- spiDE(toySpiDE, condition = "condition", sigma = c(10, 30, 50),
-             verbose = FALSE)
-res
+`buildNiches()` computes the niche covariates at one or more bandwidths
+`sigma` (in the units of the spatial coordinates) and stores each as a
+`reducedDim` named `Niche<sigma>`:
+
+```{r niches}
+spe <- buildNiches(toySpiDE, sigma = 30, verbose = FALSE)
+head(reducedDim(spe, "Niche30"), 3)
 ```
 
-`results()` returns the tidy table, keyed by (gene, index type, niche type)
-with the best bandwidth:
+The bandwidth sets the scale of a neighbourhood. Fit one bandwidth at a time;
+comparing results across bandwidths is a sensitivity analysis, not a
+multiplicity-free search. `mergeNiches()` pools niche columns into groups
+(e.g. all lymphocytes) before fitting, and spiDE never tests an index type
+against its own niche, merged or not.
 
-```{r results}
-tab <- results(res)
-head(tab[order(tab$fdr.niche), ], 10)
-```
-
-The planted effect is recovered, with a positive direction:
-
-```{r recovered}
-tab[tab$gene == "G1" & tab$ct_index == "A" & tab$ct_niche == "B", ]
-```
-
-## The result layers, and what each estimates
-
-One fit answers three questions, each a different quantity:
-
-```{r result-types}
-vapply(c("niche", "celltype", "patient"),
-       function(ty) nrow(results(res, type = ty)), integer(1))
-```
-
-- **`"niche"`** (default): does the neighbourhood modulate the response
-  *within* an index cell type? The estimate is the gradient of the condition
-  effect along the niche density, within (sample, cell type). Keyed by
-  (gene, `ct_index`, `ct_niche`).
-- **`"celltype"`**: does the response differ *by cell type*, regardless of
-  neighbourhood? The flat, cell-type-wide shift, keyed by (gene, `ct_index`),
-  with a two-level FDR.
-- **`"patient"`**: does the gene respond at the patient level at all? One
-  test per gene.
-
-```{r result-celltype}
-ct <- results(res, type = "celltype")
-if (nrow(ct)) head(ct[order(ct$fdr.celltype), ], 5) else "no calls on this toy data"
-```
-
-The layers are not redundant: a flat response is not a neighbourhood effect
-and is reported separately rather than allowed to load onto the niche slope.
-A fourth question — does a *patient's* composition, the mean niche density
-around their index cells, associate with expression in those cells — is
-patient-level and is asked by `compositionTest()`, below.
-
-# Step by step
-
-The wrapper equals the three stages run explicitly, which is useful to inspect
-intermediate objects, reuse a fit, or change one stage.
-
-## Build niches
-
-`buildNiches()` adds one `reducedDim` per bandwidth. `mergeNiches()` coarsens
-cell types into niche groups; `computeSizeFactors()` derives a per-sample
-library-size offset column.
-
-```{r build}
-spe <- buildNiches(toySpiDE, sigma = c(10, 30, 50))
-reducedDimNames(spe)
-```
-
-## Fit
+# Fit
 
 ```{r fit}
-fit <- fitSpiDE(spe, condition = "condition", verbose = FALSE)
+fit <- fitSpiDE(spe, condition = "condition", sigma = 30, verbose = FALSE)
 fit
 ```
 
-Each bandwidth's fit is a `SpiDEFit` with the coefficients `alpha`,
-dispersions `psi`, the design `W`, a tag per design column, and — for the
-default mixed fit — the variance components `tau2`:
+`fitSpiDE()` fits every index type with at least `min.cells` cells in at
+least `min.patients` patients (`index` restricts it), and tests every other
+cell type as a niche (`niche` restricts it; the others stay in the model as
+adjustments). Genes detected in fewer than `min.detect` of an index type's
+cells are not tested in it. Sequencing depth enters as the centred log
+library size of each cell (`depth = "loglib"`); cell-level covariates are
+added with `covariates`.
 
-```{r fitobj}
-f1 <- fits(fit)[[1]]
-table(f1$covtype)
-f1$tau2
+## The two engines
+
+`engine` chooses how the between-patient error is estimated:
+
+- **`"slopes"`** (the default) fits the model once, without the condition,
+  then estimates every patient's own niche slopes (a one-step negative
+  binomial estimate from the shared fit) with a within-patient spatial
+  variance. `testSpiDE()` combines them across patients with weighted
+  `limma`, allowing the slope to vary between patients. Because the fit
+  never sees the condition, any patient-level condition can be tested
+  afterwards, and a permutation of the condition reruns only the test.
+- **`"sandwich"`** fits the condition-specific model directly and tests its
+  coefficients with a patient-clustered CR2 sandwich and Bell-McCaffrey
+  degrees of freedom. It needs the condition at fit time.
+
+The slopes engine passes every calibration null of five comparisons in four
+spatial cohorts, and the sandwich engine all but one borderline tail. The
+slopes engine is the more powerful when effects vary between patients, the
+sandwich engine competitive when every patient shares the effect; the
+calibration vignette gives the numbers.
+
+## Each patient's slopes
+
+The slopes engine keeps every patient's slope, which is the evidence the
+tests weigh:
+
+```{r slopes, fig.width = 6, fig.height = 3.5}
+ps <- patientSlopes(fit, gene = "G1", index = "A", niche = "B")
+head(ps[, c("patient", "condition", "slope", "var_spatial", "ncells")])
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  library(ggplot2)
+  ggplot(ps, aes(condition, slope)) +
+    geom_hline(yintercept = 0, colour = "grey60") +
+    geom_pointrange(aes(ymin = slope - 2 * sqrt(var_spatial),
+                        ymax = slope + 2 * sqrt(var_spatial)),
+                    position = position_jitter(width = 0.15, seed = 1)) +
+    labs(x = NULL, y = "G1 slope on B density in A cells\n(log scale per unit log1p density)") +
+    theme_minimal()
+}
 ```
 
-## Polish
-
-The shared fit is one IRLS loop over all genes with one gene-averaged cell
-weight vector, which is what makes a whole-transcriptome fit affordable; for
-bright, cell-type-restricted genes it can stop short of that gene's own
-optimum. `polishSpiDE()` converges each gene by damped Newton on its own
-penalised likelihood, re-estimates its dispersion there (`psi = "profile"`;
-`psi = "moderated"` keeps the shared fit's value and is the cheaper rule, with
-the same calibration and power — see `vignette("spiDE-calibration")`),
-and, for a mixed fit, re-estimates the variance components from the
-converged coefficients (`tau2 = TRUE`) and refreshes the reference df. It
-returns the object with inference cleared, so `testSpiDE()` runs on it:
-
-```{r polish}
-fit <- polishSpiDE(fit, spe, verbose = FALSE)
-f1 <- fits(fit)[[1]]
-head(f1$polish, 3)
-f1$tau2
-```
-
-Skip the stage for a quick look at the shared fit, or when the counts are not
-integers (the negative binomial likelihood is undefined off the integers, so
-the stage refuses a back-transformed assay).
-
-## Test
+# Test
 
 ```{r test}
-res2 <- testSpiDE(fit, spe = spe, fdr = 0.05)
-nrow(results(res2))
+res <- testSpiDE(fit)
+res
+head(results(res, test = "pooled"))
 ```
 
-# The patient-level question
+With a condition (here recorded by `fitSpiDE()`; it can also be given to
+`testSpiDE()`), the condition-specific test runs as well. The contrast is the
+second level minus the first:
 
-`compositionTest()` asks the composition question on patients: per (sample,
-index type) a pseudobulk profile of the index cells and the mean niche density
-around them, then a `limma` moderated $t$ across samples. Two terms are
-reported per (gene, index, niche): `"niche"`, the association pooled across
-conditions, and `"condition:niche"`, its difference between conditions.
-
-```{r composition}
-ct <- compositionTest(spe, condition = "condition", sigma = 30, verbose = FALSE)
-head(ct[order(ct$p), c("gene", "ct_index", "ct_niche", "term", "t", "fdr")])
+```{r condition}
+res$contrast
+cond <- results(res, test = "condition")
+cond[cond$in_family, ]
 ```
 
-On a fixture this small nothing is expected to pass. The point is that the
-within-sample niche question and the between-patient composition question
-have two tests, and neither is reported as the other.
+By default (`procedure = "filtered"`) the condition-specific test is carried
+out only among the triplets whose pooled test passes at `fdr`: the pooled
+test never looks at the condition, so the filter is exact under any
+relabelling of patients, and the multiplicity correction is spent on
+triplets that have a niche dependence to modify. Rows outside that family
+have `q = NA`. `procedure = "all"` tests every triplet.
 
-# Niche-only analysis
+The planted triplet, G1 in A against B, is the strongest pooled association
+(`t` = `r round(results(res, test = "pooled")$t[1], 2)`), and in the
+condition-specific test its slope is larger in responders by
+`r round(cond$estimate[cond$gene == "G1" & cond$index == "A" & cond$niche == "B"], 2)` log units
+per unit `log1p` density (`q` =
+`r signif(cond$q[cond$gene == "G1" & cond$index == "A" & cond$niche == "B"], 2)`). `spiDE()` runs the three steps in one call:
 
-Not every question has a condition. With `condition = NULL` the same
-framework tests how expression within an index type changes with the density
-of a niche type, in every sample alike:
-
-```{r niche-only}
-res_niche <- spiDE(toySpiDE, condition = NULL, sigma = c(10, 30),
-                   verbose = FALSE)
-head(results(res_niche))
+```{r spiDE, eval = FALSE}
+res <- spiDE(toySpiDE, condition = "condition", sigma = 30)
 ```
 
-The tested quantity is then the `CellType:niche` slope. The `"celltype"` and
-`"patient"` layers are empty in this mode, and `spiGSEA(type = "celltype")`
-errors, there being no condition to contrast. The mode is mildly
-anti-conservative because the niche covariate is spatially autocorrelated;
-see the model vignette.
+# A different question: niche abundance
 
-# Scaling
+spiDE's slopes are within-patient. A patient whose index cells sit among many
+niche cells may also express a gene differently, as a whole, from a patient
+whose index cells do not; that between-patient association is absorbed by
+the patient intercepts and is invisible to `testSpiDE()`. It is real, and it
+is a different claim: that patients with more of a niche type differ, not
+that a cell responds to its neighbours. `testNicheAbundance()` asks it on
+pseudobulk profiles, one per patient and index type, against the patient's
+mean niche density:
 
-The fit sees all genes at once (the dispersion is moderated across genes
-before the per-gene convergence step). Inference and convergence are
-independent across genes, processed in gene blocks and dispatched with
-`r BiocStyle::Biocpkg("BiocParallel")`; the counts may be a
-`r BiocStyle::Biocpkg("DelayedArray")`, realised one block at a time. On the
-CPU backend, results are exactly invariant to the block size and the number
-of workers.
-
-```{r parallel, eval = FALSE}
-library(BiocParallel)
-res <- spiDE(toySpiDE, condition = "condition",
-             block.size = 500, BPPARAM = MulticoreParam(4))
+```{r abundance}
+ab <- testNicheAbundance(spe, condition = "condition", sigma = 30, verbose = FALSE)
+head(ab)
 ```
 
-`backend = c("auto", "cpu", "gpu")` selects the compute backend for both
-stages. On the GPU the per-gene Wald covariance and working weights are
-batched across each gene block on the device, the block size is chosen to fit
-the detected memory (override with `gpu.mem.budget`, in bytes), and a serial
-`BPPARAM` is used since execution is already batched. The GPU path uses single
-precision on Metal, so it matches the CPU path to a tolerance rather than
-exactly.
+Never report a result of one as a result of the other.
 
-# The defaults
+# Practicalities
 
-What `spiDE()` and `fitSpiDE()` do unless told otherwise, one line each. The
-reasons are in `vignette("spiDE-model")` and the measurements in
-`vignette("spiDE-calibration")`.
+- **Parallelism.** Genes are fitted independently given an index type, so
+  `BPPARAM` parallelises over genes. Forked workers run one BLAS thread each
+  when `RhpcBLASctl` is installed; set `OMP_NUM_THREADS=1` in the job
+  otherwise.
+- **Counts must be integers.** A back-transformed normalised assay is not a
+  count and is refused.
+- **Objects from spiDE 0.99.22 and earlier** came from a different model (a
+  joint mixed-effects GLM). They cannot be read by this version; the engine
+  is archived as the research package `spiDEmixed` (`research/mixed` in the
+  spiDE repository), whose `readSpiDE()` reads them.
 
-| argument | default | what it does |
-|---|---|---|
-| `random` | `"intercept"` | a random intercept per sample, so response effects are tested against patient-level variation |
-| `re.celltype` | `TRUE` | a random intercept per (sample, cell type), so the niche slope is a within-group slope and does not carry a patient's composition |
-| `polish` | `TRUE` | run `polishSpiDE()` between the fit and the test: converge each gene, set its dispersion by profile likelihood, and re-estimate the variance components from the converged fit; needs integer counts |
-| `dispersion` | `"ql"` | scale the standard errors by the gene's quasi-likelihood dispersion, moderated across genes; the only scale that holds the nominal level at four samples |
-| `df.method` | `"satterthwaite"` | a reference df per tested coefficient |
-| `combine` | `"cauchy"` | correlation-agnostic combination of a gene's niche p-values |
+# Session information
 
-A sample-level covariate (Age, Stage) is collinear with the per-sample random
-intercept and is rejected; adjust for cell-level covariates, including per-cell
-library size, through `covariates`.
-
-# Session info
-
-```{r sessioninfo}
+```{r session}
 sessionInfo()
 ```

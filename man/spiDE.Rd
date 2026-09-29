@@ -2,202 +2,57 @@
 % Please edit documentation in R/AllGenerics.R, R/spiDE.R
 \name{spiDE}
 \alias{spiDE}
-\alias{spiDE,ANY-method}
-\title{Run the full spiDE workflow}
+\alias{spiDE,SpatialExperiment-method}
+\title{Run spiDE end to end}
 \usage{
 spiDE(spe, condition = NULL, ...)
 
-\S4method{spiDE}{ANY}(
+\S4method{spiDE}{SpatialExperiment}(
   spe,
   condition = NULL,
-  index = NULL,
-  niche = NULL,
-  covariates = character(),
-  sigma = c(10, 30, 50, 70),
-  assay = "counts",
+  sigma,
+  engine = c("slopes", "sandwich"),
+  procedure = c("filtered", "all"),
+  fdr = 0.05,
   cell_type = "cell_type",
   sample_id = "sample_id",
-  random = c("intercept", "none", "slope"),
-  winsor = 4,
-  lambda.a = 0,
-  backend = c("auto", "cpu", "gpu"),
-  name = "Niche",
-  fdr = 0.05,
-  combine = c("cauchy", "brown"),
-  df.method = c("between", "satterthwaite"),
-  re.celltype = TRUE,
-  polish = TRUE,
-  dispersion = c("ql", "pearson"),
-  block.size = NULL,
-  gpu.mem.budget = NULL,
-  engine = c("batch", "gene"),
-  batch.size = NULL,
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
   ...
 )
 }
 \arguments{
-\item{spe}{a SpatialExperiment with niche reducedDims (see \code{\link[=buildNiches]{buildNiches()}}).}
+\item{spe}{a SpatialExperiment with raw counts.}
 
-\item{condition}{a character, the colData column of the tested condition, or
-\code{NULL} for a condition-free (niche-only) analysis. See \code{\link[=fitSpiDE]{fitSpiDE()}}.}
+\item{condition}{\code{NULL} or the colData column of a two-level,
+patient-level condition.}
 
-\item{...}{further arguments forwarded to \code{\link[SpaNorm]{fitNB}}.}
+\item{...}{further arguments to \code{\link[=fitSpiDE]{fitSpiDE()}}.}
 
-\item{index, niche}{character vectors restricting the index / niche cell
-types considered (NULL = all).}
+\item{sigma}{the niche bandwidth.}
 
-\item{covariates}{a character vector of nuisance colData columns to adjust
-for (e.g. library size, age, sex).}
+\item{engine}{\code{"slopes"} or \code{"sandwich"}, see \code{\link[=fitSpiDE]{fitSpiDE()}}.}
 
-\item{sigma}{a numeric vector of bandwidths to fit; NULL (default) uses every
-\code{Niche<sigma>} reducedDim present.}
+\item{procedure, fdr}{passed to \code{\link[=testSpiDE]{testSpiDE()}}.}
 
-\item{assay}{a character, the counts assay to model.}
+\item{cell_type, sample_id}{the colData columns of cell type and patient.}
 
-\item{cell_type}{a character, the colData column of cell type labels.}
+\item{BPPARAM}{a BiocParallelParam.}
 
-\item{sample_id}{a character, the colData column identifying samples (used
-when niches must be built and for the random-effects fit).}
-
-\item{random}{one of "intercept" (the default), "none" or
-"slope". Adds patient-level random effects (implemented as ridge-penalised
-design columns) to correct anti-conservative inference caused by
-cell-level pseudo-replication.
-
-\strong{The default changed from "none" to "intercept".} "none" forms Wald
-standard errors from cell-level information, which treats every cell as an
-independent replicate of a patient-level contrast. On a null with
-per-sample intercepts it rejects at \eqn{\approx 0.71} against a nominal
-0.05, worsening as cell counts become imbalanced, where the random
-intercept holds \eqn{\approx 0.04} against a calibrated pseudobulk
-reference of \eqn{\approx 0.04}. "none" is retained for
-back-compatibility and for reproducing pre-correction results, but it
-should not be used for inference. "intercept" adds a per-sample random
-intercept; "slope" additionally adds per-sample random slopes on the niche
-covariates, which protects the response x niche tests when the niche-slope
-varies between samples. Note that "slope" estimates an extra variance
-component (\code{tau2} for \code{SampleSlope}) that is collinear with the
-tested fixed effect and, with few samples, is less stable than the
-intercept-only variance; prefer "intercept" at small \code{S}, and "slope"
-when between-sample niche-slope variation is expected. The fit is also
-stochastic (\code{fitNB} subsamples cells for the dispersion estimate), so
-set a seed for reproducible variance components. See the mixed-effects and
-simulation vignettes.
-
-In a condition-free analysis (\code{condition = NULL}) the random-slope
-block sits on exactly the \code{CellType:niche} columns being tested, so
-\code{"slope"} is the natural correction there when between-sample
-variation in niche slopes is plausible. Be aware of a limitation specific
-to that mode: the tested slope is a \emph{within-sample} contrast on a
-\emph{spatially autocorrelated} covariate, and spiDE does not model
-spatial autocorrelation. Neighbouring cells are therefore not independent
-replicates of the slope, and neither random-effect structure can recover
-that -- on a null fixture with a planted per-sample intercept, the
-fixed-effects fit made 37 calls, \code{"intercept"} 5 and \code{"slope"}
-5 (see \code{longtests/testthat/test-nicheOnly-mixed.R}). Random effects
-remove most of the inflation but niche mode remains mildly
-anti-conservative; treat borderline calls with corresponding caution.}
-
-\item{winsor, lambda.a}{fitting parameters forwarded to
-\code{\link[SpaNorm]{fitNB}} (coefficient winsorisation and the base ridge
-penalty on the fixed columns).}
-
-\item{backend}{a character, the compute backend for \strong{both} the model fit
-("auto", "cpu", or "gpu", forwarded to \code{\link[SpaNorm]{fitNB}}) and
-the inference stage (where the GPU backend batches the per-gene Wald
-covariance and negative-binomial working weights across each gene-block
-on the accelerator, forcing a serial \code{BPPARAM} in the process).}
-
-\item{name}{a character, the niche reducedDim prefix.}
-
-\item{fdr}{a numeric, the target false discovery rate.}
-
-\item{combine}{one of "cauchy" (default) or "brown", the within-gene combiner
-for the correlated niche p-values (passed to \code{\link[=testSpiDE]{testSpiDE()}}).}
-
-\item{df.method}{one of "between" (default) or "satterthwaite"; only used
-when \code{random != "none"}. "between" is the scalar reference df of a
-between-patient contrast, \code{S - 2} patients, applied per tested
-compartment as that compartment\'s own patient count minus two.
-"satterthwaite" instead derives a separate df per tested column from the
-shared variance-component fit, which in principle distinguishes
-between-sample contrasts (Response: small df, close to "between") from
-within-sample contrasts (ResponseNiche: larger df, more power) rather than
-applying \code{S - 2} to both; \code{@df} is then a named per-column
-vector. "between" tests every Response/ResponseNiche coefficient against
-the same scalar between-sample reference df (\code{S - 2}), the original
-back-compatible behaviour, and \code{@df} is a scalar.
-
-The default changed to "satterthwaite" after the benchmark study
-(\code{research/}) measured both arms on identically seeded data: "between"
-is severely over-conservative when samples are few (null type-I
-\eqn{\approx 0.001} at \eqn{S = 4} against a nominal 0.05, with
-correspondingly near-zero power), while "satterthwaite" holds type-I in
-\eqn{0.042}-\eqn{0.065} across the whole sampled range and gains
-\eqn{\approx 0.10} mean TPR. The trade is a mild liberal drift at larger
-\eqn{S} (worst measured \eqn{\approx 0.065}); use "between" when strict
-conservatism matters more than power, or for back-compatibility.
-Ignored when \code{random == "none"}.
-
-In a condition-free analysis (\code{condition = NULL}) the
-\code{"between"} reference df changes, because the tested
-\code{CellType:niche} slope is a within-sample contrast rather than a
-between-condition one: it is \code{ncells - p_fixed} under
-\code{random = "intercept"} (cells are the replicates) and \code{S - 1}
-under \code{random = "slope"} (the per-sample random slopes sit on the
-tested columns, moving the contrast into the between-sample stratum). The
-name \code{"between"} is therefore a misnomer in the intercept case; it is
-retained for back-compatibility. \code{"satterthwaite"} computes this
-distinction from the fitted variance components and is preferred.}
-
-\item{re.celltype}{logical; add a nested (sample x cell type) random
-intercept so the tested niche slopes are within-group. Default
-\code{TRUE}. See \code{\link[=fitSpiDE]{fitSpiDE()}}.}
-
-\item{polish}{logical; run the polish stage (\code{\link[=polishSpiDE]{polishSpiDE()}}) between the
-fit and the test: converge each gene, set its dispersion and re-estimate
-the variance components from the converged fit. Default \code{TRUE};
-\code{FALSE} tests the shared fit as \code{fitNB} returned it. Run the
-stages by hand to control the polish's own settings.}
-
-\item{dispersion}{the standard-error scale; see \code{\link[=testSpiDE]{testSpiDE()}}.}
-
-\item{block.size}{a numeric, genes per inference block (NULL = a single
-block on the CPU backend, or a memory-bounded auto-selected size on the
-GPU backend).}
-
-\item{gpu.mem.budget}{a numeric, the GPU memory budget in bytes used to
-size inference blocks (NULL auto-detects; only relevant for the GPU
-backend).}
-
-\item{engine, batch.size}{passed to \code{\link[=polishSpiDE]{polishSpiDE()}}. \code{engine = "gene"}
-takes the per-gene reference implementation instead of the batched
-default; the two agree to ~5e-13 on the coefficients with identical
-convergence flags, and the reference is what the batched engine is tested
-against. Forwarded here so the reference is reachable from the top-level
-entry point, not only from \code{\link[=polishSpiDE]{polishSpiDE()}}.}
-
-\item{BPPARAM}{a BiocParallelParam for niche construction and inference.}
-
-\item{verbose}{a logical, whether to print fitting progress.}
+\item{verbose}{report progress.}
 }
 \value{
-a \link{SpiDEResults} object with the tidy results table populated (see
-\code{\link[=results]{results()}}).
+a \link[=SpiDEResults-class]{SpiDEResults}.
 }
 \description{
-Convenience wrapper that (optionally) builds niche covariates, fits the
-per-gene negative binomial model over the neighbourhood-interaction design,
-and tests for neighbourhood-dependent differential expression. Equivalent to
-calling \code{\link[=buildNiches]{buildNiches()}} (if the niches are not already present),
-\code{\link[=fitSpiDE]{fitSpiDE()}}, and \code{\link[=testSpiDE]{testSpiDE()}} in sequence.
+Builds the niche covariates at bandwidth \code{sigma} (unless \code{spe}
+already carries them), fits the per-patient niche models (\code{\link[=fitSpiDE]{fitSpiDE()}}) and
+tests them (\code{\link[=testSpiDE]{testSpiDE()}}): the pooled niche test always, and the
+condition-specific test when a \code{condition} is given.
 }
 \examples{
 data(toySpiDE)
-spe <- toySpiDE
-res <- spiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+res <- spiDE(toySpiDE, condition = "condition", sigma = 30, index = "A",
+             procedure = "all")
 head(results(res))
-
 }

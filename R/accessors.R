@@ -1,65 +1,89 @@
-# Accessors for SpiDEResults.
-
-#' Extract the tidy spiDE results table
+#' Extract spiDE's test results
 #'
-#' @param object a [SpiDEResults] object.
-#' @param type which response result to return. "niche" (default) gives the
-#'   neighbourhood-dependent calls keyed by (gene, ct_index, ct_niche,
-#'   bandwidth), gated by the 3-level gene -> index -> niche cascade.
-#'   "celltype" gives cell-type-specific response calls keyed by
-#'   (gene, ct_index), gated by a 2-level gene -> cell type cascade.
-#'   "patient" gives one abundance-weighted response contrast per gene.
-#'   The latter two are empty unless the design carries a CellType:condition
-#'   block — in particular they are always empty for a condition-free
-#'   (`condition = NULL`) fit, where "niche" instead reports the two-way
-#'   `CellType:niche` associations.
-#'
-#'   All three layers combine evidence across **every** bandwidth, using the
-#'   same log-likelihood-weighted Cauchy combination. The CellType:condition
-#'   coefficients are not identical between bandwidths -- they are fitted
-#'   alongside different niche columns -- so each bandwidth contributes its own
-#'   evidence about the same contrast, and combining is what pools it.
-#' @param ... ignored; present for compatibility with the generic.
-#' @return a data.frame of significant calls; see \code{type}. Empty until
-#'   [testSpiDE()] is run.
+#' @param object a [SpiDEResults-class].
+#' @param test \code{NULL} (the condition-specific test if one was run, else
+#'   the pooled test), \code{"condition"}, \code{"pooled"} or \code{"both"}.
+#' @param fdr \code{NULL} (every tested triplet) or a level: keep rows with
+#'   \code{q <= fdr}.
+#' @param ... unused.
+#' @return a data.frame, one row per (gene, index, niche, test), ordered by
+#'   p-value: \code{estimate} (the pooled slope, or the difference in slope
+#'   between conditions, on the log scale per unit log1p niche density),
+#'   \code{se}, \code{t}, \code{df}, \code{p}, \code{q} (BH within the test's
+#'   family) and \code{in_family}. Condition-specific rows outside the filtered
+#'   family have \code{q = NA}.
 #' @examples
 #' data(toySpiDE)
-#' spe <- buildNiches(toySpiDE, sigma = 20)
-#' res <- spiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
-#' head(results(res))
+#' res <- spiDE(toySpiDE, condition = "condition", sigma = 30, index = "A",
+#'              procedure = "all")
+#' results(res, test = "pooled")
 #' @rdname results
 #' @export
-setMethod("results", "SpiDEResults",
-          function(object, type = c("niche", "celltype", "patient"), ...) {
-  type <- match.arg(type)
-  switch(type,
-    niche    = object@results,
-    celltype = object@results.celltype,
-    patient  = object@results.patient)
+setMethod("results", "SpiDEResults", function(object, test = NULL, fdr = NULL, ...) {
+  .assertCurrent(object)
+  tb <- object@table
+  if (is.null(test)) test <- if (any(tb$test == "condition")) "condition" else "pooled"
+  test <- match.arg(test, c("condition", "pooled", "both"))
+  if (test != "both") tb <- tb[tb$test == test, , drop = FALSE]
+  if (!is.null(fdr)) tb <- tb[!is.na(tb$q) & tb$q <= fdr, , drop = FALSE]
+  tb <- tb[order(tb$p, na.last = TRUE), , drop = FALSE]
+  rownames(tb) <- NULL
+  tb
 })
 
-#' Extract per-bandwidth fits
+#' Each patient's niche slopes
 #'
-#' @param object a [SpiDEResults] object.
-#' @return a named list of [SpiDEFit] objects, one per bandwidth.
+#' The slopes engine estimates every patient's own niche slopes (a one-step
+#' negative binomial estimate from the shared fit); this returns them in long
+#' form, e.g. to plot how a gene's slope varies between patients and
+#' conditions.
+#'
+#' @param object a [SpiDEFit-class] or [SpiDEResults-class] from the slopes
+#'   engine.
+#' @param gene,index,niche optional character vectors to subset.
+#' @param ... unused.
+#' @return a data.frame: \code{gene}, \code{index}, \code{niche},
+#'   \code{patient}, \code{slope}, \code{var_spatial} (the within-patient
+#'   spatial sandwich variance), \code{var_model}, \code{ncells}, plus the
+#'   patient-level colData columns recorded by [fitSpiDE()].
 #' @examples
 #' data(toySpiDE)
-#' spe <- buildNiches(toySpiDE, sigma = 20)
-#' res <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
-#' fits(res)
-#' @rdname fits
+#' spe <- buildNiches(toySpiDE, sigma = 30)
+#' fit <- fitSpiDE(spe, index = "A", sigma = 30)
+#' head(patientSlopes(fit, gene = "G1"))
+#' @rdname patientSlopes
 #' @export
-setMethod("fits", "SpiDEResults", function(object) object@fits)
+setMethod("patientSlopes", "SpiDEFit", function(object, gene = NULL, index = NULL, niche = NULL, ...) {
+  .assertCurrent(object)
+  if (object@engine != "slopes") {
+    stop("per-patient slopes are estimated by the slopes engine (fitSpiDE(engine = \"slopes\"))", call. = FALSE)
+  }
+  out <- list()
+  for (k in intersect(if (is.null(index)) names(object@index) else index, names(object@index))) {
+    x <- object@index[[k]]
+    gi <- if (is.null(gene)) seq_along(x$genes) else which(x$genes %in% gene)
+    ni <- if (is.null(niche)) seq_along(x$niches) else which(x$niches %in% niche)
+    if (!length(gi) || !length(ni)) next
+    g <- expand.grid(g = gi, s = seq_along(x$patients), j = ni)
+    ix <- cbind(g$g, g$s, g$j)
+    out[[k]] <- data.frame(gene = x$genes[g$g], index = k, niche = x$niches[g$j],
+                           patient = x$patients[g$s], slope = x$beta[ix], var_spatial = x$v_tile[ix],
+                           var_model = x$v_model[ix], ncells = unname(x$ncells[g$s]),
+                           stringsAsFactors = FALSE)
+  }
+  d <- do.call(rbind, out)
+  if (is.null(d)) return(data.frame())
+  pt <- object@patients
+  d <- merge(d, pt[, setdiff(colnames(pt), "ncells"), drop = FALSE], by = "patient", all.x = TRUE, sort = FALSE)
+  d <- d[order(d$index, d$gene, d$niche, d$patient), c("gene", "index", "niche", "patient",
+                                                       setdiff(colnames(d), c("gene", "index", "niche", "patient")))]
+  rownames(d) <- NULL
+  d
+})
 
-#' Bandwidths used in a spiDE analysis
-#'
-#' @param object a [SpiDEResults] object.
-#' @return a numeric vector of niche bandwidths.
-#' @examples
-#' data(toySpiDE)
-#' spe <- buildNiches(toySpiDE, sigma = 20)
-#' res <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
-#' bandwidths(res)
-#' @rdname bandwidths
+#' @rdname patientSlopes
 #' @export
-setMethod("bandwidths", "SpiDEResults", function(object) object@sigma)
+setMethod("patientSlopes", "SpiDEResults", function(object, ...) {
+  .assertCurrent(object)
+  patientSlopes(object@fit, ...)
+})

@@ -22,7 +22,7 @@
 ^spiDE\.BiocCheck$
 ^spiDE_.*\.tar\.gz$
 ^design$
-^vignettes/articles$
 ^\.mcp\.json$
 ^\.superpowers$
 ^figures$
+^\.BBSoptions$

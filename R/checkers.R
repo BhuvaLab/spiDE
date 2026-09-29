@@ -29,20 +29,19 @@ checkCounts <- function(Y, integer.only = FALSE) {
     stop("counts should be non-negative")
   }
   # The negative binomial likelihood is defined on counts. dnbinom() returns
-  # -Inf for a non-integer value, so the per-gene convergence stage would
-  # reject every Newton step, leave alpha exactly at fitNB's value, and -- while
-  # maximising a constant -Inf -- return the dispersion optimiser's upper bound
-  # for EVERY gene, with its own diagnostics reporting success. Measured:
-  # psi 999.96 across the board. Refuse it here, before the fit, rather than
-  # after an hour of work.
+  # -Inf for a non-integer value, so the per-gene Newton fit would reject every
+  # step and -- while maximising a constant -Inf -- return the dispersion
+  # optimiser's upper bound for EVERY gene, with its own diagnostics reporting
+  # success (measured on spiDE 0.99.17's polish: psi 999.96 across the board).
+  # Refuse it here, before the fit, rather than after an hour of work.
   if (integer.only) {
     ss <- as.numeric(Y[seq_len(min(nrow(Y), 20L)), , drop = FALSE])
     ss <- ss[is.finite(ss)]
     if (length(ss) && max(abs(ss - round(ss))) > 1e-8) {
-      stop("the polish stage requires integer counts, and this assay is not ",
+      stop("fitSpiDE() requires integer counts, and this assay is not ",
            "integer-valued: the negative binomial likelihood is undefined off ",
            "the integers, so every gene's dispersion would collapse ",
-           "to its upper bound.\n  Supply raw counts, or skip polishSpiDE().",
+           "to its upper bound.\n  Supply raw counts (assay = \"counts\").",
            call. = FALSE)
     }
   }
@@ -74,7 +73,7 @@ checkCovariates <- function(spe, covariates, finite.only = FALSE) {
     stop(sprintf("covariate(s) not found in colData(spe): %s", paste(missing, collapse = ", ")))
   }
   # model.matrix() drops rows with a missing value, so the design comes back
-  # shorter than the random-effect block built from the full-length sample
+  # shorter than the patient block built from the full-length sample
   # labels and the two fail to cbind with "number of rows of matrices must
   # match" -- an error that says nothing about which covariate is at fault. A
   # non-finite value is the usual cause and is easy to produce by accident:
@@ -98,17 +97,10 @@ checkCovariates <- function(spe, covariates, finite.only = FALSE) {
   invisible(TRUE)
 }
 
-# Patient-level checks for the mixed-effects (random-effects) fit. The condition
-# must be a patient-level variable (constant within each sample), otherwise the
-# per-sample random intercept is mis-specified, and there must be enough samples
-# for the between-sample variance components to be identifiable.
-#
-# A per-sample random intercept absorbs any covariate that is constant within a
-# sample, which is why those are rejected when random != "none". With
-# re.celltype = TRUE the nested (sample x cell type) intercepts additionally
-# absorb covariates constant within a (sample, cell type) group. Such a
-# covariate is NOT rejected -- adjusting for one is legitimate, and the penalty
-# shrinks it -- but it will not be identified.
+# Patient-level checks. The condition must be a patient-level variable
+# (constant within each sample): spiDE tests it as a between-patient contrast of
+# within-patient slopes. Every index type's fit has an intercept per patient,
+# which absorbs any covariate constant within a sample, so those are rejected.
 checkSample <- function(spe, condition = NULL, sample_id = "sample_id",
                         covariates = character()) {
   cd <- SummarizedExperiment::colData(spe)
@@ -123,27 +115,27 @@ checkSample <- function(spe, condition = NULL, sample_id = "sample_id",
     n_lvl <- tapply(cond, smp, function(x) length(unique(x[!is.na(x)])))
     if (any(n_lvl > 1)) {
       stop(sprintf(
-        "condition '%s' varies within sample(s): %s. The random-effects fit needs a patient-level condition (constant within '%s').",
+        "condition '%s' varies within sample(s): %s. spiDE needs a patient-level condition (constant within '%s').",
         condition, paste(names(n_lvl)[n_lvl > 1], collapse = ", "), sample_id
       ))
     }
   }
-  # sample-constant covariates are confounded with the per-sample random
-  # intercept (which already adjusts for all between-sample nuisance variation)
+  # sample-constant covariates are confounded with the per-patient intercepts
+  # (which already adjust for all between-patient nuisance variation)
   const <- covariates[vapply(covariates, function(cv) {
     all(tapply(as.character(cd[[cv]]), smp,
                function(x) length(unique(x[!is.na(x)]))) <= 1)
   }, logical(1))]
   if (length(const) > 0) {
     stop(sprintf(
-      "covariate(s) constant within sample: %s. With random='intercept'/'slope' the per-sample random intercept already absorbs all between-sample effects, so drop these sample-level covariates.",
+      "covariate(s) constant within sample: %s. The per-patient intercepts already absorb all between-patient effects, so drop these patient-level covariates.",
       paste(const, collapse = ", ")
     ))
   }
   n_samples <- length(unique(smp))
   if (n_samples < 3) {
     warning(sprintf(
-      "only %d sample(s); random-effect variance components may be unreliable",
+      "only %d sample(s); the between-patient tests need several patients per condition",
       n_samples
     ))
   }
@@ -152,6 +144,17 @@ checkSample <- function(spe, condition = NULL, sample_id = "sample_id",
 
 # fdr must be a single value in (0, 1]; 1 is allowed as the "show everything"
 # threshold (see testSpiDE()'s documentation).
+# A colData column named by an optional argument (NULL = not used).
+checkColumn <- function(spe, column, what) {
+  if (is.null(column)) return(invisible(TRUE))
+  if (!is.character(column) || length(column) != 1L ||
+      !column %in% colnames(SummarizedExperiment::colData(spe))) {
+    stop(sprintf("%s column '%s' not found in colData(spe)", what, paste(column, collapse = ", ")),
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 checkFdr <- function(fdr) {
   if (!is.numeric(fdr) || length(fdr) != 1 || is.na(fdr) || fdr <= 0 || fdr > 1) {
     stop("'fdr' should be a single numeric value in (0, 1]")

@@ -21,9 +21,9 @@
 #' \code{groups} are retained as their own (singleton) niche.
 #'
 #' The group membership is recorded in \code{metadata(spe)$spiDE_niche_groups}
-#' so that a subsequent [fitSpiDE()] / [nicheDesign()] automatically excludes a
-#' covariate whenever an index cell type is a member of the merged niche it is
-#' tested against (its own density would otherwise contaminate the niche).
+#' (per niche reducedDim) so that a subsequent [fitSpiDE()] never tests an
+#' index cell type against a merged niche it is a member of (its own density
+#' would otherwise contaminate the niche).
 #'
 #' @param spe a SpatialExperiment with niche reducedDims (see [buildNiches()]).
 #' @param groups a named list mapping each merged niche name to a character
@@ -38,9 +38,9 @@
 #' @examples
 #' data(toySpiDE)
 #' spe <- toySpiDE
-#' spe <- buildNiches(spe, sigma = 20)
-#' spe <- mergeNiches(spe, groups = list(AC = c("A", "C")), sigma = 20)
-#' colnames(SingleCellExperiment::reducedDim(spe, "Niche20"))
+#' spe <- buildNiches(spe, sigma = 30)
+#' spe <- mergeNiches(spe, groups = list(AC = c("A", "C")), sigma = 30)
+#' colnames(SingleCellExperiment::reducedDim(spe, "Niche30"))
 #'
 #' @rdname mergeNiches
 #' @importFrom SingleCellExperiment reducedDim reducedDim<- reducedDimNames

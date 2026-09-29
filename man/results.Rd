@@ -3,44 +3,37 @@
 \name{results}
 \alias{results}
 \alias{results,SpiDEResults-method}
-\title{Extract the tidy spiDE results table}
+\title{Extract spiDE's test results}
 \usage{
 results(object, ...)
 
-\S4method{results}{SpiDEResults}(object, type = c("niche", "celltype", "patient"), ...)
+\S4method{results}{SpiDEResults}(object, test = NULL, fdr = NULL, ...)
 }
 \arguments{
-\item{object}{a \link{SpiDEResults} object.}
+\item{object}{a \link[=SpiDEResults-class]{SpiDEResults}.}
 
-\item{...}{ignored; present for compatibility with the generic.}
+\item{...}{unused.}
 
-\item{type}{which response result to return. "niche" (default) gives the
-neighbourhood-dependent calls keyed by (gene, ct_index, ct_niche,
-bandwidth), gated by the 3-level gene -> index -> niche cascade.
-"celltype" gives cell-type-specific response calls keyed by
-(gene, ct_index), gated by a 2-level gene -> cell type cascade.
-"patient" gives one abundance-weighted response contrast per gene.
-The latter two are empty unless the design carries a CellType:condition
-block — in particular they are always empty for a condition-free
-(\code{condition = NULL}) fit, where "niche" instead reports the two-way
-\code{CellType:niche} associations.
+\item{test}{\code{NULL} (the condition-specific test if one was run, else
+the pooled test), \code{"condition"}, \code{"pooled"} or \code{"both"}.}
 
-All three layers combine evidence across \strong{every} bandwidth, using the
-same log-likelihood-weighted Cauchy combination. The CellType:condition
-coefficients are not identical between bandwidths -- they are fitted
-alongside different niche columns -- so each bandwidth contributes its own
-evidence about the same contrast, and combining is what pools it.}
+\item{fdr}{\code{NULL} (every tested triplet) or a level: keep rows with
+\code{q <= fdr}.}
 }
 \value{
-a data.frame of significant calls; see \code{type}. Empty until
-\code{\link[=testSpiDE]{testSpiDE()}} is run.
+a data.frame, one row per (gene, index, niche, test), ordered by
+p-value: \code{estimate} (the pooled slope, or the difference in slope
+between conditions, on the log scale per unit log1p niche density),
+\code{se}, \code{t}, \code{df}, \code{p}, \code{q} (BH within the test's
+family) and \code{in_family}. Condition-specific rows outside the filtered
+family have \code{q = NA}.
 }
 \description{
-Extract the tidy spiDE results table
+Extract spiDE's test results
 }
 \examples{
 data(toySpiDE)
-spe <- buildNiches(toySpiDE, sigma = 20)
-res <- spiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
-head(results(res))
+res <- spiDE(toySpiDE, condition = "condition", sigma = 30, index = "A",
+             procedure = "all")
+results(res, test = "pooled")
 }

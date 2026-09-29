@@ -1,97 +1,98 @@
-test_that("fitSpiDE returns a SpiDEResults with one fit per bandwidth", {
-  spe <- buildNiches(.toySPE(), sigma = c(10, 20))
-  res <- fitSpiDE(spe, condition = "condition", random = "none", verbose = FALSE)
-
-  expect_s4_class(res, "SpiDEResults")
-  expect_equal(bandwidths(res), c(10, 20))
-  expect_length(fits(res), 2)
-  expect_true(all(vapply(fits(res), validObject, logical(1))))
-})
-
-test_that("the NB fit produces valid dispersions and log-likelihoods", {
-  spe <- buildNiches(.toySPE(), sigma = 20)
-  res <- fitSpiDE(spe, condition = "condition", sigma = 20, random = "none", verbose = FALSE)
-  f <- fits(res)[[1]]
-
-  expect_equal(dim(f@alpha), c(f@ngenes, ncol(f@W)))
-  expect_false(anyNA(f@psi))
-  expect_true(all(f@psi > 0))
-  expect_true(all(is.finite(f@loglik)))
-  expect_true(all(f@loglik <= 0))
-})
-
-test_that("fitSpiDE recovers the planted B-niche effect on G1 in A cells", {
-  spe <- buildNiches(.toySPE(), sigma = 20)
-  spe <- computeSizeFactors(spe, count = "nCount", area = "Area")
-  res <- fitSpiDE(spe,
-    condition = "condition", sigma = 20, random = "none",
-    covariates = c("Age", "LS"), verbose = FALSE
-  )
-  f <- fits(res)[[1]]
-  cm <- f@coefmap
-  col <- cm$covariate[cm$type == "ResponseNiche" &
-    cm$index == "A" & cm$niche == "B"]
-
-  # The planted effect is recovered as a STATISTIC, not as a raw coefficient.
-  # This used to assert which.max(alpha[, col]) == "G1", which is the wrong
-  # quantity: a near-empty gene (G10 here, mean count 0.26) can carry a larger
-  # point estimate than the planted one on an estimate its own standard error
-  # swamps. Assert the t: under the 0.99.18 defaults (moderated dispersion,
-  # QL scale) the planted effect is the largest statistic at this bandwidth
-  # at about 3.7, with the runner-up near 1.8; the 0.99.17 profile-psi figure
-  # of 10.19 came through a Pearson-scaled SE that the QL scale replaces.
-  # the pipeline recovers the effect: fit -> polish -> test
-  tab <- results(testSpiDE(polishSpiDE(res, spe, verbose = FALSE), spe = spe, fdr = 1))
-  ab <- tab[tab$ct_index == "A" & tab$ct_niche == "B", ]
-  expect_equal(ab$gene[which.max(abs(ab$t))], "G1")
-  expect_gt(abs(ab$t[ab$gene == "G1"]), 3)
-  expect_gt(f@alpha["G1", col], 0)
-})
+# fitSpiDE(): input checks and the shape of the fit. The engines' numerics are
+# in test-engine.R and test-sandwich.R, recovery in test-spiDE-e2e.R.
 
 test_that("fitSpiDE errors when niches are missing", {
   spe <- .toySPE()
   expect_error(fitSpiDE(spe, condition = "condition"), "buildNiches|niche")
 })
 
-test_that(".toySPE(composition = 0) is unchanged and composition plants a between-sample effect", {
-  a <- spiDE:::.toySPE()
-  b <- spiDE:::.toySPE(composition = 0)
-  expect_identical(SummarizedExperiment::assay(a, "counts"),
-                   SummarizedExperiment::assay(b, "counts"))
+test_that("several bandwidths need an explicit sigma", {
+  spe <- buildNiches(.toySPE(), sigma = c(10, 20), verbose = FALSE)
+  expect_error(fitSpiDE(spe, index = "A", min.patients = 6, verbose = FALSE), "sigma")
+})
 
-  cs <- spiDE:::.toySPE(n_samples = 12, composition = 3)
-  cd <- SummarizedExperiment::colData(cs)
-  y <- SummarizedExperiment::assay(cs, "counts")["G2", ]
-  isA <- cd$cell_type == "A"
-  resp <- cd$condition == "Responder"
-
-  # G2 in Responders' A cells differs BETWEEN samples ...
-  m <- tapply(y[isA & resp], droplevels(factor(cd$sample_id[isA & resp])), mean)
-  expect_gt(max(m) / min(m), 1.5)
-  # ... in the same order as how close the sample's A cells sit to the B-rich
-  # region (the per-sample shift the confound is planted on), so the sample's
-  # MEAN B-niche density around its A cells is what G2 tracks
-  mx <- tapply(cd$x[isA & resp], droplevels(factor(cd$sample_id[isA & resp])), mean)
-  expect_gt(cor(as.numeric(m), as.numeric(mx[names(m)]), method = "spearman"), 0.5)
-  # ... and the DEFAULT fixture draws none of this: no sample's A cells are
-  # shifted away from the left edge of the field
-  cd0 <- SummarizedExperiment::colData(a)
-  isA0 <- cd0$cell_type == "A"
-  expect_true(all(tapply(cd0$x[isA0], cd0$sample_id[isA0], min) < 0.3 * 500))
+test_that("non-integer counts are refused before any fitting", {
+  spe <- buildNiches(.toySPE(), sigma = 20, verbose = FALSE)
+  SummarizedExperiment::assay(spe, "counts") <- SummarizedExperiment::assay(spe, "counts") + 0.5
+  expect_error(fitSpiDE(spe, index = "A", sigma = 20, min.patients = 6, verbose = FALSE),
+               "integer counts")
 })
 
 test_that("a covariate with non-finite values is refused by name", {
-  # model.matrix() drops those rows, so the design no longer matches the
-  # random-effect block and the run died with "number of rows of matrices must
-  # match" -- an error naming neither the covariate nor the cause.
-  spe <- buildNiches(.toySPE(), sigma = 20)
+  spe <- buildNiches(.toySPE(), sigma = 20, verbose = FALSE)
   SummarizedExperiment::colData(spe)$bad <- log(c(0, runif(ncol(spe) - 1)))
-  expect_error(
-    fitSpiDE(spe, "condition", sigma = 20, covariates = "bad",
-             random = "intercept", verbose = FALSE),
-    "non-finite")
-  expect_error(
-    fitSpiDE(spe, "condition", sigma = 20, covariates = "bad",
-             random = "intercept", verbose = FALSE),
-    "bad")
+  expect_error(fitSpiDE(spe, sigma = 20, covariates = "bad", index = "A", min.patients = 6,
+                        verbose = FALSE), "bad")
+})
+
+test_that("a patient-level covariate is refused: the patient intercepts absorb it", {
+  spe <- buildNiches(.toySPE(), sigma = 20, verbose = FALSE)
+  expect_error(fitSpiDE(spe, sigma = 20, covariates = "Age", index = "A", min.patients = 6,
+                        verbose = FALSE), "constant within sample")
+})
+
+test_that("the fit records patient-level columns, so a condition can be named later", {
+  spe <- buildNiches(.toySPE(), sigma = 20, verbose = FALSE)
+  fit <- fitSpiDE(spe, index = "A", sigma = 20, min.patients = 6, verbose = FALSE)
+  expect_true(all(c("patient", "ncells", "condition") %in% colnames(fit@patients)))
+  expect_length(fit@condition, 0)
+  res <- testSpiDE(fit, condition = "condition", procedure = "all")
+  expect_identical(res@contrast, "Responder - Non-responder")
+  expect_setequal(unique(res@table$test), c("pooled", "condition"))
+})
+
+test_that("depth = 'nonlinear' puts a 3-df spline of log depth in the design", {
+  spe <- buildNiches(.toySPE(n_samples = 8, n_per = 120, n_genes = 6, seed = 3), sigma = 20,
+                     verbose = FALSE)
+  fit <- fitSpiDE(spe, index = "A", sigma = 20, depth = "nonlinear", verbose = FALSE)
+  expect_identical(fit@params$depth, "nonlinear")
+  x <- fit@index$A
+  expect_true(any(is.finite(x$beta)))
+  ct <- as.character(spe$cell_type)
+  ik <- spiDE:::.indexCells(ct, as.character(spe$sample_id), "A", 10L)
+  lib <- log(Matrix::colSums(SummarizedExperiment::assay(spe, "counts")))
+  covk <- spiDE:::.indexCovariates(cbind(loglib = lib[ik]), "nonlinear")
+  expect_equal(colnames(covk), paste0("loglib_ns", 1:3))
+  expect_equal(unname(colMeans(covk)), rep(0, 3), tolerance = 1e-12)
+})
+
+# Absorbed to the precision of the 1e-3 ridge on the patient intercepts (the
+# shifted intercepts are penalised slightly differently): ~1e-4 on the toy.
+test_that("a per-gene constant offset is absorbed by the patient intercepts", {
+  spe <- buildNiches(.toySPE(n_samples = 8, n_per = 120, n_genes = 6, seed = 3), sigma = 20,
+                     verbose = FALSE)
+  O <- matrix(seq(-1, 1, length.out = nrow(spe)), nrow(spe), ncol(spe),
+              dimnames = dimnames(spe))
+  SummarizedExperiment::assay(spe, "shift") <- O
+  f0 <- fitSpiDE(spe, index = "A", sigma = 20, verbose = FALSE)
+  f1 <- fitSpiDE(spe, index = "A", sigma = 20, offset = "shift", verbose = FALSE)
+  expect_equal(f1@index$A$beta, f0@index$A$beta, tolerance = 1e-3)
+  expect_equal(f1@index$A$v_tile, f0@index$A$v_tile, tolerance = 1e-3)
+  s0 <- fitSpiDE(spe, index = "A", sigma = 20, engine = "sandwich", verbose = FALSE)
+  s1 <- fitSpiDE(spe, index = "A", sigma = 20, engine = "sandwich", offset = "shift", verbose = FALSE)
+  expect_equal(s1@index$A$coef$estimate, s0@index$A$coef$estimate, tolerance = 1e-3)
+  expect_equal(s1@index$A$coef$se, s0@index$A$coef$se, tolerance = 1e-3)
+  expect_error(fitSpiDE(spe, index = "A", sigma = 20, offset = "nope", verbose = FALSE),
+               "must name an assay")
+})
+
+test_that("a log-depth offset replaces the depth covariate", {
+  spe <- buildNiches(.toySPE(n_samples = 8, n_per = 120, n_genes = 6, seed = 3), sigma = 20,
+                     verbose = FALSE)
+  ll <- log(pmax(Matrix::colSums(SummarizedExperiment::assay(spe, "counts")), 1))
+  SummarizedExperiment::assay(spe, "logdepth") <- matrix(ll, nrow(spe), ncol(spe), byrow = TRUE,
+                                                         dimnames = dimnames(spe))
+  f <- fitSpiDE(spe, index = "A", sigma = 20, depth = "none", offset = "logdepth", verbose = FALSE)
+  r <- testSpiDE(f)
+  expect_true(all(is.finite(r@table$t[!is.na(r@table$t)])))
+  expect_identical(f@params$offset, "logdepth")
+})
+
+test_that("genes restricts the tested genes but not the library size", {
+  spe <- buildNiches(.toySPE(n_samples = 8, n_per = 120, n_genes = 6, seed = 3), sigma = 20,
+                     verbose = FALSE)
+  f <- fitSpiDE(spe, index = "A", sigma = 20, genes = c("G1", "G2"), verbose = FALSE)
+  expect_setequal(f@index$A$genes, c("G1", "G2"))
+  full <- fitSpiDE(spe, index = "A", sigma = 20, verbose = FALSE)
+  expect_equal(f@index$A$beta["G1", , ], full@index$A$beta["G1", , ], tolerance = 1e-8)
 })

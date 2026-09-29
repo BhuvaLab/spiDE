@@ -1,374 +1,286 @@
-# Per-bandwidth model fitting. For each niche bandwidth a design matrix is
-# built and a per-gene negative binomial GLM is fit over ALL genes at once using
-# SpaNorm::fitNB (dispersion is moderated across genes by edgeR, so genes must
-# not be blocked at fit time). The gene-independent Wald/Brown inference is
-# added by testSpiDE()/.blockedInference() (see inference.R).
-
-# resolve the bandwidth grid from stored niche reducedDims when not supplied
-.detectSigma <- function(spe, name = "Niche") {
-  rdn <- SingleCellExperiment::reducedDimNames(spe)
-  hits <- grep(sprintf("^%s[0-9.]+$", name), rdn, value = TRUE)
-  if (length(hits) == 0) {
-    stop("no niche reducedDims found; run buildNiches() or supply 'sigma'")
-  }
-  sort(as.numeric(sub(sprintf("^%s", name), "", hits)))
-}
-
-#' Fit the spiDE negative binomial GLM for one bandwidth
+#' Fit spiDE's per-patient niche models
 #'
-#' @return a SpiDEFit with the fit populated and inference slots empty.
-#' @importFrom SummarizedExperiment assay
-#' @importFrom stats dnbinom
-#' @noRd
-.fitOneBandwidth <- function(Y, spe, condition, sigma, index, niche, covariates,
-                             cell_type, winsor, lambda.a, backend, name,
-                             verbose, sample_id = "sample_id", random = "none",
-                             re.maxit = 2L, re.tol = 1e-3, tau2.init = 1,
-                             re.prop = 1, re.maxit.psi = 1L,
-                             re.min.cells = 100L, df.method = "between",
-                             re.celltype = TRUE,
-                             block.size = NULL,
-                             BPPARAM = BiocParallel::SerialParam(), ...) {
-  des <- .buildNicheDesign(spe, condition, sigma, index, niche, covariates,
-                           cell_type, name, sample_id, random,
-                           re.celltype = re.celltype && random != "none")
-  W <- des$W
-
-  # fit all genes at once (dispersion moderated across genes). With random
-  # effects, an outer Schall/PQL loop estimates the variance components.
-  if (random == "none") {
-    fit <- SpaNorm::fitNB(Y, W, lambda.a = lambda.a, winsor = winsor,
-                          backend = backend, verbose = verbose, ...)
-    penalty <- NULL
-    tau2 <- NULL
-    # Inf, not NULL: a t reference with infinite df IS the normal reference
-    # (pt(x, Inf) == pnorm(x)), so @df is always a populated numeric and no
-    # consumer needs an is.null() branch.
-    df <- Inf
-  } else {
-    cd <- SummarizedExperiment::colData(spe)
-    idx <- .stratifiedCellIdx(cd[[cell_type]], cd[[sample_id]], re.prop,
-                              re.min.cells)
-    fit <- .fitNBmixed(Y, W, des$re_group, lambda.a, winsor, backend, verbose,
-                       re.maxit = re.maxit, re.tol = re.tol,
-                       tau2.init = tau2.init, idx = idx,
-                       re.maxit.psi = re.maxit.psi,
-                       df.method = df.method,
-                       cols_tested = .testedCols(des$covtype, des$mode),
-                       coefmap = des$coefmap, covtype = des$covtype,
-                       mode = des$mode,
-                       ...)
-    penalty <- fit$penalty
-    tau2 <- fit$tau2
-    df <- fit$df
-  }
-  # The per-gene convergence is a stage of its own, polishSpiDE(): fitNB's
-  # shared-weight, aggregate criterion leaves bright genes short of
-  # stationarity (see R/polish.R), and that stage is per-gene and blockable,
-  # unlike the fit itself. fitNB returns alpha unnamed; everything downstream
-  # keys on the gene names.
-  alpha <- fit$alpha
-  rownames(alpha) <- rownames(Y)
-  colnames(alpha) <- colnames(W)
-  polish <- NULL
-
-  # per-gene log-likelihood for Cauchy weighting (recomputed from the fit; the
-  # fitNB $loglik is per-iteration, not per-gene). Computed gene-block-wise so
-  # the whole counts matrix is never densified (the invariant); .blockedInference
-  # recomputes this too, so this value is only used if inference is skipped.
-  loglik <- .blockLoglik(Y, alpha, W, fit$psi, winsor = 4)
-
-  new(
-    "SpiDEFit",
-    sigma = sigma,
-    mode = des$mode,
-    ngenes = nrow(alpha),
-    ncells = ncol(Y),
-    W = W,
-    covtype = des$covtype,
-    coefmap = S4Vectors::DataFrame(des$coefmap),
-    alpha = alpha,
-    gmean = as.numeric(fit$gmean),
-    psi = as.numeric(fit$psi),
-    loglik = as.numeric(loglik),
-    re_group = if (random == "none") NULL else des$re_group,
-    re_sample = if (random == "none") NULL else des$re_sample,
-    tau2 = tau2,
-    penalty = penalty,
-    df = df,
-    polish = polish,
-    t_stat = NULL,
-    se = NULL,
-    p.combined.pos = NULL,
-    p.combined.neg = NULL,
-    sampling = fit$sampling
-  )
-}
-
-#' Fit the spiDE negative binomial model
+#' Fits, for every index cell type, one negative binomial GLM per gene of its
+#' expression on the local density of every other (niche) cell type, with an
+#' intercept per patient so that each niche effect is a within-patient slope.
+#' The slopes are then tested across patients by [testSpiDE()], pooled or
+#' between conditions.
 #'
-#' Builds the neighbourhood-interaction design for each niche bandwidth and fits
-#' a per-gene negative binomial GLM over all genes using the SpaNorm
-#' \code{\link[SpaNorm]{fitNB}} engine. The heavy fit uses fitNB's compute
-#' \code{backend} (CPU or GPU); the counts \code{Y} may be dense, sparse, or a
-#' \code{DelayedArray} and is not densified up front. The returned object holds
-#' one \code{SpiDEFit} per bandwidth. Neighbourhood effects are tested
-#' separately with [testSpiDE()].
+#' Two engines estimate the between-patient error the tests need:
+#' \describe{
+#'   \item{\code{"slopes"} (default)}{fits the shared model once, without the
+#'     condition, then gives every patient a one-step NB estimate of its own
+#'     niche slopes with a within-patient spatial sandwich variance.
+#'     [testSpiDE()] combines them across patients with weighted limma. It is
+#'     the more powerful engine when effects vary between patients, and its
+#'     fit never sees the condition, so any condition can be tested later.}
+#'   \item{\code{"sandwich"}}{fits the condition-specific model directly (the
+#'     condition x niche columns) and tests its coefficients with a
+#'     patient-clustered CR2 sandwich and Bell-McCaffrey degrees of freedom. It
+#'     is simpler, and strongest for effects shared by all patients, but needs
+#'     the condition at fit time.}
+#' }
+#' The slopes engine passes every calibration null of five comparisons in
+#' four spatial cohorts, the sandwich engine all but one borderline tail; see
+#' the calibration vignette.
 #'
-#' @param spe a SpatialExperiment with niche reducedDims (see [buildNiches()]).
-#' @param condition a character, the colData column of the tested condition
-#'   (must have exactly two levels), or \code{NULL} for a condition-free
-#'   (niche-only) analysis. With \code{NULL} the condition terms are dropped
-#'   from the design and the two-way \code{CellType:niche} interactions become
-#'   the tested effects: within index cell type \emph{c}, how expression
-#'   changes with the local density of niche cell type \emph{n}. The
-#'   \code{results(type = "celltype")} and \code{results(type = "patient")}
-#'   tables are empty in that mode, there being no condition to contrast.
-#' @param index,niche character vectors restricting the index / niche cell
-#'   types considered (NULL = all).
-#' @param covariates a character vector of nuisance colData columns to adjust
-#'   for (e.g. library size, age, sex).
-#' @param sigma a numeric vector of bandwidths to fit; NULL (default) uses every
-#'   \code{Niche<sigma>} reducedDim present.
-#' @param assay a character, the counts assay to model.
-#' @param cell_type a character, the colData column of cell type labels.
-#' @param sample_id a character, the colData column identifying samples
-#'   (patients); used only when \code{random != "none"}.
-#' @param random one of "intercept" (the default), "none" or
-#'   "slope". Adds patient-level random effects (implemented as ridge-penalised
-#'   design columns) to correct anti-conservative inference caused by
-#'   cell-level pseudo-replication.
-#'
-#'   \strong{The default changed from "none" to "intercept".} "none" forms Wald
-#'   standard errors from cell-level information, which treats every cell as an
-#'   independent replicate of a patient-level contrast. On a null with
-#'   per-sample intercepts it rejects at \eqn{\approx 0.71} against a nominal
-#'   0.05, worsening as cell counts become imbalanced, where the random
-#'   intercept holds \eqn{\approx 0.04} against a calibrated pseudobulk
-#'   reference of \eqn{\approx 0.04}. "none" is retained for
-#'   back-compatibility and for reproducing pre-correction results, but it
-#'   should not be used for inference. "intercept" adds a per-sample random
-#'   intercept; "slope" additionally adds per-sample random slopes on the niche
-#'   covariates, which protects the response x niche tests when the niche-slope
-#'   varies between samples. Note that "slope" estimates an extra variance
-#'   component (\code{tau2} for \code{SampleSlope}) that is collinear with the
-#'   tested fixed effect and, with few samples, is less stable than the
-#'   intercept-only variance; prefer "intercept" at small \code{S}, and "slope"
-#'   when between-sample niche-slope variation is expected. The fit is also
-#'   stochastic (\code{fitNB} subsamples cells for the dispersion estimate), so
-#'   set a seed for reproducible variance components. See the mixed-effects and
-#'   simulation vignettes.
-#'
-#'   In a condition-free analysis (\code{condition = NULL}) the random-slope
-#'   block sits on exactly the \code{CellType:niche} columns being tested, so
-#'   \code{"slope"} is the natural correction there when between-sample
-#'   variation in niche slopes is plausible. Be aware of a limitation specific
-#'   to that mode: the tested slope is a \emph{within-sample} contrast on a
-#'   \emph{spatially autocorrelated} covariate, and spiDE does not model
-#'   spatial autocorrelation. Neighbouring cells are therefore not independent
-#'   replicates of the slope, and neither random-effect structure can recover
-#'   that -- on a null fixture with a planted per-sample intercept, the
-#'   fixed-effects fit made 37 calls, \code{"intercept"} 5 and \code{"slope"}
-#'   5 (see \code{longtests/testthat/test-nicheOnly-mixed.R}). Random effects
-#'   remove most of the inflation but niche mode remains mildly
-#'   anti-conservative; treat borderline calls with corresponding caution.
-#' @param winsor,lambda.a fitting parameters forwarded to
-#'   \code{\link[SpaNorm]{fitNB}} (coefficient winsorisation and the base ridge
-#'   penalty on the fixed columns).
-#' @param backend a character, the fitNB compute backend
-#'   ("auto", "cpu", or "gpu").
-#' @param name a character, the niche reducedDim prefix.
-#' @param re.maxit,re.tol iteration cap and relative tolerance for the
-#'   random-effect variance-component (Schall/PQL) loop (used when
-#'   \code{random != "none"}). The tolerance is a relative change on
-#'   \code{log(tau2)}.
-#'
-#'   The default was lowered from 10 to 2 on measurement: for
-#'   \code{random = "intercept"} one iteration is indistinguishable from ten on
-#'   null type-I error (to three decimal places) and on \code{tau2} (to two),
-#'   because the loop typically converges in a couple of steps. It also largely
-#'   dissolves a hazard of the larger cap -- \code{tau2} can enter a 2-cycle,
-#'   making the result depend on the parity of \code{re.maxit}.
-#'
-#'   \strong{This evidence covers the intercept model only.} Under
-#'   \code{random = "slope"} the slope variance component decays monotonically
-#'   across all ten iterations without meeting \code{re.tol}, so a cap of 2
-#'   leaves it far from where 10 leaves it. Pass \code{re.maxit = 10} for
-#'   slope fits.
-#' @param tau2.init initial random-effect variance component.
-#' @param re.prop the cell-subsampling proportion used to speed up the
-#'   variance-component (PQL) loop, sampled per cell type within each sample
-#'   (\code{random != "none"}). For a stratum of \code{n} cells,
-#'   \code{min(n, max(ceil(re.prop * n), re.min.cells))} are used. \code{1}
-#'   (the default) disables subsampling (all cells, fully reproducible). The
-#'   final fit that feeds inference always uses all cells; only the shared
-#'   \code{tau2} estimate is affected. No seed is set internally — set one
-#'   externally for reproducibility of \code{re.prop < 1} runs. Lowering
-#'   \code{re.prop} trades accuracy for speed, and the trade is worse than it
-#'   looks: a replicate study on real data (\code{vignettes/spiDE-mixed-
-#'   benchmark.Rmd}) found that subsampling noise in \code{tau2} does not
-#'   shrink as \code{re.prop} rises from 0.2 to 0.8 (it stays comparable to or
-#'   larger than genuine between-patient variation), and — more importantly —
-#'   \code{tau2} is systematically \emph{biased downward} at every
-#'   \code{re.prop < 1} tested, an attenuation that averaging replicates
-#'   cannot fix, only shrinking as \code{re.prop} approaches 1. Using
-#'   \code{re.prop < 1} is therefore rarely advised; only do so when the
-#'   variance component's absolute scale doesn't matter (e.g. a quick
-#'   feasibility check) and treat its \code{tau2} as a lower bound, not a
-#'   point estimate.
-#' @param re.maxit.psi dispersion iterations for the inner PQL loop fits (the
-#'   final all-cell fit always uses full dispersion). \code{1} (default) skips
-#'   the redundant re-estimation of the barely-moving dispersion each iteration.
-#' @param re.min.cells the per-stratum floor for \code{re.prop} subsampling.
-#' @param df.method one of "between" (default) or "satterthwaite"; only used
-#'   when \code{random != "none"}. "between" is the scalar reference df of a
-#'   between-patient contrast, \code{S - 2} patients, applied per tested
-#'   compartment as that compartment\'s own patient count minus two.
-#'   "satterthwaite" instead derives a separate df per tested column from the
-#'   shared variance-component fit, which in principle distinguishes
-#'   between-sample contrasts (Response: small df, close to "between") from
-#'   within-sample contrasts (ResponseNiche: larger df, more power) rather than
-#'   applying \code{S - 2} to both; \code{@df} is then a named per-column
-#'   vector. "between" tests every Response/ResponseNiche coefficient against
-#'   the same scalar between-sample reference df (\code{S - 2}), the original
-#'   back-compatible behaviour, and \code{@df} is a scalar.
-#'
-#'   The default changed to "satterthwaite" after the benchmark study
-#'   (\code{research/}) measured both arms on identically seeded data: "between"
-#'   is severely over-conservative when samples are few (null type-I
-#'   \eqn{\approx 0.001} at \eqn{S = 4} against a nominal 0.05, with
-#'   correspondingly near-zero power), while "satterthwaite" holds type-I in
-#'   \eqn{0.042}-\eqn{0.065} across the whole sampled range and gains
-#'   \eqn{\approx 0.10} mean TPR. The trade is a mild liberal drift at larger
-#'   \eqn{S} (worst measured \eqn{\approx 0.065}); use "between" when strict
-#'   conservatism matters more than power, or for back-compatibility.
-#'   Ignored when \code{random == "none"}.
-#'
-#'   In a condition-free analysis (\code{condition = NULL}) the
-#'   \code{"between"} reference df changes, because the tested
-#'   \code{CellType:niche} slope is a within-sample contrast rather than a
-#'   between-condition one: it is \code{ncells - p_fixed} under
-#'   \code{random = "intercept"} (cells are the replicates) and \code{S - 1}
-#'   under \code{random = "slope"} (the per-sample random slopes sit on the
-#'   tested columns, moving the contrast into the between-sample stratum). The
-#'   name \code{"between"} is therefore a misnomer in the intercept case; it is
-#'   retained for back-compatibility. \code{"satterthwaite"} computes this
-#'   distinction from the fitted variance components and is preferred.
-#' @param re.celltype logical; when \code{random != "none"}, add a nested
-#'   (sample x cell type) random intercept alongside the per-sample one.
-#'   \strong{Default \code{TRUE}.} Without it the tested niche slopes are
-#'   estimated from the total covariance of niche density and expression within
-#'   an index cell type, so they also carry the between-sample composition
-#'   effect: samples whose index cells sit in denser niche surroundings also
-#'   differ in mean expression there. That is a patient-level association with
-#'   S units, not neighbourhood-dependent differential expression, and a shuffle
-#'   null that permutes within (sample, cell type) preserves it -- which is why
-#'   real data and such a null were indistinguishable on the YTMA cohort. With
-#'   the block present every niche slope is a within-group slope and the shuffle
-#'   null is calibrated in every expression band. Set \code{FALSE} to reproduce
-#'   pre-correction fits. Ignored when \code{random = "none"}.
-#' @param block.size,BPPARAM gene blocking and dispatch for the blocked steps
-#'   of the mixed fit (see [testSpiDE()] for the same arguments at inference
-#'   time; [polishSpiDE()] takes its own).
-#' @param verbose a logical, whether to print fitting progress.
-#' @param ... further arguments forwarded to \code{\link[SpaNorm]{fitNB}}.
-#'
-#' @return a [SpiDEResults] object (inference not yet computed).
-#'
+#' @param spe a SpatialExperiment with raw counts and a niche reducedDim from
+#'   [buildNiches()].
+#' @param condition \code{NULL} or a character, the colData column holding a
+#'   two-level, patient-level condition. The slopes engine only records it
+#'   (it can also be given to [testSpiDE()]); the sandwich engine fits the
+#'   condition-specific model only when it is given.
+#' @param engine \code{"slopes"} or \code{"sandwich"}.
+#' @param index \code{NULL} (every cell type with at least \code{min.cells}
+#'   cells in at least \code{min.patients} patients) or a character vector of
+#'   index cell types.
+#' @param niche \code{NULL} (test every niche column) or a character vector of
+#'   niche columns to test; the others stay in the model as adjustments. An
+#'   index type is never tested against its own niche (see [mergeNiches()]).
+#' @param sigma the niche bandwidth (needed only if \code{spe} carries several).
+#' @param cell_type,sample_id the colData columns of the cell type and of the
+#'   patient (the unit that is replicated: one sample per patient).
+#' @param section \code{NULL} (= \code{sample_id}) or the colData column of the
+#'   tissue section, used to lay the spatial tiles of the variance estimate.
+#' @param covariates a character vector of cell-level colData columns to adjust
+#'   for (centred; patient-level ones are absorbed by the patient intercepts).
+#' @param depth how sequencing depth enters: \code{"loglib"} (default, the
+#'   centred log library size as a covariate with a slope per gene),
+#'   \code{"nonlinear"} (a natural cubic spline of it with 3 df, knots at the
+#'   index type's quantiles, so the depth response of each gene may bend),
+#'   \code{"spatial_spline"} (a library-size spline within each patient: per
+#'   section, log library size and its product with a smooth tensor spline of
+#'   position, absorbed with the patient's intercept, so each gene's depth
+#'   effect may vary over the section as in SpaNorm's \eqn{\log LS \cdot
+#'   h_g(x, y)} term, fitted jointly with the niche terms) or \code{"none"}
+#'   (e.g. when \code{offset} carries depth).
+#' @param offset \code{NULL} or the name of an assay holding a log-scale
+#'   offset per gene and cell (added to every linear predictor with its
+#'   coefficient fixed at 1), e.g. the library-size component of a SpaNorm
+#'   fit. Held dense per index type (genes x index cells).
+#' @param strata \code{NULL} or a patient-level colData column (e.g. slide or
+#'   batch) whose niche slopes are adjusted for. Needed when the condition is
+#'   confounded with slide; used by the sandwich engine here and by the slopes
+#'   engine in [testSpiDE()].
+#' @param assay the counts assay (raw integer counts).
+#' @param name the niche reducedDim prefix.
+#' @param min.cells minimum cells of an index type a patient must contribute.
+#' @param min.patients minimum patients an index type needs.
+#' @param min.detect minimum fraction of an index type's cells in which a gene
+#'   is detected for it to be tested in that type.
+#' @param genes \code{NULL} (every gene) or a character vector of the genes to
+#'   test. Library size is always computed from every row of the assay, so a
+#'   panel can be tested in part without changing each cell's depth.
+#' @param tile side of the square tiles of the spatial variance estimate, in
+#'   coordinate units (default 3 x the bandwidth).
+#' @param min.tiles minimum tiles a patient needs for its own spatial variance.
+#' @param BPPARAM a BiocParallelParam; genes are fitted in parallel.
+#' @param verbose report progress.
+#' @param ... unused.
+#' @return a [SpiDEFit-class].
 #' @examples
 #' data(toySpiDE)
-#' spe <- toySpiDE
-#' spe <- buildNiches(spe, sigma = 20)
-#' fit <- fitSpiDE(spe, condition = "condition", sigma = 20, verbose = FALSE)
+#' spe <- buildNiches(toySpiDE, sigma = 30)
+#' fit <- fitSpiDE(spe, index = "A", sigma = 30)
 #' fit
-#'
-#' fit0 <- fitSpiDE(spe, condition = NULL, sigma = 20, random = "none",
-#'                  verbose = FALSE)
-#' fit0
-#'
+#' @seealso [testSpiDE()], [spiDE()], [testNicheAbundance()]
+#' @importFrom SummarizedExperiment assay colData
+#' @importFrom SingleCellExperiment reducedDim
+#' @importFrom SpatialExperiment spatialCoords
+#' @importFrom S4Vectors metadata
+#' @importFrom utils packageVersion
 #' @rdname fitSpiDE
-#' @importFrom BiocParallel SerialParam
 #' @export
 setMethod(
-  "fitSpiDE",
-  signature = "ANY",
-  definition = function(spe, condition = NULL, index = NULL, niche = NULL,
-                        covariates = character(), sigma = NULL, assay = "counts",
-                        cell_type = "cell_type", sample_id = "sample_id",
-                        random = c("intercept", "none", "slope"),
-                        winsor = 4, lambda.a = 0,
-                        backend = c("auto", "cpu", "gpu"), name = "Niche",
-                        re.maxit = 2L, re.tol = 1e-3, tau2.init = 1,
-                        re.prop = 1, re.maxit.psi = 1L, re.min.cells = 100L,
-                        df.method = c("between", "satterthwaite"),
-                        re.celltype = TRUE, block.size = NULL,
-                        BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
-    backend <- match.arg(backend)
-    random <- match.arg(random)
-    df.method <- match.arg(df.method)
+  "fitSpiDE", "SpatialExperiment",
+  function(spe, condition = NULL, engine = c("slopes", "sandwich"), index = NULL,
+           niche = NULL, sigma = NULL, cell_type = "cell_type", sample_id = "sample_id",
+           section = NULL, covariates = character(), depth = c("loglib", "nonlinear", "spatial_spline", "none"),
+           offset = NULL, strata = NULL, assay = "counts", name = "Niche", min.cells = 10L,
+           min.patients = 6L, min.detect = 0.1, genes = NULL, tile = NULL, min.tiles = 5L,
+           BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
+    engine <- match.arg(engine)
+    depth <- match.arg(depth)
     checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
-    # condition = NULL selects the condition-free (niche-only) design
     if (!is.null(condition)) checkCondition(spe, condition)
+    checkSample(spe, condition = condition, sample_id = sample_id, covariates = covariates)
     checkCovariates(spe, covariates, finite.only = TRUE)
-    if (random != "none") {
-      checkSample(spe, condition, sample_id, covariates)
-      if (!is.numeric(re.prop) || length(re.prop) != 1 || re.prop <= 0 ||
-          re.prop > 1) {
-        stop("'re.prop' must be a single number in (0, 1]")
+    sigma <- .pickSigma(spe, sigma, name)
+    checkNiche(spe, sigma, name)
+    cd <- SummarizedExperiment::colData(spe)
+    checkColumn(spe, strata, "strata")
+    checkColumn(spe, section, "section")
+    Y <- SummarizedExperiment::assay(spe, assay)
+    checkCounts(Y, integer.only = TRUE)
+    if (!is.null(offset)) {
+      if (!is.character(offset) || length(offset) != 1L ||
+          !offset %in% SummarizedExperiment::assayNames(spe)) {
+        stop("'offset' must name an assay of spe (a log-scale offset per gene and cell)", call. = FALSE)
       }
     }
-
-    if (is.null(sigma)) {
-      sigma <- .detectSigma(spe, name)
+    ct <- as.character(cd[[cell_type]])
+    smp <- as.character(cd[[sample_id]])
+    sec <- if (is.null(section)) smp else as.character(cd[[section]])
+    NM <- as.matrix(SingleCellExperiment::reducedDim(spe, paste0(name, sigma)))
+    xy <- SpatialExperiment::spatialCoords(spe)
+    if (is.null(tile)) tile <- 3 * sigma
+    tiles <- paste(sec, floor(xy[, 1] / tile), floor(xy[, 2] / tile), sep = "\r")
+    cov <- .cellCovariates(cd, covariates, depth, Y)
+    # a cell with no counts has no library size: it cannot enter a model with a
+    # log-depth term, so it is left out (reported, not silently)
+    usable <- if (depth != "none") is.finite(cov[, "loglib"]) else rep(TRUE, ncol(Y))
+    if (!all(usable) && verbose) message(sprintf("fitSpiDE: %d cell(s) with no counts left out", sum(!usable)))
+    patients <- .patientTable(cd, smp)
+    # mergeNiches() records its groups per niche reducedDim
+    group_map <- S4Vectors::metadata(spe)[["spiDE_niche_groups"]][[paste0(name, sigma)]]
+    if (is.null(index)) {
+      index <- names(which(vapply(split(smp, ct), function(s) sum(table(s) >= min.cells), numeric(1)) >= min.patients))
     }
-    checkNiche(spe, sigma, name = name)
-
-    Y <- SummarizedExperiment::assay(spe, assay)
-    checkCounts(Y, integer.only = FALSE)
-
-    fits <- lapply(sigma, function(sg) {
-      if (verbose) message(sprintf("Fitting bandwidth sigma = %s", sg))
-      .fitOneBandwidth(Y, spe, condition, sg, index, niche, covariates,
-                       cell_type, winsor, lambda.a, backend, name, verbose,
-                       sample_id = sample_id, random = random,
-                       re.maxit = re.maxit, re.tol = re.tol,
-                       tau2.init = tau2.init, re.prop = re.prop,
-                       re.maxit.psi = re.maxit.psi,
-                       re.min.cells = re.min.cells, df.method = df.method,
-                       re.celltype = re.celltype, block.size = block.size,
-                       BPPARAM = BPPARAM, ...)
-    })
-    names(fits) <- paste0(name, sigma)
-
-    mode <- if (is.null(condition)) "niche" else "condition"
-
-    # Resolve the index / niche cell type sets actually used. This must go
-    # through the mode predicate like every other tested-column lookup: a bare
-    # == "ResponseNiche" is all-FALSE in niche mode, which would leave @index
-    # and @niche empty on every condition-free result.
-    coefmap0 <- fits[[1]]@coefmap
-    rn <- .nicheTestCols(coefmap0$type, mode)
-    index_used <- sort(unique(coefmap0$index[rn]))
-    niche_used <- sort(unique(coefmap0$niche[rn]))
-
-    cd <- SummarizedExperiment::colData(spe)
-
-    new(
-      "SpiDEResults",
-      fits = fits,
-      sigma = sigma,
-      condition = if (is.null(condition)) NA_character_ else condition,
-      mode = mode,
-      index = index_used,
-      niche = niche_used,
-      covariates = covariates,
-      coldata = cd,
-      gene.weights = NULL,
-      p.cauchy.pos = NULL,
-      p.cauchy.neg = NULL,
-      results = data.frame(),
-      fdr = NA_real_,
-      call = match.call()
-    )
+    index <- intersect(index, unique(ct))
+    if (!length(index)) stop("no index cell type has enough cells in enough patients", call. = FALSE)
+    trt_of <- if (engine == "sandwich" && !is.null(condition)) .conditionCoding(patients, condition) else NULL
+    str_of <- if (!is.null(strata)) stats::setNames(as.character(patients[[strata]]), patients$patient) else NULL
+    fits <- list()
+    for (k in index) {
+      ik <- .indexCells(ifelse(usable, ct, NA_character_), smp, k, min.cells)
+      pk <- unique(smp[ik])
+      if (length(pk) < min.patients) {
+        if (verbose) message(sprintf("fitSpiDE: skipping %s (%d patients)", k, length(pk)))
+        next
+      }
+      nc <- .nicheColumns(NM, k, ik, niche, group_map)
+      if (!length(nc$tested)) next
+      det <- Matrix::rowMeans(Y[, ik, drop = FALSE] > 0)
+      gk <- rownames(Y)[det >= min.detect]
+      if (!is.null(genes)) gk <- intersect(gk, genes)
+      if (!length(gk)) next
+      cols <- c(nc$tested, setdiff(nc$cols, nc$tested))
+      L <- log1p(NM[ik, cols, drop = FALSE])
+      pat <- factor(smp[ik])
+      Yk <- Y[gk, ik, drop = FALSE]
+      covk <- .indexCovariates(cov[ik, , drop = FALSE], depth)
+      blk <- if (depth == "spatial_spline") {
+        .depthBlocks(cov[ik, "loglib"], xy, sec, ik, factor(smp[ik]), L)
+      } else NULL
+      Ok <- if (is.null(offset)) NULL else .indexOffset(spe, offset, gk, ik)
+      if (verbose) message(sprintf("fitSpiDE: %s engine, index %s: %d genes, %d cells, %d patients, %d niches",
+                                   engine, k, length(gk), length(ik), nlevels(pat), length(nc$tested)))
+      stk <- if (!is.null(str_of) && engine == "sandwich") factor(str_of[as.character(pat)]) else NULL
+      des0 <- .indexDesign(L, covk, pat, strata = stk, tested = nc$tested, blocks = blk)
+      fit0 <- .fitIndexGLM(Yk, des0, offset = Ok, BPPARAM = BPPARAM)
+      if (engine == "slopes") {
+        ps <- .patientSlopes(fit0, des0, Yk, L, tiles[ik], min.cells = min.cells,
+                             min.tiles = min.tiles, offset = Ok, BPPARAM = BPPARAM)
+        fits[[k]] <- c(list(genes = gk, niches = nc$tested, adjusted = setdiff(nc$cols, nc$tested),
+                            patients = des0$patients), ps,
+                       list(factor = .patientFactor(ps$v_tile, ps$v_model),
+                            mean_expr = Matrix::rowMeans(Yk), psi = fit0$psi, status = fit0$status,
+                            depth_r2 = if (!is.null(blk)) blk$r2[, nc$tested, drop = FALSE]))
+      } else {
+        coef <- cbind(test = "pooled", .sandwichCR2(fit0, des0, Yk, offset = Ok, BPPARAM = BPPARAM))
+        if (!is.null(trt_of)) {
+          des1 <- .indexDesign(L, covk, pat, trt = unname(trt_of[as.character(pat)]), strata = stk,
+                               tested = nc$tested, blocks = blk)
+          fit1 <- .fitIndexGLM(Yk, des1, offset = Ok, BPPARAM = BPPARAM)
+          coef <- rbind(coef, cbind(test = "condition", .sandwichCR2(fit1, des1, Yk, offset = Ok,
+                                                                     BPPARAM = BPPARAM)))
+        }
+        fits[[k]] <- list(genes = gk, niches = nc$tested, adjusted = setdiff(nc$cols, nc$tested),
+                          patients = des0$patients, coef = coef, mean_expr = Matrix::rowMeans(Yk),
+                          status = fit0$status,
+                          depth_r2 = if (!is.null(blk)) blk$r2[, nc$tested, drop = FALSE])
+      }
+    }
+    if (!length(fits)) stop("no index cell type could be fitted", call. = FALSE)
+    methods::new("SpiDEFit", engine = engine, sigma = sigma,
+                 condition = if (is.null(condition)) character() else condition,
+                 patients = patients, index = fits,
+                 params = list(cell_type = cell_type, sample_id = sample_id, section = section,
+                               covariates = covariates, depth = depth, offset = offset, strata = strata,
+                               min.cells = min.cells, min.patients = min.patients,
+                               min.detect = min.detect, tile = tile, min.tiles = min.tiles,
+                               version = as.character(utils::packageVersion("spiDE"))))
   }
 )
+
+# The niche bandwidth: the only one present, or the one asked for.
+.pickSigma <- function(spe, sigma, name) {
+  rdn <- SingleCellExperiment::reducedDimNames(spe)
+  have <- suppressWarnings(as.numeric(sub(sprintf("^%s", name), "", grep(sprintf("^%s[0-9.]+$", name), rdn, value = TRUE))))
+  if (!length(have)) stop("no niche reducedDims found; run buildNiches() first", call. = FALSE)
+  if (is.null(sigma)) {
+    if (length(have) > 1L) {
+      stop(sprintf("spe carries several niche bandwidths (%s): choose one with 'sigma'",
+                   paste(sort(have), collapse = ", ")), call. = FALSE)
+    }
+    return(have)
+  }
+  if (length(sigma) != 1L) stop("'sigma' must be a single bandwidth", call. = FALSE)
+  sigma
+}
+
+# Cell-level covariates: the log library size (depth "loglib" or
+# "nonlinear") and any user covariates, as a numeric matrix over all cells.
+.cellCovariates <- function(cd, covariates, depth, Y) {
+  cols <- list()
+  if (depth != "none") {
+    lib <- Matrix::colSums(Y)
+    cols$loglib <- ifelse(lib > 0, log(lib), NA_real_)
+  }
+  for (cv in covariates) cols[[cv]] <- as.numeric(cd[[cv]])
+  if (!length(cols)) return(matrix(0, nrow(cd), 0))
+  do.call(cbind, cols)
+}
+
+# The index type's cell-level covariates, centred over its cells. Under
+# depth = "nonlinear" the log library size becomes a natural cubic spline basis
+# with 3 df (knots at this index type's quantiles), so each gene's depth
+# response may bend; library-size distributions differ strongly by cell type,
+# so the knots are per index type.
+.indexCovariates <- function(covk, depth) {
+  if (!ncol(covk)) return(NULL)
+  if (depth == "spatial_spline") {
+    covk <- covk[, colnames(covk) != "loglib", drop = FALSE]   # depth enters through the blocks
+    if (!ncol(covk)) return(NULL)
+  } else if (depth == "nonlinear") {
+    B <- splines::ns(covk[, "loglib"], df = 3L)
+    colnames(B) <- paste0("loglib_ns", seq_len(ncol(B)))
+    covk <- cbind(B, covk[, colnames(covk) != "loglib", drop = FALSE])
+  }
+  scale(covk, scale = FALSE)
+}
+
+# The offset for one index type: genes x index cells, dense (polishNB holds an
+# offset matrix dense; a vector would be per cell only).
+.indexOffset <- function(spe, offset, gk, ik) {
+  O <- as.matrix(SummarizedExperiment::assay(spe, offset)[gk, ik, drop = FALSE])
+  if (!all(is.finite(O))) stop(sprintf("offset assay '%s' has non-finite values", offset), call. = FALSE)
+  O
+}
+
+# One row per patient: id, cell count, and every colData column constant
+# within patients (so a condition or strata can be named later).
+.patientTable <- function(cd, smp) {
+  pats <- sort(unique(smp))
+  out <- data.frame(patient = pats, ncells = as.integer(table(smp)[pats]), stringsAsFactors = FALSE)
+  first <- match(pats, smp)
+  for (cn in colnames(cd)) {
+    x <- cd[[cn]]
+    if (!is.atomic(x) || is.matrix(x)) next
+    const <- tapply(as.character(x), smp, function(v) length(unique(v[!is.na(v)])) <= 1L)
+    if (all(const[pats])) out[[cn]] <- if (is.factor(x)) droplevels(x[first]) else x[first]
+  }
+  out
+}
+
+# 0/1 per patient for a two-level condition: 1 = the second level (factor
+# levels, else sorted values), so the contrast is "second - first".
+.conditionCoding <- function(patients, condition) {
+  x <- patients[[condition]]
+  if (is.null(x)) stop(sprintf("condition '%s' is not a patient-level column", condition), call. = FALSE)
+  lv <- if (is.factor(x)) levels(droplevels(x)) else sort(unique(as.character(x[!is.na(x)])))
+  if (length(lv) != 2L) stop(sprintf("condition '%s' must have exactly two levels", condition), call. = FALSE)
+  out <- stats::setNames(as.numeric(as.character(x) == lv[2]), patients$patient)
+  attr(out, "levels") <- lv
+  out
+}

@@ -1,6 +1,6 @@
 ---
 name: hpc-job-sizing
-description: Determine the best SLURM job structure (array vs. monolithic, CPU vs. GPU, partition/QOS, resource sizing) for a computational job on Bunya HPC. Use when asked to run something "on the cluster" / "via sbatch", to size a batch job's cores/mem/walltime, to decide whether a job should be an array, or whether GPU makes sense for a workload. Encodes lessons learned the hard way on this project's mixed-effects diagnostics workflow (research/diagnostics/step03/06/08).
+description: Determine the best SLURM job structure (array vs. monolithic, CPU vs. GPU, partition/QOS, resource sizing) for a computational job on Bunya HPC. Use when asked to run something "on the cluster" / "via sbatch", to size a batch job's cores/mem/walltime, to decide whether a job should be an array, or whether GPU makes sense for a workload. Carries the measured per-grid fit times of spiDE's engines (0.99.30) on the four cohorts, and lessons learned the hard way on this project's earlier mixed-model diagnostics workflow (research/diagnostics/step03/06/08).
 ---
 
 # Sizing an HPC job on Bunya
@@ -17,6 +17,48 @@ unit of work first, look at real `sacct` numbers, then size the batch.** A
 nothing about whether the job will actually fit in the memory/time you asked
 for.
 
+## Measured per-grid times (spiDE 0.99.30)
+
+Use these as the calibration point for spiDE runs before Step 2's one-task
+probe. Each is the wall-clock time of one fit of the simplification study's
+top-5 family (five index types, every tested gene) per grid, at 8 CPUs,
+parallel over gene blocks with one BLAS thread each. They were measured in
+`research/simplify/` (logs under `research/simplify/logs/`) on the study's own
+implementation of the engine (`R/h1.R`, `R/m1.R`). The package reproduces
+that implementation (`research/simplify/tests/package_vs_prototype.R`), so
+treat these as `fitSpiDE()`'s cost until a package run has been timed:
+
+| cohort | slopes engine fit, per grid |
+|---|---|
+| GSE282639 (CosMx 1k, 28 patients) | 0.8-1.2 min |
+| GSE250346 (Xenium, 35 patients) | 6-8 min |
+| GSE289194 (CosMx 1k, 44 patients) | 8-9.5 min |
+| YTMA (CosMx WTA, 55 patients) | 11-19 min |
+| YTMA LUAD stage cohort | 26-31 min |
+
+The sandwich engine takes about the same. How that time turns into jobs:
+
+- **The fit dominates.** `testSpiDE()` is cheap next to it.
+- **A block-null grid is a refit**, so ten block grids cost ten fits.
+- **A permutation costs very little for the slopes engine.** Its fit never
+  sees the condition, so permutations rerun only `testSpiDE()` on one saved
+  fit. The sandwich engine uses the condition at fit time, so each
+  permutation is a refit.
+- **Arrays:** one task per (cohort, grid) is the natural unit. Five cohorts
+  x ten block grids at 8 CPUs fits comfortably in an array.
+- **Memory:** the per-patient arrays are small (genes x patients x niches
+  per index type). The peak is the count matrix plus `polishNB()`'s dense
+  gene block x cells, so size from `sstat` on one task.
+
+Measured SpaNorm template fits for bench2 (`research/bench2/README.md`,
+2026-09-29 pilot, one section per cohort, the largest):
+
+| cohort, section | fit + fixed polish + joint polish | MaxRSS | CPUs |
+|---|---|---|---|
+| GSE282639, 4,383 cells x 974 genes | 2.2 + 0.2 + 0.7 min | 1.8 GB | 2 |
+| GSE289194, 13,924 x 1,000 | 1.4 + 0.3 + 0.8 min | 7.2 GB | 4 |
+| GSE250346, 117,787 x 343 | 1.1 + 0.6 + 2.5 min | 16.4 GB | 4 |
+
 ## Step 1 -- characterize the job
 
 Answer these before touching `sbatch`:
@@ -32,8 +74,11 @@ Answer these before touching `sbatch`:
   so a crash in the fragile stage doesn't force redoing the expensive part.
   This is not optional polish -- it's what separates a 5-minute retry from
   losing 4+ hours of compute (see `research/diagnostics/step03_prep_and_fit_intercept.R`
-  and `step08_diag5_slope_needed.R`, both of which learned this after an OOM
-  ate a completed fit).
+  and `step08_diag5_slope_needed.R`, from the mixed-model era, both of which
+  learned this after an OOM ate a completed fit). For spiDE 0.99.30 the
+  natural checkpoint is the `SpiDEFit`: save it after `fitSpiDE()` and run
+  `testSpiDE()` (and any permutations, which for the slopes engine need no
+  refit) from the saved fit.
 - **What's the actual data scale?** Row/column counts of the real matrices
   involved, not a stand-in dataset. Scaling from a smaller calibration point
   to a bigger one is *not* safe to assume linear -- treat it as a rough lower
@@ -128,6 +173,9 @@ Both bit us for real; apply both every time an R script does
    layers every time:
    - In the R script: `RhpcBLASctl::blas_set_num_threads(1)` and
      `RhpcBLASctl::omp_set_num_threads(1)`, before any fitting call.
+     spiDE's `.bpGenes()` and SpaNorm's `polishNB()` already do this inside
+     each worker when `RhpcBLASctl` is installed; a driver's own
+     `mclapply`/`bplapply` over grids or cohorts does not.
    - In the sbatch script: `export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
      MKL_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1` before `srun`.
 2. **`srun` CPU-bind conflicts when submitting from within an active
@@ -140,6 +188,12 @@ Both bit us for real; apply both every time an R script does
    every sbatch script submitted from an interactive session.
 
 ## Step 7 -- CPU vs. GPU
+
+spiDE 0.99.30 has **no GPU path**: its per-gene fits run on CPU through
+`SpaNorm::polishNB()`, and the `backend` argument of the mixed model is gone.
+GPU is a question only for SpaNorm's own fits (e.g. bench2 template fits) or
+archived `spiDEmixed` runs, and those need h100: a100 fails fp64 `digamma`
+inside NB dispersion, and l40s runs fp64 at about 1:64.
 
 Don't reach for GPU just because a workload is slow or because smaller GPUs
 have shorter queues -- check these first, in order:
