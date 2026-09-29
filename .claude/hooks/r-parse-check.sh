@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # PostToolUse: parse-check any .R file that was just edited or written.
 #
-# WHY: a scripted edit to R/twostage-stage1.R once replaced far more than
-# intended (151 insertions for a small substitution). It was caught only
+# WHY: a scripted edit to R/twostage-stage1.R (the two-stage estimator, since
+# archived) once replaced far more than intended (151 insertions for a small
+# substitution). It was caught only
 # because parse() happened to be run by hand. R is not compiled, so a
 # structurally broken file stays silent until something loads it -- which on
 # this project can be an 80-minute SLURM job.
