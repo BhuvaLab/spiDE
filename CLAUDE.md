@@ -174,8 +174,6 @@ numbers.** Before changing a default, read:
 
 ### Open items
 
-- **Bell-McCaffrey df**: agrees with clubSandwich within 1% on high-count genes, up to ~10% high
-  on a low-count gene (`tests/testthat/test-sandwich.R`); unexplained. Resolve before release.
 - `spiGSEA()` is experimental: no gene-set null has been run.
 - The niche covariate's own spatial autocorrelation is unmodelled; the block null keeps it.
 

@@ -29,7 +29,7 @@
 # family afterwards, never within a block.
 
 .patientSlopes <- function(fit, des, Yk, L, tiles, min.cells = 10L, min.tiles = 5L,
-                           BPPARAM = BiocParallel::SerialParam()) {
+                           offset = NULL, BPPARAM = BiocParallel::SerialParam()) {
   genes <- rownames(Yk)
   G <- length(genes); S <- des$npat
   nt <- length(des$tested_niche)
@@ -41,7 +41,8 @@
       g <- gi[a]
       al <- fit$alpha[g, ]; psi <- fit$psi[g]
       if (!all(is.finite(al)) || !is.finite(psi)) next
-      wr <- .workingWR(as.numeric(Yk[g, ]), des$W, al, psi)
+      wr <- .workingWR(as.numeric(Yk[g, ]), des$W, al, psi,
+                       offset = if (is.null(offset)) 0 else offset[g, ])
       w <- wr$w; r <- wr$r
       beta <- al[jn]
       bb <- vv <- vt <- matrix(NA_real_, S, nt)

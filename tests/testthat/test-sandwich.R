@@ -9,15 +9,11 @@
 # (clubSandwich on a glm() object is not the oracle: it linearises the GLM
 # differently, and differs from both by up to ~20% SE on a high-count gene.)
 #
-# OPEN (2026-09-30): the SE agrees within 0.3%, but on a low-count gene the
-# Bell-McCaffrey df is up to ~10% HIGHER than clubSandwich's (13.1 vs 11.8 on
-# G3 here; the high-count genes agree within 1%). The df formula
-# (R/sandwich.R) was re-derived for the absorbed design and matches Omega =
-# diag(||a_s||^2) - Q' B Q; the gap is not yet explained (candidates:
-# clubSandwich's default working-variance target for a weighted lm, the
-# eigenvalue truncation). The engine is the prototype's, calibrated on 160 null
-# grids with 0 false calls, so the tolerance below records the measured
-# agreement rather than hiding it. Resolve before release.
+# The IRLS weights are inverse variances, so clubSandwich must be told so
+# (inverse_var = TRUE): left to infer it for a weighted lm, it takes an identity
+# working variance, which moves the Bell-McCaffrey df by up to ~10% on a
+# low-count gene (13.1 against 11.8 on G3 here) while barely moving the SE.
+# With it, the df agree to two decimals and the SE within 0.3% (2026-09-30).
 
 test_that("CR2 and Bell-McCaffrey df agree with clubSandwich on the working model", {
   skip_if_not_installed("clubSandwich")
@@ -42,11 +38,12 @@ test_that("CR2 and Bell-McCaffrey df agree with clubSandwich on the working mode
     w <- mu / (1 + fit$psi[g] * mu)
     z <- eta + (as.numeric(Y[g, ]) - mu) / mu
     m <- stats::lm(z ~ 0 + pat + Xd, weights = w)
-    cs <- clubSandwich::coef_test(m, vcov = "CR2", cluster = pat, test = "Satterthwaite")
+    V <- clubSandwich::vcovCR(m, cluster = pat, type = "CR2", inverse_var = TRUE)
+    cs <- clubSandwich::coef_test(m, vcov = V, test = "Satterthwaite")
     o <- cs[match(paste0("Xd", make.names(colnames(des$W)[des$tested])), cs$Coef), ]
     mine <- got[got$gene == g, ]
     expect_equal(mine$estimate, unname(o$beta), tolerance = 1e-3)
-    expect_equal(mine$se, unname(o$SE), tolerance = 0.01)
-    expect_equal(mine$df, unname(o$df_Satt), tolerance = 0.15)
+    expect_equal(mine$se, unname(o$SE), tolerance = 0.005)
+    expect_equal(mine$df, unname(o$df_Satt), tolerance = 0.005)
   }
 })

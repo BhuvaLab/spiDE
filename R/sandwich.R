@@ -1,9 +1,10 @@
 # The sandwich engine's inference: a patient-clustered CR2 sandwich with the
 # Bell-McCaffrey Satterthwaite degrees of freedom (Bell & McCaffrey 2002;
 # Pustejovsky & Tipton 2018) on the fixed-effects NB fit of one index type,
-# clusters = patients. Checked against clubSandwich::vcovCR(type = "CR2") and
-# coef_test(test = "Satterthwaite") (tests/testthat/test-sandwich.R;
-# research/simplify/tests/oracle_m1.R: SE within 1-4%, df within 1-2%).
+# clusters = patients. Checked against clubSandwich::vcovCR(type = "CR2",
+# inverse_var = TRUE) and coef_test(test = "Satterthwaite") on the working
+# weighted lm of the same fit (tests/testthat/test-sandwich.R): SE within 0.3%,
+# df to two decimals.
 #
 # In the working-weights space of the converged IRLS,
 #   w_i = mu_i / (1 + psi mu_i),  r_i = (y_i - mu_i) / (1 + psi mu_i),
@@ -18,7 +19,7 @@
 #   Gm = diag(||D V' R_s B c||^2) - Q' B Q,   Q[, s] = R_s' V D V' R_s B c.
 # Genes are independent, so this is blocked and parallelised over genes.
 
-.sandwichCR2 <- function(fit, des, Yk, BPPARAM = BiocParallel::SerialParam()) {
+.sandwichCR2 <- function(fit, des, Yk, offset = NULL, BPPARAM = BiocParallel::SerialParam()) {
   genes <- rownames(Yk)
   Xd <- des$W[, des$dense, drop = FALSE]
   jt <- match(des$tested, des$dense)
@@ -30,7 +31,8 @@
       g <- gi[a]
       al <- fit$alpha[g, ]; psi <- fit$psi[g]
       if (!all(is.finite(al)) || !is.finite(psi)) next
-      wr <- .workingWR(as.numeric(Yk[g, ]), des$W, al, psi)
+      wr <- .workingWR(as.numeric(Yk[g, ]), des$W, al, psi,
+                       offset = if (is.null(offset)) 0 else offset[g, ])
       w <- wr$w; r <- wr$r
       sw <- rowsum(w, pid, reorder = TRUE)[, 1]
       xbar <- rowsum(Xd * w, pid, reorder = TRUE) / sw

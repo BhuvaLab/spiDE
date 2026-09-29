@@ -45,8 +45,14 @@
 #' @param covariates a character vector of cell-level colData columns to adjust
 #'   for (centred; patient-level ones are absorbed by the patient intercepts).
 #' @param depth how sequencing depth enters: \code{"loglib"} (default, the
-#'   centred log library size as a covariate with a slope per gene) or
-#'   \code{"none"}.
+#'   centred log library size as a covariate with a slope per gene),
+#'   \code{"nonlinear"} (a natural cubic spline of it with 3 df, knots at the
+#'   index type's quantiles, so the depth response of each gene may bend) or
+#'   \code{"none"} (e.g. when \code{offset} carries depth).
+#' @param offset \code{NULL} or the name of an assay holding a log-scale
+#'   offset per gene and cell (added to every linear predictor with its
+#'   coefficient fixed at 1), e.g. the library-size component of a SpaNorm
+#'   fit. Held dense per index type (genes x index cells).
 #' @param strata \code{NULL} or a patient-level colData column (e.g. slide or
 #'   batch) whose niche slopes are adjusted for. Needed when the condition is
 #'   confounded with slide; used by the sandwich engine here and by the slopes
@@ -80,8 +86,8 @@ setMethod(
   "fitSpiDE", "SpatialExperiment",
   function(spe, condition = NULL, engine = c("slopes", "sandwich"), index = NULL,
            niche = NULL, sigma = NULL, cell_type = "cell_type", sample_id = "sample_id",
-           section = NULL, covariates = character(), depth = c("loglib", "none"),
-           strata = NULL, assay = "counts", name = "Niche", min.cells = 10L,
+           section = NULL, covariates = character(), depth = c("loglib", "nonlinear", "none"),
+           offset = NULL, strata = NULL, assay = "counts", name = "Niche", min.cells = 10L,
            min.patients = 6L, min.detect = 0.1, tile = NULL, min.tiles = 5L,
            BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     engine <- match.arg(engine)
@@ -101,6 +107,12 @@ setMethod(
     }
     Y <- SummarizedExperiment::assay(spe, assay)
     checkCounts(Y, integer.only = TRUE)
+    if (!is.null(offset)) {
+      if (!is.character(offset) || length(offset) != 1L ||
+          !offset %in% SummarizedExperiment::assayNames(spe)) {
+        stop("'offset' must name an assay of spe (a log-scale offset per gene and cell)", call. = FALSE)
+      }
+    }
     ct <- as.character(cd[[cell_type]])
     smp <- as.character(cd[[sample_id]])
     sec <- if (is.null(section)) smp else as.character(cd[[section]])
@@ -111,7 +123,7 @@ setMethod(
     cov <- .cellCovariates(cd, covariates, depth, Y)
     # a cell with no counts has no library size: it cannot enter a model with a
     # log-depth term, so it is left out (reported, not silently)
-    usable <- if (depth == "loglib") is.finite(cov[, "loglib"]) else rep(TRUE, ncol(Y))
+    usable <- if (depth != "none") is.finite(cov[, "loglib"]) else rep(TRUE, ncol(Y))
     if (!all(usable) && verbose) message(sprintf("fitSpiDE: %d cell(s) with no counts left out", sum(!usable)))
     patients <- .patientTable(cd, smp)
     # mergeNiches() records its groups per niche reducedDim
@@ -140,26 +152,28 @@ setMethod(
       L <- log1p(NM[ik, cols, drop = FALSE])
       pat <- factor(smp[ik])
       Yk <- Y[gk, ik, drop = FALSE]
-      covk <- if (ncol(cov)) scale(cov[ik, , drop = FALSE], scale = FALSE) else NULL
+      covk <- .indexCovariates(cov[ik, , drop = FALSE], depth)
+      Ok <- if (is.null(offset)) NULL else .indexOffset(spe, offset, gk, ik)
       if (verbose) message(sprintf("fitSpiDE: %s engine, index %s: %d genes, %d cells, %d patients, %d niches",
                                    engine, k, length(gk), length(ik), nlevels(pat), length(nc$tested)))
       stk <- if (!is.null(str_of) && engine == "sandwich") factor(str_of[as.character(pat)]) else NULL
       des0 <- .indexDesign(L, covk, pat, strata = stk, tested = nc$tested)
-      fit0 <- .fitIndexGLM(Yk, des0, BPPARAM = BPPARAM)
+      fit0 <- .fitIndexGLM(Yk, des0, offset = Ok, BPPARAM = BPPARAM)
       if (engine == "slopes") {
         ps <- .patientSlopes(fit0, des0, Yk, L, tiles[ik], min.cells = min.cells,
-                             min.tiles = min.tiles, BPPARAM = BPPARAM)
+                             min.tiles = min.tiles, offset = Ok, BPPARAM = BPPARAM)
         fits[[k]] <- c(list(genes = gk, niches = nc$tested, adjusted = setdiff(nc$cols, nc$tested),
                             patients = des0$patients), ps,
                        list(factor = .patientFactor(ps$v_tile, ps$v_model),
                             mean_expr = Matrix::rowMeans(Yk), psi = fit0$psi))
       } else {
-        coef <- cbind(test = "pooled", .sandwichCR2(fit0, des0, Yk, BPPARAM = BPPARAM))
+        coef <- cbind(test = "pooled", .sandwichCR2(fit0, des0, Yk, offset = Ok, BPPARAM = BPPARAM))
         if (!is.null(trt_of)) {
           des1 <- .indexDesign(L, covk, pat, trt = unname(trt_of[as.character(pat)]), strata = stk,
                                tested = nc$tested)
-          fit1 <- .fitIndexGLM(Yk, des1, BPPARAM = BPPARAM)
-          coef <- rbind(coef, cbind(test = "condition", .sandwichCR2(fit1, des1, Yk, BPPARAM = BPPARAM)))
+          fit1 <- .fitIndexGLM(Yk, des1, offset = Ok, BPPARAM = BPPARAM)
+          coef <- rbind(coef, cbind(test = "condition", .sandwichCR2(fit1, des1, Yk, offset = Ok,
+                                                                     BPPARAM = BPPARAM)))
         }
         fits[[k]] <- list(genes = gk, niches = nc$tested, adjusted = setdiff(nc$cols, nc$tested),
                           patients = des0$patients, coef = coef, mean_expr = Matrix::rowMeans(Yk))
@@ -170,7 +184,7 @@ setMethod(
                  condition = if (is.null(condition)) character() else condition,
                  patients = patients, index = fits,
                  params = list(cell_type = cell_type, sample_id = sample_id, section = section,
-                               covariates = covariates, depth = depth, strata = strata,
+                               covariates = covariates, depth = depth, offset = offset, strata = strata,
                                min.cells = min.cells, min.patients = min.patients,
                                min.detect = min.detect, tile = tile, min.tiles = min.tiles,
                                version = as.character(utils::packageVersion("spiDE"))))
@@ -193,17 +207,40 @@ setMethod(
   sigma
 }
 
-# Cell-level covariates: the centred log library size (depth = "loglib") and
-# any user covariates, as a numeric matrix over all cells.
+# Cell-level covariates: the log library size (depth "loglib" or
+# "nonlinear") and any user covariates, as a numeric matrix over all cells.
 .cellCovariates <- function(cd, covariates, depth, Y) {
   cols <- list()
-  if (depth == "loglib") {
+  if (depth != "none") {
     lib <- Matrix::colSums(Y)
     cols$loglib <- ifelse(lib > 0, log(lib), NA_real_)
   }
   for (cv in covariates) cols[[cv]] <- as.numeric(cd[[cv]])
   if (!length(cols)) return(matrix(0, nrow(cd), 0))
   do.call(cbind, cols)
+}
+
+# The index type's cell-level covariates, centred over its cells. Under
+# depth = "nonlinear" the log library size becomes a natural cubic spline basis
+# with 3 df (knots at this index type's quantiles), so each gene's depth
+# response may bend; library-size distributions differ strongly by cell type,
+# so the knots are per index type.
+.indexCovariates <- function(covk, depth) {
+  if (!ncol(covk)) return(NULL)
+  if (depth == "nonlinear") {
+    B <- splines::ns(covk[, "loglib"], df = 3L)
+    colnames(B) <- paste0("loglib_ns", seq_len(ncol(B)))
+    covk <- cbind(B, covk[, colnames(covk) != "loglib", drop = FALSE])
+  }
+  scale(covk, scale = FALSE)
+}
+
+# The offset for one index type: genes x index cells, dense (polishNB holds an
+# offset matrix dense; a vector would be per cell only).
+.indexOffset <- function(spe, offset, gk, ik) {
+  O <- as.matrix(SummarizedExperiment::assay(spe, offset)[gk, ik, drop = FALSE])
+  if (!all(is.finite(O))) stop(sprintf("offset assay '%s' has non-finite values", offset), call. = FALSE)
+  O
 }
 
 # One row per patient: id, cell count, and every colData column constant

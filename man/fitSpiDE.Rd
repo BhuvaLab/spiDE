@@ -18,7 +18,8 @@ fitSpiDE(spe, condition = NULL, ...)
   sample_id = "sample_id",
   section = NULL,
   covariates = character(),
-  depth = c("loglib", "none"),
+  depth = c("loglib", "nonlinear", "none"),
+  offset = NULL,
   strata = NULL,
   assay = "counts",
   name = "Niche",
@@ -65,8 +66,15 @@ tissue section, used to lay the spatial tiles of the variance estimate.}
 for (centred; patient-level ones are absorbed by the patient intercepts).}
 
 \item{depth}{how sequencing depth enters: \code{"loglib"} (default, the
-centred log library size as a covariate with a slope per gene) or
-\code{"none"}.}
+centred log library size as a covariate with a slope per gene),
+\code{"nonlinear"} (a natural cubic spline of it with 3 df, knots at the
+index type's quantiles, so the depth response of each gene may bend) or
+\code{"none"} (e.g. when \code{offset} carries depth).}
+
+\item{offset}{\code{NULL} or the name of an assay holding a log-scale
+offset per gene and cell (added to every linear predictor with its
+coefficient fixed at 1), e.g. the library-size component of a SpaNorm
+fit. Held dense per index type (genes x index cells).}
 
 \item{strata}{\code{NULL} or a patient-level colData column (e.g. slide or
 batch) whose niche slopes are adjusted for. Needed when the condition is
