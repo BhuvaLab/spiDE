@@ -116,8 +116,9 @@ bandwidth per fit. `testNicheAbundance()` and `spiGSEA()` sit beside it.
      sandwich `v_tile` (tiles of `3 * sigma`); `.patientFactor()` = per-(patient, niche)
      `max(1, median_g v_tile / v_model)` for the pooled test.
    - **sandwich engine**: the pooled model and, with a condition, the condition x niche model;
-     `.sandwichCR2()` = low-rank CR2 + Bell-McCaffrey df (`strata` enters as strata x niche
-     nuisance columns).
+     `.sandwichCR2()` = low-rank CR2 + Bell-McCaffrey df (`strata` enters the condition model
+     only, as strata x niche nuisance columns; treatment-coded in the pooled model they made its
+     slope the first stratum's, fixed in 0.99.31).
 3. **Test** (`R/testSpiDE.R`, `R/test-slopes.R`): slopes engine: per (index, niche) column, limma
    across patients weighted by `1 / (v + tau2_DL)`, `eBayes(trend = TRUE, robust = TRUE)` on log
    mean expression, df = `min(df.total, Kish n_eff - p)` (`.slopeColumnTest()`). Pooled test uses

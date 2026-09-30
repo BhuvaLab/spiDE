@@ -59,9 +59,10 @@
 #'   coefficient fixed at 1), e.g. the library-size component of a SpaNorm
 #'   fit. Held dense per index type (genes x index cells).
 #' @param strata \code{NULL} or a patient-level colData column (e.g. slide or
-#'   batch) whose niche slopes are adjusted for. Needed when the condition is
-#'   confounded with slide; used by the sandwich engine here and by the slopes
-#'   engine in [testSpiDE()].
+#'   batch) whose niche slopes are adjusted for in the condition test. Needed
+#'   when the condition is confounded with slide; used by the sandwich engine's
+#'   condition model here and by the slopes engine in [testSpiDE()]. The pooled
+#'   test never uses it: its slope is the average over all patients.
 #' @param assay the counts assay (raw integer counts).
 #' @param name the niche reducedDim prefix.
 #' @param min.cells minimum cells of an index type a patient must contribute.
@@ -166,7 +167,10 @@ setMethod(
       if (verbose) message(sprintf("fitSpiDE: %s engine, index %s: %d genes, %d cells, %d patients, %d niches",
                                    engine, k, length(gk), length(ik), nlevels(pat), length(nc$tested)))
       stk <- if (!is.null(str_of) && engine == "sandwich") factor(str_of[as.character(pat)]) else NULL
-      des0 <- .indexDesign(L, covk, pat, strata = stk, tested = nc$tested, blocks = blk)
+      # the pooled model has no strata columns: with them (treatment-coded) its
+      # niche coefficient would be the slope of the first stratum's patients,
+      # not the average over all patients the pooled test is about
+      des0 <- .indexDesign(L, covk, pat, tested = nc$tested, blocks = blk)
       fit0 <- .fitIndexGLM(Yk, des0, offset = Ok, BPPARAM = BPPARAM)
       if (engine == "slopes") {
         ps <- .patientSlopes(fit0, des0, Yk, L, tiles[ik], min.cells = min.cells,
