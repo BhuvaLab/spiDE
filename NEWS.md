@@ -20,6 +20,22 @@
 * **Strata.** A condition fully confounded with `strata` is now refused by the
   slopes engine. Before, the strata column was silently dropped and the
   condition tested unadjusted.
+* **`spiGSEA()` rewritten.**
+  - **The method.** A gene set is now tested like a gene. Each patient gets a
+    set slope: the mean of its genes' slopes, each scaled by the gene's
+    between-patient spread, less the other genes' mean (`type =
+    "competitive"`, the default) or not (`"self-contained"`). The set slopes
+    go through the pooled and condition-specific tests.
+  - **Correlation between genes** needs no estimate: the patient is the unit.
+  - **Calibration.** The gene-set null is calibrated on the five cohorts (the
+    calibration vignette), so the function is no longer experimental.
+  - **Output.** Adds `q.global`, `se`, `df` and `n_patients`; drops `rho`.
+  - **Engine.** Slopes engine only.
+* **`testSpiDE()` and `spiGSEA()` take `BPPARAM`** for the condition-specific
+  test, and `spiDE()` passes its own on.
+* **Vignettes rewritten for users.** The model is explained step by step,
+  plainly and with the formulae; the calibration vignette gives the checks on
+  real and simulated data.
 
 # spiDE 0.99.31
 

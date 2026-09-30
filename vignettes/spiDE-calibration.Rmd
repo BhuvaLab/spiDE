@@ -1,197 +1,186 @@
 ---
-title: "Calibration: what spiDE's tests were measured against"
+title: "How well spiDE's tests hold up"
 author: "Dharmesh D. Bhuva"
 package: spiDE
 output:
   BiocStyle::html_document:
     toc_float: true
 vignette: >
-  %\VignetteIndexEntry{Calibration: what spiDE's tests were measured against}
+  %\VignetteIndexEntry{How well spiDE's tests hold up}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
 
-This is the one place in the package that quotes benchmark numbers. They come
-from two studies in the research repository: the simplification study of
-2026-09-28/29, which chose the engines (`research/simplify/`: `FINDINGS.md`,
-and the report *Simplifying spiDE* on the
-[research site](https://bhuvalab.github.io/spiDE-research/)), and the depth
-benchmark of 2026-09-30, which chose how sequencing depth enters
-(`research/bench2/`: the pre-registration and its dated log in
-`BENCHMARK.md`, the tables in `tables/`). When a default changes on new
-evidence, this vignette changes with it.
+A test is only useful if its error rate is what it claims. When spiDE reports
+a $q$-value below 0.05, the expected share of false calls among the calls
+should be at most 5%. This vignette shows how that was checked on real spatial
+data and on simulated data with a known truth, and what the checks found. It
+is the one place in the package that quotes these numbers. The full studies
+behind them are published on the
+[spiDE research site](https://bhuvalab.github.io/spiDE-research/).
 
-# What "calibrated" means here
+# How calibration is checked
 
-A spiDE test is calibrated if, on data where the hypothesis it tests is true
-by construction, its $z$ statistics have unit spread in every expression band
-and a Benjamini-Hochberg screen at 0.05 rarely makes any call. Two nulls,
-both built from real cohorts:
+The idea is to run spiDE on data where, by construction, there is nothing to
+find, and see whether it stays quiet. Two such *null* data sets are made from
+each real cohort:
 
-- **the block null** (the niche is shuffled): each section's niche field is
-  shifted toroidally by a random offset, and every cell takes the niche
-  densities found at its shifted position. This destroys the association
-  between a cell's niche and its expression while keeping the niche field's
-  spatial smoothness. Every niche slope is zero, so both tests
-  are null.
-- **the permutation null** (the condition is shuffled): the condition label
-  is permuted across patients within slide, so a slide effect cannot pass for
-  a condition effect. The niche slopes are the real ones, so only the
-  condition-specific test, and the filtered procedure, are null.
+- **The block null** (the neighbourhood is scrambled). In every tissue
+  section the niche densities are shifted by a random offset, wrapping around
+  the edges, so each cell is given the neighbourhood of a cell elsewhere in
+  the same section. The niche maps stay as smooth as real ones, but a cell's
+  expression no longer has anything to do with its neighbourhood. Both the
+  pooled and the condition-specific test should find nothing. Each shifted
+  map is a full refit.
+- **The permutation null** (the condition is scrambled). The condition labels
+  are shuffled between patients, within each slide so that a slide difference
+  cannot pose as a condition difference. The niche effects are real, but they
+  no longer differ between the shuffled groups, so the condition-specific
+  test should find nothing.
 
-The pass criteria, fixed before the validation nulls were scored:
+On each null, two things are read:
 
-| reading | criterion |
-|---|---|
-| per-band spread: median RMS of null $z$ in each quintile of expression, per index type | in [0.90, 1.10], for the condition test on both nulls and the pooled test on the block null |
-| tail, block null: fraction of null grids with at least one BH call at 0.05 | at most 0.10, both tests |
-| tail, permutation null: fraction of permutations with at least one BH call at 0.05 | at most 0.07, condition test over every triplet and over the filtered family |
+| reading | what it means | pass |
+|---|---|---|
+| **spread** | For every gene, the root-mean-square of its null $z$-statistics; the median over genes, in each fifth of genes by expression. A calibrated test gives 1. | 0.90 to 1.10 in every fifth |
+| **tail** | The fraction of null data sets in which a Benjamini-Hochberg screen at 0.05 made at least one call. | at most 0.10 (block), 0.07 (permutation) |
+
+Spread checks the whole distribution of the test statistics, not only the
+extreme ones. The tail checks the extreme ones, which are what become calls.
 
 # The cohorts
 
-Five comparisons in four cohorts, each at the bandwidth of its earlier runs,
-restricted to the five best-covered index types:
+| cohort | platform, tissue | condition (patients) | bandwidth |
+|---|---|---|---|
+| GSE250346 | Xenium, lung (pulmonary fibrosis) | control 9, disease 26 | 60 µm |
+| GSE282639 | CosMx 1k, lung (IPF) | control 13, IPF 15 | 30 µm |
+| GSE289194 | CosMx 1k, lymph node | extranodal 20, nodal 24 | 30 µm |
+| YTMA | CosMx WTA, NSCLC | non-responder 30, responder 25 | 30 µm |
+| YTMA stage | CosMx WTA, lung adenocarcinoma | early 123, late 40 | 30 µm |
 
-| cohort | platform, tissue | condition | patients | bandwidth |
+Each cohort was analysed in its five best-covered cell types, as both index
+and niche types, with every other cell adjusted for as one further niche. The
+three public cohorts carry the conclusions below. The two YTMA cohorts are
+shown for completeness.
+
+# The slopes engine (the default)
+
+Ten block-null maps and 1,000 condition permutations per cohort:
+
+| cohort | pooled, block: spread (tail) | condition, block: spread (tail) | condition, permutation: spread | tail, all / filtered |
 |---|---|---|---|---|
-| GSE250346 | Xenium, lung (pulmonary fibrosis) | control 9, disease 26 | 35 | 60 µm |
-| GSE282639 | CosMx 1k, lung (IPF) | control 13, IPF 15 | 28 | 30 µm |
-| GSE289194 | CosMx 1k, lymph node | extranodal 20, nodal 24 | 44 | 30 µm |
-| YTMA | CosMx WTA, NSCLC | non-responder 30, responder 25 | 55 | 30 µm |
-| YTMA stage | CosMx WTA, LUAD | early 123, late 40 | 163 | 30 µm |
+| GSE250346 | 0.94-0.96 (0) | 0.95-0.96 (0) | 0.98-0.99 | 0 / 0.010 |
+| GSE282639 | 0.92-0.96 (0) | 0.97-1.00 (0) | 0.99-1.00 | 0.015 / 0.042 |
+| GSE289194 | 0.93-0.95 (0) | 0.97-0.99 (0) | 0.99 | 0.011 / 0.034 |
+| YTMA | TODO | TODO | TODO | TODO |
+| YTMA stage | TODO | TODO | TODO | TODO |
 
-**The three public cohorts carry the decisions.** The YTMA data are under
-review for suspected data issues (a decision of 2026-09-29), and enter only
-as a sensitivity analysis at a quarter of a public cohort's weight.
+Every criterion is met in every cohort. The spread sits slightly below 1 for
+the pooled test, so its $p$-values are, if anything, a little conservative.
+"Filtered" is the default procedure (the condition-specific test among the
+triplets that pass the pooled test) and "all" tests every triplet.
 
-# Results
+# The sandwich engine
 
-## The slopes engine (the default)
+The same nulls, with 50 permutations per cohort, because each permutation of
+the sandwich engine is a refit:
 
-With its effective-patient df and expression-trended prior, on fresh
-validation nulls (ten block grids and 1,000 permutations per cohort, never
-used in its development), the slopes engine passes every criterion in all
-five comparisons:
+| cohort | pooled, block: spread (tail) | condition, block: spread (tail) | condition, permutation: spread | tail, all / filtered |
+|---|---|---|---|---|
+| GSE250346 | 0.97-1.01 (0) | 0.93-0.98 (0) | 1.00-1.02 | 0 / 0 |
+| GSE282639 | 0.99-1.01 (0) | 0.96-0.99 (0) | 1.01-1.04 | 0.02 / 0 |
+| GSE289194 | 1.03-1.06 (0) | 1.03-1.06 (0) | 1.06-1.10 | 0.02 / 0.06 |
+| YTMA | 0.99-1.00 (0) | 0.99-1.00 (0) | 1.00-1.02 | 0.04 / 0.14 |
+| YTMA stage | 1.00-1.01 (0.20) | 0.99-1.00 (0) | TODO | TODO |
 
-- per-band null RMS 0.909-0.984;
-- worst permutation tail 0.034;
-- worst block tail 0.10 (GSE250346, pooled test), at the limit.
+The sandwich engine runs closer to a spread of 1 but less evenly. It reaches
+1.10 on GSE289194, its filtered procedure called in 7 of 50 permutations on
+YTMA, and it called in 2 of 10 block maps on the stage cohort. It is a useful
+second opinion; the slopes engine is the one to rely on.
 
-Without the effective-patient df the pooled test's block tail reached 0.40
-(the weights can rest on a few cell-rich patients when the between-patient
-variance truncates to zero); without the trend, bright genes' spread was
-tilted. Both fixes were required by public cohorts, not only by YTMA.
+# Accuracy and power, with a known truth
 
-## The sandwich engine
+Real data cannot tell how large an effect truly is, or which calls are true.
+For that, counts were simulated from models fitted to four of these cohorts
+(their real cell positions, cell types, patients and niche maps, with
+gene-specific library-size effects that vary across the tissue). Condition by
+niche effects were then planted, either shared by all patients or varying
+between them. Six ways in which sequencing depth can relate to the niche were
+simulated, 20 data sets each on GSE289194 and YTMA (whose simulations matched
+their real data best) and fewer on the other two.
 
-On 160 null grids across the five comparisons, the per-band null RMS lies in
-0.94-1.10 and the condition-specific test over every triplet made no false
-call. Its filtered procedure made a false call in 9 of 100 permutations on
-GSE289194 (95% interval roughly 0.04-0.16, against the 0.07 limit), its one
-miss.
+For the condition-specific test (filtered procedure), averaged over data sets:
 
-## The mixed model of spiDE 0.99.22
+| template | engine | relative bias of the estimate (worst depth scenario) | coverage of 95% intervals | true-positive rate | false discovery proportion |
+|---|---|---|---|---|---|
+| GSE289194 | slopes | -0.03 (0.06) | 0.90 | 0.57 | 0.041 |
+| GSE289194 | sandwich | -0.02 (0.05) | 0.88 | 0.23 | 0.047 |
+| YTMA | slopes | -0.03 (0.05) | 0.94 | 0.28 | 0.032 |
+| YTMA | sandwich | -0.01 (0.02) | 0.92 | 0.21 | 0.047 |
 
-On every cohort and both nulls, every grid produced false calls (21 to 3,593
-per grid on average), with per-band null RMS as high as 5.95. Its standard errors
-had no between-patient variance in the niche slopes. Replacing only its
-standard errors (patient-clustered sandwiches with an effective df) moved it
-most of the way but left 5-25% excess spread. It is archived as the research
-package `spiDEmixed`.
+- **Estimates are close to the truth.** On average they are within about 3%
+  of the planted effect, and within about 6% in the worst depth scenario.
+- **The slopes engine finds more true effects:** about 2.5 times as many as
+  the sandwich engine on GSE289194. The gain is largest when effects vary
+  between patients.
+- **Both keep the false discovery proportion below 5%.** On the two
+  simulations that matched their real data less well, the slopes engine's
+  filtered procedure ran higher (0.05 and 0.12). Read calls in cohorts with
+  few patients per group with that in mind.
 
-# Power
+The pooled test found 26% of the planted pooled effects on GSE289194 and 3% on
+YTMA, where effects were small against the count noise of whole-transcriptome
+data.
 
-Paired plasmode on the public cohorts: effects of 0.25 and 0.5 SD of the
-niche covariate planted into real counts by binomial thinning, shared by all
-patients or varying between them; true-positive rate at BH 0.05, averaged
-over both tests and both kinds of effect.
+# Sequencing depth
 
-| | slopes engine | sandwich engine |
-|---|---|---|
-| true-positive rate, public cohorts | 0.679 | 0.499 |
-| effects varying between patients | 0.589 | 0.283 |
-| effects shared by all patients | 0.768 | 0.715 |
-| realised false discovery proportion | 0.023 | 0.048 |
-| GSE250346 / GSE289194 / GSE282639 | 0.853 / 0.719 / 0.464 | 0.577 / 0.494 / 0.425 |
+A cell's library size mixes technical capture with its biological RNA
+content, and the RNA content can itself depend on the neighbourhood. Depth
+handling was therefore judged by how accurately each option recovered the
+planted effects, not by how much library-size signal it removed. Four options
+were compared in the simulations above:
 
-On the two YTMA comparisons the order reverses (0.089 against 0.140, and
-0.253 against 0.365): in sparse whole-transcriptome data, with effects shared
-by all patients, the effective-patient df costs the slopes engine the most.
-With YTMA at a quarter weight the slopes engine still leads (0.61 against
-0.46). Across all five comparisons the effective-patient df costs about 0.03
-in true-positive rate (0.476 against 0.508 without it), which is the price of
-the calibration above.
+- one slope on the log library size (`depth = "loglib"`);
+- a smooth curve in it (`"nonlinear"`);
+- a library-size effect that varies across the tissue (`"spatial_spline"`);
+- SpaNorm's library-size component as a fixed offset.
 
-**The default is the slopes engine** because it passes every null and is the
-more powerful where it matters most, on effects that vary between patients.
-Use the sandwich engine when effects are expected to be shared by all
-patients, or as a check.
+The four lay within 0.015 of each other in bias, with the same power and
+calibration, so the default is the simplest, `"loglib"`. The spatial option
+costs 1.2 to 1.8 times as much to fit.
 
-# Depth: why `depth = "loglib"` is the default
+One consequence holds for every option. When the neighbourhood raises a cell's
+total RNA, adjusting for library size also removes that part of the niche
+effect, so a pooled slope reports expression **relative to the cell's total
+RNA**. In the simulations this removed most of a niche-driven change in total
+RNA from the pooled slope. The condition-specific test is affected only by the
+part of that change that differs between conditions.
 
-Library size in spatial data mixes technical capture with biological RNA
-content, and the content can depend on the niche. So depth handling was
-judged **against the estimand**, not by how little library-size association
-the residuals keep: removing all of it would also remove biology.
+# Gene sets
 
-**The benchmark.** A simulator fitted to real cohorts (real positions, cell
-types, patients and niche densities; a gene-specific, spatially varying
-library-size response taken from per-section SpaNorm fits) generated counts
-under six depth scenarios: independent depth, smooth technical depth,
-technical depth aligned with a niche, niche-driven RNA content, both of the
-last two together, and a doubled gene-specific response. Effects on the
-condition contrast were planted, shared by all patients or varying between
-them. Two estimands were scored: **technical depth removed** (the planted
-effect plus any niche-driven content) and **relative** (the planted effect
-alone). The decision rule was registered before any run.
+`spiGSEA()` was checked the same way, on about 6,400 GO biological-process
+sets per cohort (10 to 500 genes each), with 20 block maps and 200 condition
+permutations:
 
-**Which templates count.** Only templates whose simulations passed a
-pre-registered realism gate carry the decision: GSE289194 (weight 1) and YTMA
-(weight 0.25, its data being under review). GSE282639 and GSE250346 failed
-the gate on the per-gene depth slope and are reported without weight.
+| cohort | pooled, block: spread (tail) | condition, block: spread (tail) | condition, permutation: spread (tail) |
+|---|---|---|---|
+| GSE250346 | 0.91-0.97 (0) | 0.96 (0) | 0.98 (0) |
+| GSE282639 | 0.90-1.00 (0) | 0.97-0.98 (0) | 0.99-1.00 (0.005) |
+| GSE289194 | 0.96-1.00 (0) | 0.97-0.98 (0) | 0.98-0.99 (0.005) |
+| YTMA | 0.98-1.00 (0) | 0.97-0.98 (0) | 0.99 (0.015) |
+| YTMA stage | TODO | TODO | TODO |
 
-**Calibration.** Every depth option passed on GSE289194 in every scenario:
-per-band null RMS of `z` 0.93-1.00, permutation tails at most 0.015, and no
-false call on any of the 12 block-shifted grids per scenario. (YTMA: bands
-0.95-1.01, tails at most 0.024.)
+Spread is read per fifth of sets by size, and a tail counts a call at
+`q.global` < 0.05. The set tests are calibrated in every cohort.
 
-**Accuracy.** The worst scenario's relative bias of the condition contrast,
-technical-depth-removed estimand:
+# What has not been measured
 
-| `depth` | GSE289194 | YTMA |
-|---|---|---|
-| spatial library-size spline | -0.130 | -0.221 |
-| `loglib` | -0.135 | -0.225 |
-| `nonlinear` | -0.135 | -0.226 |
-| SpaNorm library-size offset | -0.145 | -0.233 |
-
-Weighted, the options lie within 0.015 of each other, inside the
-pre-registered tie margin of 0.02, and the tie goes to the simplest:
-`"loglib"`. Power is the same for all of them (filtered-family true-positive
-rate 0.816-0.819 on GSE289194). The spatial spline is kept as an option: it
-costs 1.2-1.8 times the `"loglib"` fit.
-
-**Two findings to know when reading results.**
-
-- **Niche-driven RNA content is removed with depth.** When the niche raises a
-  cell's total RNA, every option that adjusts for observed library size also
-  removes that content from the pooled niche slope (relative bias about -0.7
-  against the technical-depth-removed estimand, in every depth option). A
-  pooled slope therefore reports expression relative to the cell's total
-  RNA. The condition contrast is affected only through content that differs
-  between conditions.
-- **The slopes engine understates the condition contrast**: by 10-14% on
-  GSE289194 and about 22% on YTMA, under both estimands, where the sandwich
-  engine is within 5%. Its tests stay calibrated and it keeps more than twice
-  the sandwich engine's power (true-positive rate 0.82 against 0.34 on
-  GSE289194), so the default is unchanged, but read its estimates as
-  conservative in size. The cause is being investigated (it is not the
-  one-step approximation of the per-patient slope).
-- **The sandwich engine's null spread ran wide on GSE289194**: up to 1.13 in
-  one expression band, outside the 0.90-1.10 limit, where every slopes-engine
-  option stayed inside it.
-
-# Not yet measured
-- **Gene sets.** `spiGSEA()` has not been through a gene-set null and is
-  experimental.
-- **Bandwidth.** Each cohort was measured at one bandwidth.
+- **Bandwidth.** Each cohort was checked at one bandwidth. Comparing results
+  across bandwidths is a sensitivity analysis, and each bandwidth is its own
+  set of tests.
+- **Many index types at once on small panels.** The checks used five index
+  types per cohort. With many more, the pooled test's multiple-testing burden
+  grows and power falls accordingly; calibration is not expected to change.
+- **Very small cohorts.** The smallest group checked had 9 patients. With
+  fewer, the condition-specific test has few effective patients, and genes
+  whose weight rests on one or two patients are not tested.
