@@ -127,21 +127,45 @@ gene.
   Patients with fewer than `min.tiles` tiles take $v^{\text{model}}$ times the
   gene's median tile-to-model ratio (at least 1).
 
-The condition-specific test uses $v^{\text{tile}}$. The pooled test uses
-$v^{\text{model}} f_{sn}$, with one factor per (patient, niche),
-$f_{sn} = \max\{1, \mathrm{median}_g(v^{\text{tile}}_{gsn}/v^{\text{model}}_{gsn})\}$:
-the per-gene tile sandwich is noisy on sparse genes, and a pooled null
-calibrated on it was not.
+Both tests weight patient $s$ by $v^{\text{model}} f_{sn}$, with one factor
+per (patient, niche),
+$f_{sn} = \max\{1, \mathrm{median}_g(v^{\text{tile}}_{gsn}/v^{\text{model}}_{gsn})\}$.
+The factor is shared by all genes for two reasons:
+
+- the per-gene tile sandwich is noisy on sparse genes, and a pooled null
+  calibrated on it was not;
+- it is computed at the shared fit, so it grows with the gene's own departure
+  from the pooled slope in that patient.
+
+Used as a weight, the per-gene tile sandwich gave the patients furthest from
+the pooled slope the least say, pulling each condition's mean toward it and
+attenuating the condition contrast. spiDE <= 0.99.31 weighted the condition
+test that way.
 
 **Combining patients.** For each (index, niche) column, the slopes of all
-genes are combined across patients with `limma`, weighted by
-$1/(v_{gs} + \tau^2_g)$, where $\tau^2_g$ is the gene's DerSimonian-Laird
-between-patient variance of the slope (computed without the condition). The
-design is an intercept (pooled test) or an intercept, the condition and
-optional `strata` (condition test; a slide or batch confounded with the
-condition). Both engines use `strata` in the condition test only: the pooled
-slope is the average over all patients. Two
-further choices complete the test:
+genes are combined across patients by weighted least squares, weighted by
+$w_{gs} = 1/(v^{\text{model}}_{gs} f_{sn} + \tau^2_g)$, where $\tau^2_g$ is the
+gene's DerSimonian-Laird between-patient variance of the slope, computed
+without the condition. The design is:
+
+- for the pooled test, an intercept;
+- for the condition test, an intercept, the condition and optional `strata`
+  (a slide or batch confounded with the condition).
+
+Both engines use `strata` in the condition test only, so the pooled slope is
+the average over all patients.
+
+**The condition test** takes the condition coefficient's HC2 standard error
+across patients, with Bell-McCaffrey degrees of freedom under the working
+model $\mathrm{var}(\hat\beta_{gs}) \propto 1/w_{gs}$. The weights keep the
+estimate free of any one gene's departure from the pooled slope. The robust
+standard error covers the patients the weights cannot see, those whose slope
+is noisier than its weight implies. A marker gene with a patchy distribution
+within the index type is one example: it widens the interval rather than
+making a call.
+
+**The pooled test** is a moderated `limma` test on the same weights. Two
+further choices complete it:
 
 - an **expression-trended prior**: `eBayes(trend = TRUE, robust = TRUE)` on
   the gene's log mean expression in the index type, so a bright gene's
@@ -153,8 +177,9 @@ further choices complete the test:
   $\tau^2_g$ truncates to zero, the weights can rest on a few cell-rich
   patients, and limma's df would count every patient as a full replicate.
 
-The eBayes prior, its trend and the per-patient factors are computed over the
-whole gene family of a column, never within a block of genes.
+The eBayes prior, its trend, $\tau^2_g$'s inputs and the per-patient factors
+are computed over the whole gene family of a column, never within a block of
+genes.
 
 **The fit never sees the condition.** Any patient-level condition can be
 tested afterwards (`testSpiDE(fit, condition = ...)`), and a permutation of

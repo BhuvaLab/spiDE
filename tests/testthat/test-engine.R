@@ -58,25 +58,69 @@ test_that("a patient slope is one Fisher-scoring step from the pooled fit", {
   expect_equal(unname(x$beta[g, s, ]), unname(b[seq_along(nc$tested)]), tolerance = 1e-6)
 })
 
-test_that("the pooled and condition tests equal a direct limma fit with the effective df", {
+test_that("the pooled test equals a direct limma fit with the effective df", {
   x <- fit16@index$A
   j <- 1L
   b <- matrix(x$beta[, , j], nrow = length(x$genes))
-  vt <- matrix(x$v_tile[, , j], nrow = length(x$genes))
-  tau <- spiDE:::.dlTau2(x$beta, x$v_tile)[, j]
-  trt <- as.numeric(fit16@patients$condition[match(x$patients, fit16@patients$patient)] == "Responder")
-  got <- spiDE:::.slopeColumnTest(b, vt, tau, x$mean_expr, trt = trt)
-  w <- 1 / (vt + tau); w[!is.finite(w) | !is.finite(b)] <- NA
+  vp <- sweep(x$v_model, c(2, 3), x$factor, "*")
+  v <- matrix(vp[, , j], nrow = length(x$genes))
+  tau <- spiDE:::.dlTau2(x$beta, vp)[, j]
+  got <- spiDE:::.pooledColumnTest(b, v, tau, x$mean_expr)
+  w <- 1 / (v + tau); w[!is.finite(w) | !is.finite(b)] <- NA
   w <- w / rowMeans(w, na.rm = TRUE)
-  f <- limma::lmFit(b, cbind(1, trt), weights = w)
+  f <- limma::lmFit(b, matrix(1, ncol(b), 1), weights = w)
   f$Amean <- log(x$mean_expr + 1e-3)
   f <- limma::eBayes(f, robust = TRUE, trend = TRUE)
   neff <- rowSums(w, na.rm = TRUE)^2 / rowSums(w^2, na.rm = TRUE)
-  df <- pmin(f$df.total, pmax(neff - 2, 1))
-  expect_equal(got$estimate, unname(f$coefficients[, 2]), tolerance = 1e-10)
+  df <- pmin(f$df.total, pmax(neff - 1, 1))
+  expect_equal(got$estimate, unname(f$coefficients[, 1]), tolerance = 1e-10)
   expect_equal(got$df, unname(df), tolerance = 1e-10)
   ok <- is.finite(got$t)
-  expect_equal(got$p[ok], unname(2 * pt(-abs(f$t[ok, 2]), df[ok])), tolerance = 1e-10)
+  expect_equal(got$p[ok], unname(2 * pt(-abs(f$t[ok, 1]), df[ok])), tolerance = 1e-10)
+})
+
+test_that("the condition test is weighted least squares with an HC2 SE and Bell-McCaffrey df", {
+  skip_if_not_installed("clubSandwich")
+  x <- fit16@index$A
+  trt <- as.numeric(fit16@patients$condition[match(x$patients, fit16@patients$patient)] == "Responder")
+  tab <- spiDE:::.slopesTests(x, trt = trt)
+  vp <- sweep(x$v_model, c(2, 3), x$factor, "*")
+  tau <- spiDE:::.dlTau2(x$beta, vp)
+  checked <- 0L
+  for (j in seq_along(x$niches)) for (g in seq_along(x$genes)) {
+    ok <- is.finite(x$beta[g, , j]) & is.finite(vp[g, , j])
+    got <- tab[tab$test == "condition" & tab$niche == x$niches[j] & tab$gene == x$genes[g], ]
+    if (!is.finite(got$t)) next
+    d <- data.frame(y = x$beta[g, ok, j], trt = trt[ok], w = 1 / (vp[g, ok, j] + tau[g, j]))
+    d$w <- d$w / mean(d$w)
+    f <- stats::lm(y ~ trt, data = d, weights = w)
+    vc <- clubSandwich::vcovCR(f, cluster = seq_len(nrow(d)), type = "CR2", inverse_var = TRUE)
+    ct <- clubSandwich::coef_test(f, vcov = vc, test = "Satterthwaite")
+    expect_equal(got$estimate, unname(stats::coef(f)[2]), tolerance = 1e-10)
+    expect_equal(got$se, ct$SE[2], tolerance = 1e-8)
+    expect_equal(got$df, ct$df_Satt[2], tolerance = 1e-6)
+    checked <- checked + 1L
+  }
+  expect_gt(checked, 10L)
+})
+
+test_that("a gene's own tile variance never weights its condition test", {
+  # v_tile, computed at the shared fit, grows with a patient's departure from
+  # the pooled slope; as a weight it attenuated the condition contrast. Only
+  # the gene-shared per-patient factor (fixed at fit time) may use it.
+  f2 <- fit16
+  set.seed(9)
+  f2@index$A$v_tile <- fit16@index$A$v_tile * stats::runif(length(fit16@index$A$v_tile), 0.2, 5)
+  r1 <- testSpiDE(fit16, condition = "condition", procedure = "all")@table
+  r2 <- testSpiDE(f2, condition = "condition", procedure = "all")@table
+  expect_equal(r2$p, r1$p, tolerance = 1e-12)
+  expect_equal(r2$estimate, r1$estimate, tolerance = 1e-12)
+})
+
+test_that("a condition fully confounded with strata is refused", {
+  x <- fit16@index$A
+  trt <- as.numeric(fit16@patients$condition[match(x$patients, fit16@patients$patient)] == "Responder")
+  expect_error(spiDE:::.slopesTests(x, trt = trt, strata = ifelse(trt == 1, "s1", "s2")), "confounded")
 })
 
 test_that("the pooled test and its filter never look at the condition", {

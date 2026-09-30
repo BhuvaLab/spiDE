@@ -1,3 +1,26 @@
+# spiDE 0.99.32
+
+* **Slopes engine: a new condition test.**
+  - **What it is.** The condition x niche contrast is now weighted least squares
+    across patients, with the pooled test's weights
+    `1 / (v_model * factor + tau2)`, an HC2 standard error and Bell-McCaffrey
+    df.
+  - **Why the weights changed.** Through 0.99.31 the test was limma weighted by
+    each gene's own tile variance `v_tile`. `v_tile` is computed at the shared,
+    condition-free fit, so it grows with a patient's departure from the pooled
+    slope. As a weight it gave the patients furthest from that slope the least
+    say, which pulled each condition's mean toward it and attenuated the
+    contrast (`research/bench2/diag/FINDINGS.md`).
+  - **Why the SE changed.** With the gene-shared weights, limma's model-based
+    SE let spatially patterned marker genes through a real-data block null. The
+    robust SE does not (`research/release/README.md`).
+  - **What is unchanged.** The fit and the pooled test: an existing fit needs
+    only `testSpiDE()` again.
+  - The calibration vignette has the re-measured nulls.
+* **Strata.** A condition fully confounded with `strata` is now refused by the
+  slopes engine. Before, the strata column was silently dropped and the
+  condition tested unadjusted.
+
 # spiDE 0.99.31
 
 * **Sandwich engine: `strata` no longer enter the pooled model.** In 0.99.30

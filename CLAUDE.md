@@ -114,15 +114,19 @@ bandwidth per fit. `testNicheAbundance()` and `spiGSEA()` sit beside it.
    - **slopes engine** (default): one condition-free fit, then `.patientSlopes()`: each patient's
      one-step NB slope from the shared fit, with `v_model` and a within-patient spatial tile
      sandwich `v_tile` (tiles of `3 * sigma`); `.patientFactor()` = per-(patient, niche)
-     `max(1, median_g v_tile / v_model)` for the pooled test.
+     `max(1, median_g v_tile / v_model)`, which scales `v_model` in both tests.
    - **sandwich engine**: the pooled model and, with a condition, the condition x niche model;
      `.sandwichCR2()` = low-rank CR2 + Bell-McCaffrey df (`strata` enters the condition model
      only, as strata x niche nuisance columns; treatment-coded in the pooled model they made its
      slope the first stratum's, fixed in 0.99.31).
-3. **Test** (`R/testSpiDE.R`, `R/test-slopes.R`): slopes engine: per (index, niche) column, limma
-   across patients weighted by `1 / (v + tau2_DL)`, `eBayes(trend = TRUE, robust = TRUE)` on log
-   mean expression, df = `min(df.total, Kish n_eff - p)` (`.slopeColumnTest()`). Pooled test uses
-   `v_model * factor`; condition test uses `v_tile`. `.bhFamilies()`: pooled BH over every
+3. **Test** (`R/testSpiDE.R`, `R/test-slopes.R`): slopes engine: per (index, niche) column, the
+   patients' slopes weighted by `1 / (v_model * factor + tau2_DL)` in both tests. Pooled test:
+   limma, `eBayes(trend = TRUE, robust = TRUE)` on log mean expression, df = `min(df.total, Kish
+   n_eff - 1)` (`.pooledColumnTest()`). Condition test (0.99.32): the same weighted least squares
+   on `[1, condition, strata]` with an HC2 SE across patients and Bell-McCaffrey df
+   (`.robustConditionTest()`; to 0.99.31 limma weighted by the gene's own `v_tile`, which
+   attenuated the contrast: `research/bench2/diag/FINDINGS.md`, `research/release/`).
+   `.bhFamilies()`: pooled BH over every
    triplet; condition BH over the triplets whose pooled q < `fdr` (`procedure = "filtered"`,
    default) or all. `results(test = )` reads one table; `patientSlopes()` the per-patient slopes.
 
