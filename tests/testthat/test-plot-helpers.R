@@ -82,3 +82,9 @@ test_that("the checkers name what is wrong", {
   expect_error(.resolveTest(testSpiDE(fitSpiDE(spe, sigma = 30, index = "A", verbose = FALSE)), "condition"),
                "no condition-specific test")
 })
+
+test_that("the niche fold names genes that are not in spe", {
+  tb <- res@table[res@table$gene == "G1", ]
+  tb$gene[1] <- "nope"
+  expect_error(.nicheFold(tb, spe, fit), "not in 'spe': nope")
+})

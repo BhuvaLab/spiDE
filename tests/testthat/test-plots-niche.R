@@ -53,3 +53,22 @@ test_that("plotNicheResponse() refuses an spe that is not the fit's", {
   other <- spe[, spe$sample_id %in% c("S1", "S2")]
   expect_error(plotNicheResponse(other, res, "G1", "A", "B"), "the object the fit was made from")
 })
+
+test_that("plotNicheResponse() drops a gene the fit could not fit, and stops if none is left", {
+  f <- fit
+  f@index$A$intercept["G2", ] <- NA
+  f@index$A$beta["G2", , ] <- NA
+  expect_message(p <- plotNicheResponse(spe, f, c("G1", "G2"), "A", "B"), "G2")
+  builds(p)
+  expect_setequal(unique(p$data$gene), "G1")
+  expect_error(suppressMessages(plotNicheResponse(spe, f, "G2", "A", "B")), "no gene")
+})
+
+test_that("plotNicheResponse() references the patients' median intercept, robust to one extreme", {
+  p1 <- plotNicheResponse(spe, fit, "G1", "A", "B")
+  f <- fit
+  f@index$A$intercept["G1", "S2"] <- -50
+  p2 <- plotNicheResponse(spe, f, "G1", "A", "B")
+  s1 <- function(p) p$data$expr[p$data$patient == "S1"]
+  expect_lt(max(abs(log(s1(p2) / s1(p1)))), 0.5)
+})

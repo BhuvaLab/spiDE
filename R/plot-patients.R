@@ -204,7 +204,8 @@ plotPatientEffects <- function(x, index, niche = NULL, covariates = NULL, type =
 
 # Genes x patients, gene-centred: the intercepts, or the slopes on one niche
 # scaled by each gene's between-patient spread (as spiGSEA() scales them). A
-# patient missing for more than a tenth of the genes drops out, then any gene
+# gene missing in most patients (one the fit could not fit) drops out first, then
+# a patient missing for more than a tenth of the remaining genes, then any gene
 # not finite in every remaining patient; the ntop most expressed genes enter.
 .patientEffectMatrix <- function(xi, niche, ntop) {
   if (is.null(niche)) {
@@ -218,6 +219,7 @@ plotPatientEffects <- function(x, index, niche = NULL, covariates = NULL, type =
     M <- b / sig
     dimnames(M) <- list(xi$genes, xi$patients)
   }
+  M <- M[rowMeans(is.finite(M)) >= 0.5, , drop = FALSE]
   M <- M[, colMeans(is.finite(M)) >= 0.9, drop = FALSE]
   ok <- rownames(M)[rowSums(!is.finite(M)) == 0]
   keep <- utils::head(intersect(names(sort(xi$mean_expr, decreasing = TRUE)), ok), ntop)

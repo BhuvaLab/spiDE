@@ -62,3 +62,11 @@ test_that("plotPatientEffects() refuses a fit without intercepts, and slopes of 
   builds(plotPatientEffects(fs, index = "A"))
   expect_error(plotPatientEffects(fs, index = "A", niche = "B"), "slopes engine")
 })
+
+test_that("plotPatientEffects() keeps its patients when many genes were not fitted", {
+  f <- fit
+  bad <- f@index$A$genes[1:6]
+  f@index$A$intercept[bad, ] <- NA
+  p <- plotPatientEffects(f, index = "A", type = "pca")
+  expect_equal(nrow(p$data), length(f@index$A$patients))
+})

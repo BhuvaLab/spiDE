@@ -286,7 +286,8 @@ plotTripletHeatmap <- function(x, features = NULL, test = NULL, n = 30L, fdr = N
   }
   checkFdr(fdr)
   tab <- as.data.frame(tab)
-  tab <- tab[tab$test == test & is.finite(tab$t), , drop = FALSE]
+  tab <- tab[tab$test == test & is.finite(tab$t) & is.finite(tab$p), , drop = FALSE]
+  if (!nrow(tab)) stop("no tested triplet has a p-value", call. = FALSE)
   tab$feature <- as.character(tab[[feature]])
   if (is.null(features)) {
     best <- stats::aggregate(p ~ feature, tab, min)
@@ -353,6 +354,7 @@ plotTripletHeatmap <- function(x, features = NULL, test = NULL, n = 30L, fdr = N
 plotPValues <- function(x, bands = 5L) {
   checkResults(x, "plotPValues()")
   tab <- x@table[is.finite(x@table$p), c("gene", "index", "niche", "test", "p"), drop = FALSE]
+  if (!nrow(tab)) stop("no tested triplet has a p-value", call. = FALSE)
   tab <- merge(tab, .expressionBands(x@fit, as.integer(bands)), by = c("gene", "index"))
   tab$test <- factor(tab$test, intersect(c("pooled", "condition"), unique(tab$test)))
   uni <- stats::aggregate(list(level = tab$p), list(test = tab$test, band = tab$band), function(v) length(v) / 20)

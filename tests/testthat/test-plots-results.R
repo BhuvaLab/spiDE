@@ -87,3 +87,10 @@ test_that("plotPValues() draws each test in expression fifths", {
   expect_equal(nlevels(p$data$band), 5L)
   expect_setequal(as.character(unique(p$data$test)), c("pooled", "condition"))
 })
+
+test_that("the p-value and heatmap plots stop readably when nothing has a p-value", {
+  r0 <- res
+  r0@table$p <- NA_real_
+  expect_error(plotPValues(r0), "no tested triplet")
+  expect_error(plotTripletHeatmap(r0, test = "pooled"), "no tested triplet")
+})

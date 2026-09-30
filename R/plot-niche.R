@@ -143,7 +143,16 @@ plotNicheResponse <- function(spe, x, gene, index, niche, adjust = TRUE, bins = 
   gene <- unique(gene)
   checkTriplet(fit, index, niche, gene)
   xi <- fit@index[[index]]
-  if (adjust) checkIntercepts(xi, "plotNicheResponse(adjust = TRUE)")
+  if (adjust) {
+    checkIntercepts(xi, "plotNicheResponse(adjust = TRUE)")
+    # a gene the fit could not fit has no intercept: it drops out, not the plot
+    fitted <- rowSums(is.finite(xi$intercept[gene, , drop = FALSE])) > 0
+    if (!all(fitted)) {
+      message(sprintf("plotNicheResponse(): %s not fitted in %s, left out", paste(gene[!fitted], collapse = ", "), index))
+    }
+    gene <- gene[fitted]
+    if (!length(gene)) stop("no gene left to plot: none of them was fitted", call. = FALSE)
+  }
   cells <- .indexCellData(spe, fit, index, niche, gene, assay, name)
   grp <- .groupLevels(fit, condition)
   lv <- levels(grp)
@@ -164,7 +173,9 @@ plotNicheResponse <- function(spe, x, gene, index, niche, adjust = TRUE, bins = 
     e <- as.numeric(cells$counts[g, ]) / cells$lib * 1e4
     if (adjust) {
       a <- xi$intercept[g, ]
-      e <- e * exp(-(a - mean(a[is.finite(a)])))[pat]
+      # the reference is the patients' median intercept: one patient pinned at an
+      # extreme value by the intercepts' ridge would move a mean
+      e <- e * exp(-(a - stats::median(a[is.finite(a)])))[pat]
     }
     d <- stats::aggregate(cbind(expr = e, density = l) ~ patient + bin,
                           data.frame(e = e, l = l, patient = pat, bin = bin), mean)
@@ -182,6 +193,7 @@ plotNicheResponse <- function(spe, x, gene, index, niche, adjust = TRUE, bins = 
                  mean = mean(s$expr), half = if (n > 1L) stats::qt(0.975, n - 1L) * se else NA_real_)
     }))
     sm <- sm[sm$mean > 0, , drop = FALSE]
+    if (!nrow(sm)) stop("no counts of the chosen genes in these cells", call. = FALSE)
     floor_y <- min(sm$mean) / 2
     sm$lo <- pmax(sm$mean - sm$half, floor_y)
     sm$hi <- sm$mean + sm$half

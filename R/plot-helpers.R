@@ -64,6 +64,8 @@
 # dense. attr "ncells": the cells of each type.
 .cellTypeMeans <- function(spe, genes, assay = "counts", cell_type = "cell_type") {
   Y <- SummarizedExperiment::assay(spe, assay)
+  miss <- setdiff(genes, rownames(Y))
+  if (length(miss)) stop(sprintf("gene(s) not in 'spe': %s", paste(miss, collapse = ", ")), call. = FALSE)
   lib <- Matrix::colSums(Y)
   ct <- as.character(SummarizedExperiment::colData(spe)[[cell_type]])
   ok <- which(lib > 0 & !is.na(ct))
