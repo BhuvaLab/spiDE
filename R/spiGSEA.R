@@ -30,6 +30,8 @@
 #' @param type \code{"competitive"} (default) or \code{"self-contained"}.
 #' @param min.size,max.size set size limits after intersecting with the genes
 #'   tested in each index type.
+#' @param BPPARAM a BiocParallelParam; the condition-specific test is run in
+#'   parallel over sets.
 #' @param ... unused.
 #' @return a data.frame, one row per (set, index, niche, test):
 #'   \code{size} (genes of the set tested there), \code{estimate} (the mean set
@@ -49,7 +51,8 @@
 #' @export
 setMethod("spiGSEA", "SpiDEResults", function(object, genesets, test = NULL,
                                              type = c("competitive", "self-contained"),
-                                             min.size = 5L, max.size = 500L, ...) {
+                                             min.size = 5L, max.size = 500L,
+                                             BPPARAM = BiocParallel::SerialParam(), ...) {
   .assertCurrent(object)
   type <- match.arg(type)
   if (!is.list(genesets) || is.null(names(genesets)) || anyDuplicated(names(genesets))) {
@@ -93,7 +96,7 @@ setMethod("spiGSEA", "SpiDEResults", function(object, genesets, test = NULL,
                                               stringsAsFactors = FALSE)
       }
       if ("condition" %in% test) {
-        r <- .robustConditionTest(b, v, tau, trt = trt, strata = st)
+        r <- .robustConditionTest(b, v, tau, trt = trt, strata = st, BPPARAM = BPPARAM)
         out[[length(out) + 1L]] <- data.frame(set = names(member), index = k, niche = x$niches[j],
                                               test = "condition", size = lengths(member), r,
                                               stringsAsFactors = FALSE)
@@ -152,6 +155,7 @@ setMethod("spiGSEA", "SpiDEResults", function(object, genesets, test = NULL,
         mv <- mv + (tot_v - sv) / n_out^2
       }
       drop <- n_in < length(g) / 2
+      if (type == "competitive") drop <- drop | n_out < 1
       mb[drop] <- NA; mv[drop] <- NA
       B[s, , j] <- mb; V[s, , j] <- mv
     }

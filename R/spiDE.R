@@ -38,6 +38,6 @@ setMethod(
     fit <- fitSpiDE(spe, condition = condition, engine = engine, sigma = sigma,
                     cell_type = cell_type, sample_id = sample_id, BPPARAM = BPPARAM,
                     verbose = verbose, ...)
-    testSpiDE(fit, condition = condition, procedure = procedure, fdr = fdr)
+    testSpiDE(fit, condition = condition, procedure = procedure, fdr = fdr, BPPARAM = BPPARAM)
   }
 )

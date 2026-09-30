@@ -14,6 +14,7 @@ spiGSEA(object, genesets, ...)
   type = c("competitive", "self-contained"),
   min.size = 5L,
   max.size = 500L,
+  BPPARAM = BiocParallel::SerialParam(),
   ...
 )
 }
@@ -31,6 +32,9 @@ test the results hold).}
 
 \item{min.size, max.size}{set size limits after intersecting with the genes
 tested in each index type.}
+
+\item{BPPARAM}{a BiocParallelParam; the condition-specific test is run in
+parallel over sets.}
 }
 \value{
 a data.frame, one row per (set, index, niche, test):

@@ -200,3 +200,36 @@ test_that("a fit whose slopes ran off is left out, not tested", {
   expect_false(anyNA(out$alpha["g1", ]))
   expect_equal(unname(out$status[c("not_fitted", "runaway")]), c(1, 1))
 })
+
+test_that("an unusable patient drops out of the condition test, not the gene", {
+  x <- fit16@index$A
+  trt <- as.numeric(fit16@patients$condition[match(x$patients, fit16@patients$patient)] == "Responder")
+  b <- matrix(x$beta[, , 1], nrow = length(x$genes))
+  v <- sweep(matrix(x$v_model[, , 1], nrow = length(x$genes)), 2, x$factor[, 1], "*")
+  tau <- rep(0, nrow(b))
+  ref <- spiDE:::.robustConditionTest(b, v, tau, trt)
+  v2 <- v; v2[1, 1] <- 0                       # weight Inf for one patient of gene 1
+  got <- spiDE:::.robustConditionTest(b, v2, tau, trt)
+  b3 <- b; b3[1, 1] <- NA
+  expect_equal(got$estimate[1], spiDE:::.robustConditionTest(b3, v, tau, trt)$estimate[1])
+  expect_equal(got$estimate[-1], ref$estimate[-1])
+})
+
+test_that("a condition test resting on one or two heavily weighted patients is not made", {
+  set.seed(3)
+  S <- 12; trt <- rep(0:1, each = 6)
+  b <- matrix(stats::rnorm(2 * S), 2, S)
+  v <- matrix(1, 2, S)
+  v[2, c(1, 7)] <- 1e-6                       # gene 2: one patient per group carries the weight
+  r <- spiDE:::.robustConditionTest(b, v, c(0, 0), trt)
+  expect_true(is.finite(r$p[1]))
+  expect_true(is.na(r$p[2]))
+})
+
+test_that("the condition test is identical serially and in parallel", {
+  skip_on_os("windows")
+  r1 <- testSpiDE(fit16, condition = "condition", procedure = "all")@table
+  r2 <- testSpiDE(fit16, condition = "condition", procedure = "all",
+                  BPPARAM = BiocParallel::MulticoreParam(2))@table
+  expect_identical(r2$p, r1$p)
+})

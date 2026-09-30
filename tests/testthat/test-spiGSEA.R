@@ -63,3 +63,16 @@ test_that("spiGSEA refuses the sandwich engine and a condition test that was not
   expect_error(spiGSEA(pooled_only, sets, test = "condition"), "condition")
   expect_error(spiGSEA(res, list(paste0("G", 1:4))), "named list")
 })
+
+test_that("a set with no usable patients drops out without taking the others with it", {
+  r2 <- res
+  x <- r2@fit@index$A
+  jB <- match("B", x$niches)
+  x$beta[1:2, , jB] <- NA
+  r2@fit@index$A <- x
+  s3 <- list(dead = x$genes[1:2], setA = x$genes[4:6], setB = x$genes[7:9])
+  gs <- spiGSEA(r2, s3, min.size = 2, test = "pooled")
+  b <- gs[gs$niche == "B", ]
+  expect_true(is.na(b$p[b$set == "dead"]))
+  expect_true(all(is.finite(b$p[b$set != "dead"])))
+})

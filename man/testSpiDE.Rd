@@ -13,6 +13,7 @@ testSpiDE(object, condition = NULL, ...)
   procedure = c("filtered", "all"),
   fdr = 0.05,
   strata = NULL,
+  BPPARAM = BiocParallel::SerialParam(),
   ...
 )
 }
@@ -34,6 +35,9 @@ sorted values).}
 \item{strata}{\code{NULL} (the fit's) or a patient-level column adjusted for
 in the slopes engine's condition test (e.g. slide, where the condition is
 confounded with it).}
+
+\item{BPPARAM}{a BiocParallelParam; the slopes engine's condition-specific
+test is run in parallel over genes.}
 }
 \value{
 a \link[=SpiDEResults-class]{SpiDEResults}; read it with \code{\link[=results]{results()}}.

@@ -58,30 +58,47 @@
 # column's gene family (trend = FALSE: a flat prior, for spiGSEA's few sets),
 # the df capped by the Kish effective patients.
 .pooledColumnTest <- function(b, v, tau2, mean_expr, min.pooled = 6L, trend = TRUE) {
-  des <- matrix(1, ncol(b), 1)
+  G <- nrow(b)
   wts <- 1 / (v + tau2)
-  wts[!is.finite(wts) | !is.finite(b)] <- NA
-  wts <- wts / rowMeans(wts, na.rm = TRUE)
-  fit <- suppressWarnings(limma::lmFit(b, des, weights = wts))
-  fit$Amean <- log(mean_expr + 1e-3)
-  fit <- suppressWarnings(limma::eBayes(fit, robust = TRUE, trend = trend))
-  est <- fit$coefficients[, 1]
-  tt <- fit$t[, 1]
-  df <- pmin(fit$df.total, .kishDf(wts, b, 1L))
-  ok <- rowSums(is.finite(b)) >= min.pooled
-  tt[!ok | !is.finite(tt)] <- NA
-  data.frame(estimate = unname(est), se = unname(est / tt), t = unname(tt), df = unname(df),
-             p = unname(2 * stats::pt(-abs(tt), df)), n_patients = unname(rowSums(is.finite(b))),
-             stringsAsFactors = FALSE)
+  wts[!is.finite(wts) | wts <= 0 | !is.finite(b)] <- NA
+  n_ok <- rowSums(is.finite(wts))
+  est <- tt <- df <- rep(NA_real_, G)
+  # rows with fewer than two usable patients carry no residual variance: limma
+  # ignores them in the prior anyway, and in a small family (spiGSEA's sets)
+  # an all-NA row can make the robust prior fail for every row
+  fitted <- which(n_ok >= 2L)
+  if (length(fitted)) {
+    w <- wts[fitted, , drop = FALSE]
+    w <- w / rowMeans(w, na.rm = TRUE)
+    fit <- suppressWarnings(limma::lmFit(b[fitted, , drop = FALSE], matrix(1, ncol(b), 1), weights = w))
+    fit$Amean <- log(mean_expr[fitted] + 1e-3)
+    eb <- function(robust) tryCatch(suppressWarnings(limma::eBayes(fit, robust = robust, trend = trend)),
+                                    error = function(e) NULL)
+    fit <- eb(TRUE)
+    if (is.null(fit)) fit <- eb(FALSE)
+    if (!is.null(fit)) {
+      est[fitted] <- fit$coefficients[, 1]
+      tt[fitted] <- fit$t[, 1]
+      df[fitted] <- pmin(fit$df.total, .kishDf(w, b[fitted, , drop = FALSE], 1L))
+    }
+  }
+  tt[n_ok < min.pooled | !is.finite(tt)] <- NA
+  data.frame(estimate = est, se = est / tt, t = tt, df = df, p = 2 * stats::pt(-abs(tt), df),
+             n_patients = unname(rowSums(is.finite(b))), stringsAsFactors = FALSE)
 }
 
 # The condition test of one (index, niche) column: per gene, weighted least
 # squares of the patients' slopes b on [1, condition, strata] with weights
 # 1 / (v + tau2), the condition coefficient's HC2 standard error across
 # patients, and Bell-McCaffrey df under the working model var(b_s) ~ 1 / w_s.
-# Genes are independent here; every per-gene inversion is guarded and a gene
-# that cannot be tested is NA.
-.robustConditionTest <- function(b, v, tau2, trt, strata = NULL, min.group = 3L) {
+# With K = X A X' (A = (X'WX)^-1) the residual covariance under that model is
+# M W^-1 M' = W^-1 - K, so the df need only K. A patient with an unusable slope
+# or weight drops out; a gene needs min.group effective (Kish) patients in each
+# condition, so its fit cannot rest on one or two heavily weighted patients.
+# Genes are independent and blocked over BPPARAM; every per-gene inversion is
+# guarded and a gene that cannot be tested is NA.
+.robustConditionTest <- function(b, v, tau2, trt, strata = NULL, min.group = 3L,
+                                 BPPARAM = BiocParallel::SerialParam()) {
   G <- nrow(b)
   X0 <- cbind(1, trt)
   if (!is.null(strata)) {
@@ -97,41 +114,49 @@
       X0 <- cbind(X0, Sd)
     }
   }
-  est <- se <- df <- rep(NA_real_, G)
-  for (g in seq_len(G)) {
-    ok <- is.finite(b[g, ]) & is.finite(v[g, ]) & v[g, ] >= 0
-    if (!is.finite(tau2[g]) || sum(ok & trt == 1) < min.group || sum(ok & trt == 0) < min.group) next
-    X <- X0[ok, , drop = FALSE]
-    qx <- qr(X)
-    keep <- sort(qx$pivot[seq_len(qx$rank)])
-    if (!all(c(1L, 2L) %in% keep) || length(keep) >= nrow(X)) next
-    X <- X[, keep, drop = FALSE]
-    w <- 1 / (v[g, ok] + tau2[g])
-    if (!all(is.finite(w)) || any(w <= 0)) next
-    w <- w / mean(w)
-    y <- b[g, ok]
-    A <- tryCatch(solve(crossprod(X * sqrt(w))), error = function(e) NULL)
-    if (is.null(A) || !all(is.finite(A))) next
-    AXW <- A %*% t(X * w)                              # p x n: coef = AXW %*% y
-    H <- X %*% AXW                                     # the weighted hat matrix
-    h <- diag(H)
-    if (any(h >= 1 - 1e-8)) next
-    e <- y - as.numeric(H %*% y)
-    d <- AXW[2, ]^2 / (1 - h)
-    V <- sum(d * e^2)
-    M <- diag(length(y)) - H
-    DSig <- (M %*% (t(M) / w)) * d                     # diag(d) M W^-1 M'
-    nu <- sum(diag(DSig))^2 / sum(DSig * t(DSig))
-    if (!is.finite(V) || V <= 0 || !is.finite(nu) || nu <= 0) next
-    est[g] <- sum(AXW[2, ] * y); se[g] <- sqrt(V); df[g] <- nu
+  kish <- function(w) if (length(w)) sum(w)^2 / sum(w^2) else 0
+  one <- function(gi) {
+    out <- matrix(NA_real_, length(gi), 3L)
+    for (a in seq_along(gi)) {
+      g <- gi[a]
+      if (!is.finite(tau2[g])) next
+      w <- 1 / (v[g, ] + tau2[g])
+      ok <- is.finite(b[g, ]) & is.finite(w) & w > 0
+      if (kish(w[ok & trt == 1]) < min.group || kish(w[ok & trt == 0]) < min.group) next
+      X <- X0[ok, , drop = FALSE]
+      qx <- qr(X)
+      keep <- sort(qx$pivot[seq_len(qx$rank)])
+      if (!all(c(1L, 2L) %in% keep) || length(keep) >= nrow(X)) next
+      X <- X[, keep, drop = FALSE]
+      w <- w[ok] / mean(w[ok])
+      y <- b[g, ok]
+      A <- tryCatch(solve(crossprod(X * sqrt(w))), error = function(e) NULL)
+      if (is.null(A) || !all(is.finite(A))) next
+      XA <- X %*% A
+      h <- rowSums(XA * X) * w                        # leverages
+      if (any(h >= 1 - 1e-8)) next
+      coef <- as.numeric(A %*% crossprod(X, w * y))
+      e <- y - as.numeric(X %*% coef)
+      d <- (XA[, 2] * w)^2 / (1 - h)
+      V <- sum(d * e^2)
+      Sig <- -tcrossprod(XA, X)                       # W^-1 - K
+      diag(Sig) <- diag(Sig) + 1 / w
+      nu <- sum(d * diag(Sig))^2 / sum(tcrossprod(d) * Sig^2)
+      if (!is.finite(V) || V <= 0 || !is.finite(nu) || nu <= 0) next
+      out[a, ] <- c(coef[2], sqrt(V), nu)
+    }
+    list(idx = gi, out = out)
   }
-  tt <- est / se
-  data.frame(estimate = est, se = se, t = tt, df = df, p = 2 * stats::pt(-abs(tt), df),
+  res <- .bpGenes(G, one, BPPARAM)
+  M <- matrix(NA_real_, G, 3L)
+  for (r in res) M[r$idx, ] <- r$out
+  tt <- M[, 1] / M[, 2]
+  data.frame(estimate = M[, 1], se = M[, 2], t = tt, df = M[, 3], p = 2 * stats::pt(-abs(tt), M[, 3]),
              n_patients = rowSums(is.finite(b)), stringsAsFactors = FALSE)
 }
 
 # The slopes engine's tests for one index type's stored slopes.
-.slopesTests <- function(x, trt = NULL, strata = NULL) {
+.slopesTests <- function(x, trt = NULL, strata = NULL, BPPARAM = BiocParallel::SerialParam()) {
   out <- list()
   vpool <- sweep(x$v_model, c(2, 3), x$factor, "*")
   tau_pool <- .dlTau2(x$beta, vpool)
@@ -142,7 +167,7 @@
     out[[length(out) + 1L]] <- data.frame(gene = x$genes, niche = x$niches[j], test = "pooled", p,
                                           stringsAsFactors = FALSE)
     if (!is.null(trt)) {
-      cc <- .robustConditionTest(b, vj, tau_pool[, j], trt = trt, strata = strata)
+      cc <- .robustConditionTest(b, vj, tau_pool[, j], trt = trt, strata = strata, BPPARAM = BPPARAM)
       out[[length(out) + 1L]] <- data.frame(gene = x$genes, niche = x$niches[j], test = "condition", cc,
                                             stringsAsFactors = FALSE)
     }
