@@ -72,8 +72,8 @@ Ten block-null maps and 1,000 condition permutations per cohort:
 | GSE250346 | 0.94-0.96 (0) | 0.95-0.96 (0) | 0.98-0.99 | 0 / 0.010 |
 | GSE282639 | 0.92-0.96 (0) | 0.97-1.00 (0) | 0.99-1.00 | 0.015 / 0.042 |
 | GSE289194 | 0.93-0.95 (0) | 0.97-0.99 (0) | 0.99 | 0.011 / 0.034 |
-| YTMA | TODO | TODO | TODO | TODO |
-| YTMA stage | TODO | TODO | TODO | TODO |
+| YTMA | 0.93-0.94 (0) | 0.98 (0) | 0.99 | 0.010 / 0.035 |
+| YTMA stage | 0.96-0.97 (0) | 0.98 (0) | 0.99 | 0.012 / 0.023 |
 
 Every criterion is met in every cohort. The spread sits slightly below 1 for
 the pooled test, so its $p$-values are, if anything, a little conservative.
@@ -91,9 +91,10 @@ the sandwich engine is a refit:
 | GSE282639 | 0.99-1.01 (0) | 0.96-0.99 (0) | 1.01-1.04 | 0.02 / 0 |
 | GSE289194 | 1.03-1.06 (0) | 1.03-1.06 (0) | 1.06-1.10 | 0.02 / 0.06 |
 | YTMA | 0.99-1.00 (0) | 0.99-1.00 (0) | 1.00-1.02 | 0.04 / 0.14 |
-| YTMA stage | 1.00-1.01 (0.20) | 0.99-1.00 (0) | TODO | TODO |
+| YTMA stage | 1.00-1.01 (0.20) | 0.99-1.00 (0) | not run | not run |
 
-The sandwich engine runs closer to a spread of 1 but less evenly. It reaches
+On the stage cohort (163 patients) a sandwich permutation is a refit of over an hour, and its
+permutation null was not run. The sandwich engine runs closer to a spread of 1 but less evenly. It reaches
 1.10 on GSE289194, its filtered procedure called in 7 of 50 permutations on
 YTMA, and it called in 2 of 10 block maps on the stage cohort. It is a useful
 second opinion; the slopes engine is the one to rely on.
@@ -106,8 +107,8 @@ For that, counts were simulated from models fitted to four of these cohorts
 gene-specific library-size effects that vary across the tissue). Condition by
 niche effects were then planted, either shared by all patients or varying
 between them. Six ways in which sequencing depth can relate to the niche were
-simulated, 20 data sets each on GSE289194 and YTMA (whose simulations matched
-their real data best) and fewer on the other two.
+simulated, with 20 data sets per scenario on GSE289194 and YTMA (whose
+simulations matched their real data best) and fewer on the other two.
 
 For the condition-specific test (filtered procedure), averaged over data sets:
 
@@ -168,7 +169,7 @@ permutations:
 | GSE282639 | 0.90-1.00 (0) | 0.97-0.98 (0) | 0.99-1.00 (0.005) |
 | GSE289194 | 0.96-1.00 (0) | 0.97-0.98 (0) | 0.98-0.99 (0.005) |
 | YTMA | 0.98-1.00 (0) | 0.97-0.98 (0) | 0.99 (0.015) |
-| YTMA stage | TODO | TODO | TODO |
+| YTMA stage | 1.03-1.05 (0.05) | 0.97 (0) | 0.99 (0.010) |
 
 Spread is read per fifth of sets by size, and a tail counts a call at
 `q.global` < 0.05. The set tests are calibrated in every cohort.
