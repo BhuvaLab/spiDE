@@ -1,0 +1,60 @@
+# The results plots (0.99.34): where the calls are, the strongest triplets,
+# the spillover signature, triplet heatmaps and p-value bands.
+
+spe <- buildNiches(.toySPE(n_samples = 16, n_per = 150, seed = 7), sigma = 30)
+fit <- fitSpiDE(spe, condition = "condition", sigma = 30, verbose = FALSE)
+res <- testSpiDE(fit, procedure = "all")
+builds <- function(p) {
+  expect_true(inherits(p, "ggplot"))
+  expect_no_warning(b <- ggplot2::ggplot_build(p))
+  invisible(b)
+}
+
+test_that("plotCallMap() counts the calls per pair and direction", {
+  p <- plotCallMap(res, test = "pooled", fdr = 0.05)
+  builds(p)
+  tab <- res@table[res@table$test == "pooled" & !is.na(res@table$q) & res@table$q <= 0.05, ]
+  expect_equal(sum(p$data$calls, na.rm = TRUE), nrow(tab))
+  expect_true(all(c("index", "niche", "direction", "calls", "tested") %in% names(p$data)))
+  expect_false(any(p$data$tested & p$data$index == p$data$niche))
+  g <- plotCallMap(res, test = "condition", style = "graph")
+  b <- builds(g)
+  # node labels sit outside their nodes (the nodes are on the unit circle)
+  txt <- b$data[[which(vapply(g$layers, function(l) inherits(l$geom, "GeomText"), logical(1)))]]
+  expect_true(all(sqrt(txt$x^2 + txt$y^2) >= 1.25))
+  expect_true(all(txt$vjust[txt$y > 0.5] == 0) && all(txt$vjust[txt$y < -0.5] == 1))
+})
+
+test_that("plotCallMap() draws when nothing is called", {
+  builds(plotCallMap(res, test = "pooled", fdr = 1e-12))
+  builds(plotCallMap(res, test = "pooled", fdr = 1e-12, style = "graph"))
+})
+
+test_that("plotTopTriplets() ranks, filters by gene, and flags niche markers with spe", {
+  p <- plotTopTriplets(res, test = "pooled", n = 10)
+  builds(p)
+  expect_equal(nrow(p$data), 10L)
+  expect_true(all(c("gene", "index", "niche", "estimate", "lo", "hi", "called", "direction", "marker",
+                    "label") %in% names(p$data)))
+  p <- plotTopTriplets(res, gene = c("G1", "G3"), spe = spe)
+  builds(p)
+  expect_setequal(unique(p$data$gene), c("G1", "G3"))
+  expect_true(is.logical(p$data$marker))
+  expect_error(plotTopTriplets(res, gene = "nope"), "no triplet")
+})
+
+test_that("plotSpillover() places every tested triplet by its niche fold", {
+  p <- plotSpillover(res, spe)
+  builds(p)
+  n <- sum(res@table$test == "pooled" & is.finite(res@table$p))
+  expect_equal(nrow(p$data), n)
+  expect_true(all(c("fold", "z", "status") %in% names(p$data)))
+})
+
+test_that("merged niches: the plots accept the group, the fold pools its members", {
+  sm <- mergeNiches(spe, groups = list(BC = c("B", "C")), sigma = 30)
+  rmg <- testSpiDE(fitSpiDE(sm, condition = "condition", sigma = 30, index = "A", verbose = FALSE))
+  builds(plotSpillover(rmg, sm))
+  builds(plotTopTriplets(rmg, spe = sm, n = 5))
+  builds(plotCallMap(rmg))
+})
