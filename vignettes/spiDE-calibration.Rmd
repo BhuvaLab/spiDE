@@ -93,8 +93,8 @@ the sandwich engine is a refit:
 | YTMA | 0.99-1.00 (0) | 0.99-1.00 (0) | 1.00-1.02 | 0.04 / 0.14 |
 | YTMA stage | 1.00-1.01 (0.20) | 0.99-1.00 (0) | not run | not run |
 
-On the stage cohort (163 patients) a sandwich permutation is a refit of over an hour, and its
-permutation null was not run. The sandwich engine runs closer to a spread of 1 but less evenly. It reaches
+On the stage cohort (163 patients) a sandwich permutation is a refit of about an hour, and
+its permutation null was not run. The sandwich engine runs closer to a spread of 1 but less evenly. It reaches
 1.10 on GSE289194, its filtered procedure called in 7 of 50 permutations on
 YTMA, and it called in 2 of 10 block maps on the stage cohort. It is a useful
 second opinion; the slopes engine is the one to rely on.
@@ -107,8 +107,11 @@ For that, counts were simulated from models fitted to four of these cohorts
 gene-specific library-size effects that vary across the tissue). Condition by
 niche effects were then planted, either shared by all patients or varying
 between them. Six ways in which sequencing depth can relate to the niche were
-simulated, with 20 data sets per scenario on GSE289194 and YTMA (whose
-simulations matched their real data best) and fewer on the other two.
+simulated, with 20 data sets per scenario, on GSE289194 and YTMA: the two cohorts
+whose simulations passed a check of realism against their real data (library
+sizes, detection, dispersion and the genes' response to depth). The
+simulations of GSE282639 and GSE250346 failed that check and were run on two
+of the six scenarios, as a description only.
 
 For the condition-specific test (filtered procedure), averaged over data sets:
 
@@ -125,13 +128,14 @@ For the condition-specific test (filtered procedure), averaged over data sets:
   the sandwich engine on GSE289194. The gain is largest when effects vary
   between patients.
 - **Both keep the false discovery proportion below 5%.** On the two
-  simulations that matched their real data less well, the slopes engine's
-  filtered procedure ran higher (0.05 and 0.12). Read calls in cohorts with
-  few patients per group with that in mind.
+  simulations that failed the realism check, the slopes engine's filtered
+  procedure ran higher (0.05 on GSE282639 and 0.12 on GSE250346). Those
+  simulations do not resemble their real data closely enough to say whether
+  this carries over to real data; the real-data nulls above show no excess.
 
 The pooled test found 26% of the planted pooled effects on GSE289194 and 3% on
-YTMA, where effects were small against the count noise of whole-transcriptome
-data.
+YTMA with the slopes engine (14% and 5% with the sandwich engine); on YTMA the
+effects were small against the count noise of whole-transcriptome data.
 
 # Sequencing depth
 
@@ -146,9 +150,11 @@ were compared in the simulations above:
 - a library-size effect that varies across the tissue (`"spatial_spline"`);
 - SpaNorm's library-size component as a fixed offset.
 
-The four lay within 0.015 of each other in bias, with the same power and
-calibration, so the default is the simplest, `"loglib"`. The spatial option
-costs 1.2 to 1.8 times as much to fit.
+In the slopes engine the four lay within 0.015 of each other in bias, with the
+same power, and every one was calibrated in every scenario, so the default is
+the simplest, `"loglib"`. (The sandwich engine with `"loglib"` ran wide on
+GSE289194, up to 1.13.) The spatial option costs a median of 1.2 to 1.8 times
+as much to fit, per template, in the slopes engine.
 
 One consequence holds for every option. When the neighbourhood raises a cell's
 total RNA, adjusting for library size also removes that part of the niche
@@ -165,9 +171,9 @@ permutations:
 
 | cohort | pooled, block: spread (tail) | condition, block: spread (tail) | condition, permutation: spread (tail) |
 |---|---|---|---|
-| GSE250346 | 0.91-0.97 (0) | 0.96 (0) | 0.98 (0) |
+| GSE250346 | 0.91-0.98 (0) | 0.96 (0) | 0.97-0.98 (0) |
 | GSE282639 | 0.90-1.00 (0) | 0.97-0.98 (0) | 0.99-1.00 (0.005) |
-| GSE289194 | 0.96-1.00 (0) | 0.97-0.98 (0) | 0.98-0.99 (0.005) |
+| GSE289194 | 0.96-1.00 (0) | 0.97 (0) | 0.99 (0.005) |
 | YTMA | 0.98-1.00 (0) | 0.97-0.98 (0) | 0.99 (0.015) |
 | YTMA stage | 1.03-1.05 (0.05) | 0.97 (0) | 0.99 (0.010) |
 

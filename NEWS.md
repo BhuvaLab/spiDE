@@ -46,8 +46,9 @@
   than the average over all patients, with the df of that stratum alone. The
   condition test was unaffected, but its filtered family was drawn from the
   wrong pooled test. Found on the YTMA LUAD stage cohort, the only cohort run
-  with strata (`research/release/`: 4 pooled calls against the slopes
-  engine's 573). The slopes engine never used strata in its fit and is
+  with strata (`research/release/`), where the sandwich engine's pooled test
+  called a small fraction of what the slopes engine's did. The slopes engine
+  never used strata in its fit and is
   unchanged; so is every run without strata. A test now guards this.
 
 # spiDE 0.99.30
