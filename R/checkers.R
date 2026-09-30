@@ -185,3 +185,44 @@ checkIntercepts <- function(xi, what) {
   }
   invisible(TRUE)
 }
+
+# A plotting function's input: a current SpiDEResults (or, where the plot needs
+# only the fit, a SpiDEFit).
+checkResults <- function(x, what, fit.ok = FALSE) {
+  if (!(is(x, "SpiDEResults") || (fit.ok && is(x, "SpiDEFit")))) {
+    stop(sprintf("%s needs a SpiDEResults from testSpiDE() or spiDE()%s", what,
+                 if (fit.ok) ", or a SpiDEFit from fitSpiDE()" else ""), call. = FALSE)
+  }
+  .assertCurrent(x)
+  invisible(TRUE)
+}
+
+# Views of each patient's own slopes exist only for the slopes engine.
+checkSlopesEngine <- function(fit, what) {
+  if (fit@engine != "slopes") {
+    stop(sprintf("%s needs the slopes engine's per-patient slopes: fit with engine = \"slopes\"", what),
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+# An index type the fit has, one of its tested niches, genes it tested.
+checkTriplet <- function(fit, index, niche = NULL, gene = NULL) {
+  if (!is.character(index) || length(index) != 1L || !index %in% names(fit@index)) {
+    stop(sprintf("'index' must be one of the fitted index types: %s", paste(names(fit@index), collapse = ", ")),
+         call. = FALSE)
+  }
+  xi <- fit@index[[index]]
+  if (!is.null(niche) && (!is.character(niche) || length(niche) != 1L || !niche %in% xi$niches)) {
+    stop(sprintf("'niche' must be one of the niches tested in %s: %s", index, paste(xi$niches, collapse = ", ")),
+         call. = FALSE)
+  }
+  if (!is.null(gene)) {
+    if (!is.character(gene) || !length(gene)) stop("'gene' must be a character vector", call. = FALSE)
+    miss <- setdiff(gene, xi$genes)
+    if (length(miss)) {
+      stop(sprintf("gene(s) not tested in %s: %s", index, paste(miss, collapse = ", ")), call. = FALSE)
+    }
+  }
+  invisible(TRUE)
+}

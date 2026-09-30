@@ -34,7 +34,9 @@ biocViews: Software, Spatial, DifferentialExpression, GeneExpression,
 Depends:
     R (>= 4.5.0)
 Imports:
+    ggplot2,
     Matrix,
+    scales,
     SpaNorm (>= 1.7.15),
     SpatialExperiment,
     SingleCellExperiment,
@@ -53,7 +55,8 @@ Suggests:
     knitr,
     rmarkdown,
     BiocStyle,
-    ggplot2,
+    ggrepel,
+    patchwork,
     RhpcBLASctl,
     clubSandwich,
     MASS,
