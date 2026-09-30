@@ -137,8 +137,10 @@ calibrated on it was not.
 genes are combined across patients with `limma`, weighted by
 $1/(v_{gs} + \tau^2_g)$, where $\tau^2_g$ is the gene's DerSimonian-Laird
 between-patient variance of the slope (computed without the condition). The
-design is an intercept (pooled test) or an intercept and the condition, plus
-optional `strata` (a slide or batch confounded with the condition). Two
+design is an intercept (pooled test) or an intercept, the condition and
+optional `strata` (condition test; a slide or batch confounded with the
+condition). Both engines use `strata` in the condition test only: the pooled
+slope is the average over all patients. Two
 further choices complete the test:
 
 - an **expression-trended prior**: `eBayes(trend = TRUE, robust = TRUE)` on

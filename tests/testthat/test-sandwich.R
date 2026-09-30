@@ -47,3 +47,29 @@ test_that("CR2 and Bell-McCaffrey df agree with clubSandwich on the working mode
     expect_equal(mine$df, unname(o$df_Satt), tolerance = 0.005)
   }
 })
+
+test_that("strata enter the sandwich engine's condition model only, never the pooled one", {
+  spe <- buildNiches(.toySPE(n_samples = 8, n_per = 120, n_genes = 8, seed = 11), sigma = 20,
+                     verbose = FALSE)
+  pat <- as.character(spe$sample_id)
+  cond <- tapply(as.character(spe$condition), pat, `[`, 1)
+  # two slides, each holding both conditions
+  sl <- stats::setNames(character(length(cond)), names(cond))
+  for (lv in unique(cond)) {
+    s <- names(cond)[cond == lv]
+    sl[s] <- rep(c("slide1", "slide2"), length.out = length(s))
+  }
+  spe$slide <- unname(sl[pat])
+  args <- list(spe, condition = "condition", engine = "sandwich", index = "A", sigma = 20,
+               min.patients = 6, verbose = FALSE)
+  with_st <- do.call(fitSpiDE, c(args, strata = "slide"))@index$A$coef
+  without <- do.call(fitSpiDE, args)@index$A$coef
+  pooled <- c("estimate", "se", "df")
+  expect_equal(with_st[with_st$test == "pooled", pooled], without[without$test == "pooled", pooled])
+  # a pooled-only fit (no condition) ignores strata as well
+  pooled_only <- do.call(fitSpiDE, c(args[-2], strata = "slide"))@index$A$coef
+  expect_equal(pooled_only[, pooled], without[without$test == "pooled", pooled])
+  cw <- with_st[with_st$test == "condition", ]
+  cn <- without[without$test == "condition", ]
+  expect_false(isTRUE(all.equal(cw$estimate, cn$estimate)))
+})

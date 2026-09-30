@@ -83,9 +83,10 @@ coefficient fixed at 1), e.g. the library-size component of a SpaNorm
 fit. Held dense per index type (genes x index cells).}
 
 \item{strata}{\code{NULL} or a patient-level colData column (e.g. slide or
-batch) whose niche slopes are adjusted for. Needed when the condition is
-confounded with slide; used by the sandwich engine here and by the slopes
-engine in \code{\link[=testSpiDE]{testSpiDE()}}.}
+batch) whose niche slopes are adjusted for in the condition test. Needed
+when the condition is confounded with slide; used by the sandwich engine's
+condition model here and by the slopes engine in \code{\link[=testSpiDE]{testSpiDE()}}. The pooled
+test never uses it: its slope is the average over all patients.}
 
 \item{assay}{the counts assay (raw integer counts).}
 

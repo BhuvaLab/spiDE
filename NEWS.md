@@ -1,3 +1,16 @@
+# spiDE 0.99.31
+
+* **Sandwich engine: `strata` no longer enter the pooled model.** In 0.99.30
+  `fitSpiDE(engine = "sandwich", strata = )` put the treatment-coded
+  strata x niche columns into the pooled model as well as the condition model,
+  so the pooled slope was the slope of the first stratum's patients rather
+  than the average over all patients, with the df of that stratum alone. The
+  condition test was unaffected, but its filtered family was drawn from the
+  wrong pooled test. Found on the YTMA LUAD stage cohort, the only cohort run
+  with strata (`research/release/`: 4 pooled calls against the slopes
+  engine's 573). The slopes engine never used strata in its fit and is
+  unchanged; so is every run without strata. A test now guards this.
+
 # spiDE 0.99.30
 
 ## A new model; the mixed model is archived
