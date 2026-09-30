@@ -21,6 +21,7 @@ fitSpiDE(spe, condition = NULL, ...)
   depth = c("loglib", "nonlinear", "spatial_spline", "none"),
   offset = NULL,
   strata = NULL,
+  transform = c("log1p", "identity"),
   assay = "counts",
   name = "Niche",
   min.cells = 10L,
@@ -87,6 +88,11 @@ batch) whose niche slopes are adjusted for in the condition test. Needed
 when the condition is confounded with slide; used by the sandwich engine's
 condition model here and by the slopes engine in \code{\link[=testSpiDE]{testSpiDE()}}. The pooled
 test never uses it: its slope is the average over all patients.}
+
+\item{transform}{how the niche densities enter the model: \code{"log1p"}
+(default), \eqn{\log(1 + d)}, which compresses dense neighbourhoods; or
+\code{"identity"}, the densities as they are (kernel-weighted counts of
+neighbouring cells), so a slope is per additional neighbour.}
 
 \item{assay}{the counts assay (raw integer counts).}
 

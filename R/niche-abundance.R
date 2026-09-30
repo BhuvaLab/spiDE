@@ -21,7 +21,7 @@
 #'   \code{ncells} (samples), all restricted to samples with at least
 #'   \code{min.cells} cells of type k.
 #' @noRd
-.pseudobulkByIndex <- function(Y, NM, ct, smp, index, min.cells, prior.count) {
+.pseudobulkByIndex <- function(Y, NM, ct, smp, index, min.cells, prior.count, tf = log1p) {
   cts <- if (is.null(index)) sort(unique(ct)) else intersect(.sanitise(index), sort(unique(ct)))
   out <- list()
   for (k in cts) {
@@ -42,7 +42,7 @@
     colnames(sums) <- levels(grp)
     lib <- colSums(sums)
     lcpm <- log2(t((t(sums) + prior.count) / (lib + 2 * prior.count)) * 1e6)
-    nm <- rowsum(log1p(NM[ik, , drop = FALSE]), group = grp, reorder = TRUE) /
+    nm <- rowsum(tf(NM[ik, , drop = FALSE]), group = grp, reorder = TRUE) /
       as.numeric(table(grp))
     out[[k]] <- list(Y = lcpm, niche = nm, ncells = as.numeric(table(grp)),
                      samples = keep)
@@ -92,6 +92,8 @@
 #' @param name the niche reducedDim prefix.
 #' @param min.cells minimum cells of the index type a sample must contribute.
 #' @param prior.count the pseudocount in the log2-CPM.
+#' @param transform the niche density scale, as in [fitSpiDE()]: the sample's
+#'   mean of \code{log1p} densities (default) or of the densities themselves.
 #' @param verbose report progress.
 #' @param ... further arguments passed to the method.
 #' @return a data.frame with one row per (gene, index type, niche type, term):
@@ -115,7 +117,8 @@ setMethod(
                         covariates = character(), assay = "counts",
                         cell_type = "cell_type", sample_id = "sample_id",
                         name = "Niche", min.cells = 10L, prior.count = 1,
-                        verbose = TRUE) {
+                        transform = c("log1p", "identity"), verbose = TRUE) {
+    transform <- match.arg(transform)
     checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
     if (!is.null(condition)) checkCondition(spe, condition)
     checkCovariates(spe, covariates)
@@ -132,7 +135,8 @@ setMethod(
     if (!length(niches)) stop("no requested niche cell types found in the niche reducedDim")
     NM <- NM[, niches, drop = FALSE]
 
-    pb <- .pseudobulkByIndex(Y, NM, ct, smp, index, min.cells, prior.count)
+    pb <- .pseudobulkByIndex(Y, NM, ct, smp, index, min.cells, prior.count,
+                             tf = if (transform == "log1p") log1p else identity)
     if (!length(pb)) {
       stop("no index cell type has at least three samples with >= min.cells cells")
     }

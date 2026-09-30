@@ -63,6 +63,10 @@
 #'   when the condition is confounded with slide; used by the sandwich engine's
 #'   condition model here and by the slopes engine in [testSpiDE()]. The pooled
 #'   test never uses it: its slope is the average over all patients.
+#' @param transform how the niche densities enter the model: \code{"log1p"}
+#'   (default), \eqn{\log(1 + d)}, which compresses dense neighbourhoods; or
+#'   \code{"identity"}, the densities as they are (kernel-weighted counts of
+#'   neighbouring cells), so a slope is per additional neighbour.
 #' @param assay the counts assay (raw integer counts).
 #' @param name the niche reducedDim prefix.
 #' @param min.cells minimum cells of an index type a patient must contribute.
@@ -97,11 +101,14 @@ setMethod(
   function(spe, condition = NULL, engine = c("slopes", "sandwich"), index = NULL,
            niche = NULL, sigma = NULL, cell_type = "cell_type", sample_id = "sample_id",
            section = NULL, covariates = character(), depth = c("loglib", "nonlinear", "spatial_spline", "none"),
-           offset = NULL, strata = NULL, assay = "counts", name = "Niche", min.cells = 10L,
+           offset = NULL, strata = NULL, transform = c("log1p", "identity"), assay = "counts",
+           name = "Niche", min.cells = 10L,
            min.patients = 6L, min.detect = 0.1, genes = NULL, tile = NULL, min.tiles = 5L,
            BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     engine <- match.arg(engine)
     depth <- match.arg(depth)
+    transform <- match.arg(transform)
+    tf <- if (transform == "log1p") log1p else identity
     checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
     if (!is.null(condition)) checkCondition(spe, condition)
     checkSample(spe, condition = condition, sample_id = sample_id, covariates = covariates)
@@ -156,7 +163,7 @@ setMethod(
       if (!is.null(genes)) gk <- intersect(gk, genes)
       if (!length(gk)) next
       cols <- c(nc$tested, setdiff(nc$cols, nc$tested))
-      L <- log1p(NM[ik, cols, drop = FALSE])
+      L <- tf(NM[ik, cols, drop = FALSE])
       pat <- factor(smp[ik])
       Yk <- Y[gk, ik, drop = FALSE]
       covk <- .indexCovariates(cov[ik, , drop = FALSE], depth)
@@ -201,6 +208,7 @@ setMethod(
                  patients = patients, index = fits,
                  params = list(cell_type = cell_type, sample_id = sample_id, section = section,
                                covariates = covariates, depth = depth, offset = offset, strata = strata,
+                               transform = transform,
                                min.cells = min.cells, min.patients = min.patients,
                                min.detect = min.detect, tile = tile, min.tiles = min.tiles,
                                version = as.character(utils::packageVersion("spiDE"))))

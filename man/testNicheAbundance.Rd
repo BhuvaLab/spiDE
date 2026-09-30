@@ -20,6 +20,7 @@ testNicheAbundance(spe, ...)
   name = "Niche",
   min.cells = 10L,
   prior.count = 1,
+  transform = c("log1p", "identity"),
   verbose = TRUE
 )
 }
@@ -49,6 +50,9 @@ sample is used).}
 \item{min.cells}{minimum cells of the index type a sample must contribute.}
 
 \item{prior.count}{the pseudocount in the log2-CPM.}
+
+\item{transform}{the niche density scale, as in \code{\link[=fitSpiDE]{fitSpiDE()}}: the sample's
+mean of \code{log1p} densities (default) or of the densities themselves.}
 
 \item{verbose}{report progress.}
 }

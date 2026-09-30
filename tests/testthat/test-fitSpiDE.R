@@ -96,3 +96,17 @@ test_that("genes restricts the tested genes but not the library size", {
   full <- fitSpiDE(spe, index = "A", sigma = 20, verbose = FALSE)
   expect_equal(f@index$A$beta["G1", , ], full@index$A$beta["G1", , ], tolerance = 1e-8)
 })
+
+test_that("transform = 'identity' enters the niche densities as they are", {
+  spe <- buildNiches(.toySPE(n_samples = 8, n_per = 120, n_genes = 6, seed = 3), sigma = 20, verbose = FALSE)
+  f_id <- fitSpiDE(spe, index = "A", sigma = 20, transform = "identity", verbose = FALSE)
+  expect_identical(f_id@params$transform, "identity")
+  # log1p of expm1(d) is d: the log1p fit on expm1-transformed densities is the identity fit
+  sp2 <- spe
+  SingleCellExperiment::reducedDim(sp2, "Niche20") <- expm1(SingleCellExperiment::reducedDim(spe, "Niche20"))
+  f_lg <- fitSpiDE(sp2, index = "A", sigma = 20, verbose = FALSE)
+  expect_equal(f_id@index$A$beta, f_lg@index$A$beta, tolerance = 1e-8)
+  expect_false(isTRUE(all.equal(f_id@index$A$beta, fitSpiDE(spe, index = "A", sigma = 20, verbose = FALSE)@index$A$beta)))
+  ab <- testNicheAbundance(spe, condition = "condition", sigma = 20, transform = "identity", verbose = FALSE)
+  expect_true(all(is.finite(ab$p) | is.na(ab$p)))
+})
