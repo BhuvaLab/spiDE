@@ -141,3 +141,18 @@ test_that("a gene the solver could not fit drops out; a bound dispersion is refi
   expect_true(is.na(out$psi["nb"]))
   expect_equal(unname(out$status["not_fitted"]), 1)
 })
+
+test_that("a fit whose slopes ran off is left out, not tested", {
+  set.seed(9)
+  pat <- factor(rep(sprintf("p%d", 1:6), each = 60))
+  L <- matrix(rnorm(360), 360, 1, dimnames = list(NULL, "B"))
+  des <- spiDE:::.indexDesign(L, NULL, pat, tested = "B")
+  Y <- rbind(g1 = rnbinom(360, size = 2, mu = 3), g2 = rnbinom(360, size = 2, mu = 3))
+  fit <- spiDE:::.fitIndexGLM(Y, des)
+  fake <- fit
+  fake$alpha["g2", des$niche_cols] <- 1e10     # what a runaway spatial-spline fit returned
+  out <- spiDE:::.fitStatus(fake, Y, des, NULL)
+  expect_true(all(is.na(out$alpha["g2", ])))
+  expect_false(anyNA(out$alpha["g1", ]))
+  expect_equal(unname(out$status[c("not_fitted", "runaway")]), c(1, 1))
+})

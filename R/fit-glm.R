@@ -47,12 +47,19 @@
 # if it had converged, so it drops out (NA). The second takes the bound its
 # likelihood prefers (near-Poisson at the lower bound, a very overdispersed
 # gene at the upper), since the constrained maximum is on that bound, and its
-# mean is refitted at that dispersion. Counts are kept in fit$status.
+# mean is refitted at that dispersion. A gene reported as fitted whose
+# non-absorbed coefficients have run off (|coefficient| > max.coef on the log
+# scale: a factor of e^20 per unit of a centred covariate or log1p niche
+# density) also drops out -- one spatial-spline fit of a near-absent gene
+# returned slopes of ~1e10 with the solver's blessing (bench2, 2026-09-30).
+# Counts are kept in fit$status.
 .fitStatus <- function(fit, Yk, des, offset, BPPARAM = BiocParallel::SerialParam(),
-                       psi.range = c(1e-3, 1e3)) {
+                       psi.range = c(1e-3, 1e3), max.coef = 20) {
   pol <- fit$polish
   bad <- if (is.null(pol$polished)) rep(FALSE, nrow(Yk)) else !pol$polished
   bad <- bad | !is.finite(fit$psi) | !apply(is.finite(fit$alpha), 1, all)
+  runaway <- !bad & apply(abs(fit$alpha[, des$dense, drop = FALSE]) > max.coef, 1, any)
+  bad <- bad | runaway
   fit$alpha[bad, ] <- NA_real_
   fit$psi[bad] <- NA_real_
   bnd <- which(!bad & (if (is.null(pol$psi_bound)) FALSE else pol$psi_bound))
@@ -76,7 +83,8 @@
     bad[bnd[!ok]] <- TRUE
     bnd <- bnd[ok]
   }
-  fit$status <- c(genes = nrow(Yk), not_fitted = sum(bad), psi_at_bound = length(bnd))
+  fit$status <- c(genes = nrow(Yk), not_fitted = sum(bad), psi_at_bound = length(bnd),
+                  runaway = sum(runaway))
   fit
 }
 
