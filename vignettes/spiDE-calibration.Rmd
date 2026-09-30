@@ -169,7 +169,7 @@ Weighted, the options lie within 0.015 of each other, inside the
 pre-registered tie margin of 0.02, and the tie goes to the simplest:
 `"loglib"`. Power is the same for all of them (filtered-family true-positive
 rate 0.816-0.819 on GSE289194). The spatial spline is kept as an option: it
-costs 1.2-1.55 times the `"loglib"` fit.
+costs 1.2-1.8 times the `"loglib"` fit.
 
 **Two findings to know when reading results.**
 

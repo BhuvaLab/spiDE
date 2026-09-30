@@ -23,6 +23,8 @@ navbar:
       menu:
       - text: Simplifying spiDE — the study behind the engines (research site)
         href: https://bhuvalab.github.io/spiDE-research/simplify-top5.html
+      - text: How sequencing depth should enter spiDE — the depth benchmark (research site)
+        href: https://bhuvalab.github.io/spiDE-research/bench2-depth.html
 
 # The package site carries only the package's own vignettes. The validation
 # reports are rendered and published by the research repository (submodule
