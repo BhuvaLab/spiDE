@@ -1,3 +1,17 @@
+# spiDE 0.99.32
+
+* **Slopes engine: the tile variance is taken at each patient's own slope.**
+  `v_tile`'s tile scores used the residuals of the shared, condition-free fit,
+  which carry the patient's departure from the pooled slope. `v_tile` therefore
+  grew with that departure. As the condition test's weight it gave the patients
+  furthest from the pooled slope the least say, which pulled each condition's
+  mean toward it and attenuated the condition contrast in the depth benchmark
+  (`research/bench2/diag/FINDINGS.md`). The scores now use the residuals
+  updated by the patient's own one-step. The gene's own tile variance stays the
+  condition test's weight, because a gene-shared weight let spatially
+  patterned marker genes through the block null. The calibration vignette has
+  the re-measured nulls.
+
 # spiDE 0.99.31
 
 * **Sandwich engine: `strata` no longer enter the pooled model.** In 0.99.30

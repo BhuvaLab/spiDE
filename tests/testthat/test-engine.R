@@ -56,6 +56,17 @@ test_that("a patient slope is one Fisher-scoring step from the pooled fit", {
   step <- solve(crossprod(Lt * sqrt(wr$w[i])), colSums(Lt * wr$r[i]))
   b <- fit$alpha[g, des$niche_cols] + step
   expect_equal(unname(x$beta[g, s, ]), unname(b[seq_along(nc$tested)]), tolerance = 1e-6)
+  # the tile sandwich takes the scores at the patient's own slope, so its
+  # departure from the pooled slope does not inflate its own variance
+  xy <- SpatialExperiment::spatialCoords(spe)[ik[i], , drop = FALSE]
+  tt <- paste(floor(xy[, 1] / 90), floor(xy[, 2] / 90))
+  expect_gte(length(unique(tt)), 5L)
+  Is <- crossprod(Lt * sqrt(wr$w[i]))
+  Ut <- rowsum(Lt * (wr$r[i] - wr$w[i] * as.numeric(Lt %*% step)), tt)
+  expect_equal(unname(colSums(Ut)), rep(0, ncol(Ut)), tolerance = 1e-8)
+  nT <- nrow(Ut)
+  Vs <- solve(Is) %*% crossprod(Ut) %*% solve(Is) * nT / (nT - 1)
+  expect_equal(unname(x$v_tile[g, s, ]), unname(diag(Vs)[seq_along(nc$tested)]), tolerance = 1e-5)
 })
 
 test_that("the pooled and condition tests equal a direct limma fit with the effective df", {

@@ -121,11 +121,17 @@ gene.
 - $v^{\text{tile}}_{gs}$ is a within-patient **spatial sandwich**: residual
   expression is spatially autocorrelated, so neighbouring cells are not
   independent. The patient's sections are cut into square tiles of side
-  `tile` (default $3\sigma$), and with $U_t = \sum_{i \in t}\tilde\ell_i r_i$
-  over the $T$ tiles,
+  `tile` (default $3\sigma$), and with
+  $U_t = \sum_{i \in t}\tilde\ell_i (r_i - w_i \tilde\ell_i^\top \delta_s)$,
+  the scores at the patient's own one-step slope, over the $T$ tiles,
   $v^{\text{tile}} = \mathrm{diag}\big(I_s^{-1} (\textstyle\sum_t U_t U_t^\top) I_s^{-1}\big)\, T/(T-1)$.
   Patients with fewer than `min.tiles` tiles take $v^{\text{model}}$ times the
-  gene's median tile-to-model ratio (at least 1).
+  gene's median tile-to-model ratio (at least 1). The scores are taken at the
+  patient's own slope because at the shared fit they carry the patient's
+  departure from the pooled slope ($\tilde\ell$ is spatially smooth, so its
+  tile sums do not cancel). $v^{\text{tile}}$ would then grow with the
+  departure, and weight the patients furthest from the pooled slope least,
+  pulling each condition's mean toward it (spiDE <= 0.99.31).
 
 The condition-specific test uses $v^{\text{tile}}$. The pooled test uses
 $v^{\text{model}} f_{sn}$, with one factor per (patient, niche),

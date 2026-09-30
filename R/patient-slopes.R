@@ -15,9 +15,15 @@
 #   v_model = diag(I_s^-1), which treats a patient's cells as independent; and
 #   v_tile, a within-patient SPATIAL sandwich I_s^-1 (sum_t U_t U_t') I_s^-1 *
 #     T / (T - 1) over square tiles t of side `tile` in the patient's section(s),
-#     U_t = sum_{i in t} l~_i r_i. Residual expression is spatially
+#     U_t = sum_{i in t} l~_i (r_i - w_i l~_i' delta_s), the scores at the
+#     patient's own one-step slope. Residual expression is spatially
 #     autocorrelated, so for cell-rich patients v_model understates the slope's
-#     variance. Patients with fewer than `min.tiles` tiles get v_model x the
+#     variance. The residuals are updated by the patient's own step because at
+#     the shared fit they carry the patient's departure from the pooled slope
+#     (l~ is spatially smooth, so its tile sums do not cancel): v_tile then grew
+#     with the departure, and as a weight it pulled each condition's mean toward
+#     the pooled slope, attenuating the contrast (to 0.99.31;
+#     research/bench2/diag/FINDINGS.md). Patients with fewer than `min.tiles` tiles get v_model x the
 #     gene's median tile/model ratio (at least 1).
 # The condition test uses v_tile. The pooled test uses v_model x f_sn, a single
 # per-(patient, niche) factor f_sn = max(1, median over genes of v_tile /
@@ -70,7 +76,8 @@
         vv[s, ] <- diag(Iinv)[seq_len(nt)]
         tt <- tiles[i]; nT <- length(unique(tt))
         if (nT >= min.tiles) {
-          Ut <- rowsum(Lt * r[i], tt)
+          # scores at the patient's own slope: the departure d is removed
+          Ut <- rowsum(Lt * (r[i] - ws * as.numeric(Lt %*% d)), tt)
           Ut <- sweep(Ut, 2, colMeans(Ut))
           Vs <- Iinv %*% crossprod(Ut) %*% Iinv * nT / (nT - 1)
           vt[s, ] <- diag(Vs)[seq_len(nt)]

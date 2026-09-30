@@ -113,7 +113,7 @@ bandwidth per fit. `testNicheAbundance()` and `spiGSEA()` sit beside it.
    could not fit drop out; a dispersion on its search bound takes the bound, mean refitted.
    - **slopes engine** (default): one condition-free fit, then `.patientSlopes()`: each patient's
      one-step NB slope from the shared fit, with `v_model` and a within-patient spatial tile
-     sandwich `v_tile` (tiles of `3 * sigma`); `.patientFactor()` = per-(patient, niche)
+     sandwich `v_tile` (tiles of `3 * sigma`; scores at the patient's own one-step slope, 0.99.32); `.patientFactor()` = per-(patient, niche)
      `max(1, median_g v_tile / v_model)` for the pooled test.
    - **sandwich engine**: the pooled model and, with a condition, the condition x niche model;
      `.sandwichCR2()` = low-rank CR2 + Bell-McCaffrey df (`strata` enters the condition model
