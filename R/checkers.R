@@ -175,3 +175,13 @@ checkNiche <- function(spe, sigma, name = "Niche") {
   }
   invisible(TRUE)
 }
+
+# The patient intercepts a plot or accessor reads; fits from spiDE <= 0.99.33
+# did not keep them.
+checkIntercepts <- function(xi, what) {
+  if (is.null(xi$intercept)) {
+    stop(sprintf("%s needs the patient intercepts that fitSpiDE() keeps from spiDE 0.99.34 on: ", what),
+         "refit this object with the installed spiDE", call. = FALSE)
+  }
+  invisible(TRUE)
+}

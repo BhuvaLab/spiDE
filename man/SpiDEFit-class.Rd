@@ -37,6 +37,12 @@ fit them or their coefficients ran off, the latter also counted as
 \code{depth = "spatial_spline"}, \code{depth_r2} (patients x niches: the
 \eqn{R^2} of each niche column on the patient's library-size spline, a
 diagnostic of how much of the niche covariate the spline could absorb).
+From spiDE 0.99.34 both also hold \code{intercept} (genes x patients:
+each patient's intercept in the shared, condition-free fit; see
+\code{\link[=patientIntercepts]{patientIntercepts()}}), \code{niche_mean} (patients x niches: the mean
+log1p density of each tested niche over the patient's index cells),
+\code{loglib_mean} (the patients' mean log library size) and
+\code{ncells} (the patients' index cells).
 }
 \section{Slots}{
 

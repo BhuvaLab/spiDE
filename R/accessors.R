@@ -87,3 +87,57 @@ setMethod("patientSlopes", "SpiDEResults", function(object, ...) {
   .assertCurrent(object)
   patientSlopes(object@fit, ...)
 })
+
+#' Each patient's intercept
+#'
+#' Every index type's shared fit has an intercept per patient and gene: the
+#' patient's expression level of the gene in that type, at a common reference
+#' (zero niche density, the index type's mean depth). The intercepts absorb
+#' every difference between patients -- the condition's main effect,
+#' composition, batch -- which is why the niche slopes are within-patient
+#' slopes. [plotPatientEffects()] shows what they capture. Kept by
+#' [fitSpiDE()] from spiDE 0.99.34 on, for both engines.
+#'
+#' @param object a [SpiDEFit-class] or [SpiDEResults-class].
+#' @param gene,index optional character vectors to subset.
+#' @param ... unused.
+#' @return a data.frame: \code{gene}, \code{index}, \code{patient},
+#'   \code{intercept} (log scale), \code{ncells} (the patient's cells of the
+#'   index type), plus the patient-level colData columns recorded by
+#'   [fitSpiDE()].
+#' @examples
+#' data(toySpiDE)
+#' spe <- buildNiches(toySpiDE, sigma = 30)
+#' fit <- fitSpiDE(spe, index = "A", sigma = 30, verbose = FALSE)
+#' head(patientIntercepts(fit, gene = "G1"))
+#' @rdname patientIntercepts
+#' @export
+setMethod("patientIntercepts", "SpiDEFit", function(object, gene = NULL, index = NULL, ...) {
+  .assertCurrent(object)
+  out <- list()
+  for (k in intersect(if (is.null(index)) names(object@index) else index, names(object@index))) {
+    x <- object@index[[k]]
+    checkIntercepts(x, "patientIntercepts()")
+    gi <- if (is.null(gene)) seq_along(x$genes) else which(x$genes %in% gene)
+    if (!length(gi)) next
+    g <- expand.grid(g = gi, s = seq_along(x$patients))
+    out[[k]] <- data.frame(gene = x$genes[g$g], index = k, patient = x$patients[g$s],
+                           intercept = x$intercept[cbind(g$g, g$s)], ncells = unname(x$ncells[g$s]),
+                           stringsAsFactors = FALSE)
+  }
+  d <- do.call(rbind, out)
+  if (is.null(d)) return(data.frame())
+  pt <- object@patients
+  d <- merge(d, pt[, setdiff(colnames(pt), "ncells"), drop = FALSE], by = "patient", all.x = TRUE, sort = FALSE)
+  d <- d[order(d$index, d$gene, d$patient),
+         c("gene", "index", "patient", setdiff(colnames(d), c("gene", "index", "patient")))]
+  rownames(d) <- NULL
+  d
+})
+
+#' @rdname patientIntercepts
+#' @export
+setMethod("patientIntercepts", "SpiDEResults", function(object, ...) {
+  .assertCurrent(object)
+  patientIntercepts(object@fit, ...)
+})
