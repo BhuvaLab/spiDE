@@ -55,15 +55,16 @@
 
 # The pooled test of one (index, niche) column: G x S slopes b and variances v,
 # with tau2 (G): moderated limma on an intercept, the trended prior over the
-# column's gene family, the df capped by the Kish effective patients.
-.pooledColumnTest <- function(b, v, tau2, mean_expr, min.pooled = 6L) {
+# column's gene family (trend = FALSE: a flat prior, for spiGSEA's few sets),
+# the df capped by the Kish effective patients.
+.pooledColumnTest <- function(b, v, tau2, mean_expr, min.pooled = 6L, trend = TRUE) {
   des <- matrix(1, ncol(b), 1)
   wts <- 1 / (v + tau2)
   wts[!is.finite(wts) | !is.finite(b)] <- NA
   wts <- wts / rowMeans(wts, na.rm = TRUE)
   fit <- suppressWarnings(limma::lmFit(b, des, weights = wts))
   fit$Amean <- log(mean_expr + 1e-3)
-  fit <- suppressWarnings(limma::eBayes(fit, robust = TRUE, trend = TRUE))
+  fit <- suppressWarnings(limma::eBayes(fit, robust = TRUE, trend = trend))
   est <- fit$coefficients[, 1]
   tt <- fit$t[, 1]
   df <- pmin(fit$df.total, .kishDf(wts, b, 1L))
