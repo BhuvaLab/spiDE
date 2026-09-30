@@ -1,3 +1,22 @@
+# spiDE 0.99.33
+
+* **Slopes engine: a niche type missing from a patient no longer drops the
+  patient.**
+  - **The bug.** A patient's slopes were estimated jointly over all the
+    index type's niche columns. A niche type absent from the patient's tissue
+    (or of constant density across its cells) leaves a zero column, and the
+    rank check then discarded the patient for every niche, not only the empty
+    one.
+  - **Who it hit.** Designs with rare niche types. On the public cohorts a
+    single patient (GSE289194). With many fine cell types almost every patient
+    lacks one, and nearly all slopes were lost.
+  - **The fix.** A constant column is dropped for that patient only, which
+    gives no slope for that niche. The other slopes are unchanged, because a
+    zero column carries no information about the rest. A patient with every
+    niche present is computed exactly as before.
+  - An existing fit must be refitted: the slopes are computed in
+    `fitSpiDE()`.
+
 # spiDE 0.99.32
 
 * **Slopes engine: a new condition test.**

@@ -60,20 +60,29 @@
         # a non-finite weight or residual (an overflowing mean) would make
         # eigen() stop and take the whole gene block with it: this patient drops
         if (!all(is.finite(Is)) || !all(is.finite(us))) next
-        e <- eigen(Is, symmetric = TRUE)
-        # a patient whose niche columns are (near) collinear within its cells
-        # gives no usable slope for this gene: it drops out, not the gene
+        # a niche type absent from this patient's tissue (or constant across its
+        # cells) has a zero column after centring: the patient has no slope for
+        # that niche, and only that slope drops. The other slopes are unchanged,
+        # since a zero column has no cross-information with the rest.
+        dg <- diag(Is)
+        keep <- which(dg > max(dg, 1e-12) * 1e-10)
+        if (!length(keep)) next
+        e <- eigen(Is[keep, keep, drop = FALSE], symmetric = TRUE)
+        # a patient whose remaining niche columns are (near) collinear within its
+        # cells gives no usable slope for this gene: it drops out, not the gene
         if (!all(is.finite(e$values)) || e$values[length(e$values)] <= max(e$values[1], 1e-12) * 1e-8) next
         Iinv <- e$vectors %*% (t(e$vectors) / e$values)
-        d <- Iinv %*% us
+        d <- vd <- rep(NA_real_, ncol(Is))
+        d[keep] <- Iinv %*% us[keep]
+        vd[keep] <- diag(Iinv)
         bb[s, ] <- (beta + d)[seq_len(nt)]
-        vv[s, ] <- diag(Iinv)[seq_len(nt)]
+        vv[s, ] <- vd[seq_len(nt)]
         tt <- tiles[i]; nT <- length(unique(tt))
         if (nT >= min.tiles) {
-          Ut <- rowsum(Lt * r[i], tt)
+          Ut <- rowsum(Lt[, keep, drop = FALSE] * r[i], tt)
           Ut <- sweep(Ut, 2, colMeans(Ut))
-          Vs <- Iinv %*% crossprod(Ut) %*% Iinv * nT / (nT - 1)
-          vt[s, ] <- diag(Vs)[seq_len(nt)]
+          vd[keep] <- diag(Iinv %*% crossprod(Ut) %*% Iinv) * nT / (nT - 1)
+          vt[s, ] <- vd[seq_len(nt)]
         }
       }
       rat <- apply(vt / vv, 2, stats::median, na.rm = TRUE)
