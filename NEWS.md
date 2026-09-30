@@ -26,12 +26,15 @@ and the API changes with it. Nothing below is backward compatible.
   `nbBlockDesign()` (requires SpaNorm >= 1.7.15), as in SpaNorm's
   library-size term)
   or `"none"`, and `offset =` an assay of per-gene log offsets (e.g. SpaNorm's
-  library-size component). Only `"loglib"` has been through the calibration
-  nulls; the others are being benchmarked (`research/bench2/`).
-* **Fit status.** A gene the solver cannot fit is left out rather than
-  tested at its starting values, and a gene whose dispersion optimum is on
-  its search bound takes that bound, with its mean refitted there; both are
-  counted per index type in the fit (`status`).
+  library-size component). A pre-registered benchmark on simulations fitted
+  to real cohorts (`research/bench2/`) found every option calibrated and
+  their biases within its tie margin, so `"loglib"`, the simplest, stays the
+  default; the calibration vignette has the numbers.
+* **Fit status.** A gene the solver cannot fit, or whose coefficients run
+  off (|coefficient| > 20 on the log scale), is left out rather than tested;
+  a gene whose dispersion optimum is on its search bound takes that bound,
+  with its mean refitted there. Both are counted per index type in the fit
+  (`status`).
 * **`testSpiDE()`** always runs the **pooled** test (is the niche slope
   non-zero across patients?) and, given a `condition`, the
   **condition-specific** test (does it differ between conditions?). By default

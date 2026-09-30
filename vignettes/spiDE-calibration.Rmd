@@ -11,12 +11,15 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-This is the one place in the package that quotes benchmark numbers. Every
-number below comes from the simplification study of 2026-09-28/29, whose
-report, scripts and findings live in the research repository
-(`research/simplify/`: `FINDINGS.md`, and the report *Simplifying spiDE* on
-the [research site](https://bhuvalab.github.io/spiDE-research/)). When a
-default changes on new evidence, this vignette changes with it.
+This is the one place in the package that quotes benchmark numbers. They come
+from two studies in the research repository: the simplification study of
+2026-09-28/29, which chose the engines (`research/simplify/`: `FINDINGS.md`,
+and the report *Simplifying spiDE* on the
+[research site](https://bhuvalab.github.io/spiDE-research/)), and the depth
+benchmark of 2026-09-30, which chose how sequencing depth enters
+(`research/bench2/`: the pre-registration and its dated log in
+`BENCHMARK.md`, the tables in `tables/`). When a default changes on new
+evidence, this vignette changes with it.
 
 # What "calibrated" means here
 
@@ -124,14 +127,71 @@ more powerful where it matters most, on effects that vary between patients.
 Use the sandwich engine when effects are expected to be shared by all
 patients, or as a check.
 
-# Not yet measured
+# Depth: why `depth = "loglib"` is the default
 
-- **Depth.** `depth = "loglib"` (one slope per gene on the centred log library
-  size) is the only option measured; `"nonlinear"`, `"spatial_spline"` and a
-  SpaNorm offset are implemented and unmeasured. A benchmark with a spatially varying,
-  gene-specific library-size model fitted to real cohorts, judging depth
-  handling against the estimand rather than by residual library-size
-  association, is under way; this section will report it.
+Library size in spatial data mixes technical capture with biological RNA
+content, and the content can depend on the niche. So depth handling was
+judged **against the estimand**, not by how little library-size association
+the residuals keep: removing all of it would also remove biology.
+
+**The benchmark.** A simulator fitted to real cohorts (real positions, cell
+types, patients and niche densities; a gene-specific, spatially varying
+library-size response taken from per-section SpaNorm fits) generated counts
+under six depth scenarios: independent depth, smooth technical depth,
+technical depth aligned with a niche, niche-driven RNA content, both of the
+last two together, and a doubled gene-specific response. Effects on the
+condition contrast were planted, shared by all patients or varying between
+them. Two estimands were scored: **technical depth removed** (the planted
+effect plus any niche-driven content) and **relative** (the planted effect
+alone). The decision rule was registered before any run.
+
+**Which templates count.** Only templates whose simulations passed a
+pre-registered realism gate carry the decision: GSE289194 (weight 1) and YTMA
+(weight 0.25, its data being under review). GSE282639 and GSE250346 failed
+the gate on the per-gene depth slope and are reported without weight.
+
+**Calibration.** Every depth option passed on GSE289194 in every scenario:
+per-band null RMS of `z` 0.93-1.00, permutation tails at most 0.015, and no
+false call on any of the 12 block-shifted grids per scenario. (YTMA: bands
+0.95-1.01, tails at most 0.024.)
+
+**Accuracy.** The worst scenario's relative bias of the condition contrast,
+technical-depth-removed estimand:
+
+| `depth` | GSE289194 | YTMA |
+|---|---|---|
+| spatial library-size spline | -0.130 | -0.221 |
+| `loglib` | -0.135 | -0.225 |
+| `nonlinear` | -0.135 | -0.226 |
+| SpaNorm library-size offset | -0.145 | -0.233 |
+
+Weighted, the options lie within 0.015 of each other, inside the
+pre-registered tie margin of 0.02, and the tie goes to the simplest:
+`"loglib"`. Power is the same for all of them (filtered-family true-positive
+rate 0.816-0.819 on GSE289194). The spatial spline is kept as an option: it
+costs 1.2-1.55 times the `"loglib"` fit.
+
+**Two findings to know when reading results.**
+
+- **Niche-driven RNA content is removed with depth.** When the niche raises a
+  cell's total RNA, every option that adjusts for observed library size also
+  removes that content from the pooled niche slope (relative bias about -0.7
+  against the technical-depth-removed estimand, in every depth option). A
+  pooled slope therefore reports expression relative to the cell's total
+  RNA. The condition contrast is affected only through content that differs
+  between conditions.
+- **The slopes engine understates the condition contrast**: by 10-14% on
+  GSE289194 and about 22% on YTMA, under both estimands, where the sandwich
+  engine is within 5%. Its tests stay calibrated and it keeps more than twice
+  the sandwich engine's power (true-positive rate 0.82 against 0.34 on
+  GSE289194), so the default is unchanged, but read its estimates as
+  conservative in size. The cause is being investigated (it is not the
+  one-step approximation of the per-patient slope).
+- **The sandwich engine's null spread ran wide on GSE289194**: up to 1.13 in
+  one expression band, outside the 0.90-1.10 limit, where every slopes-engine
+  option stayed inside it.
+
+# Not yet measured
 - **Gene sets.** `spiGSEA()` has not been through a gene-set null and is
   experimental.
 - **Bandwidth.** Each cohort was measured at one bandwidth.
