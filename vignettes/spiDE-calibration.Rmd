@@ -91,10 +91,10 @@ the sandwich engine is a refit:
 | GSE282639 | 0.99-1.01 (0) | 0.96-0.99 (0) | 1.01-1.04 | 0.02 / 0 |
 | GSE289194 | 1.03-1.06 (0) | 1.03-1.06 (0) | 1.06-1.10 | 0.02 / 0.06 |
 | YTMA | 0.99-1.00 (0) | 0.99-1.00 (0) | 1.00-1.02 | 0.04 / 0.14 |
-| YTMA stage | 1.00-1.01 (0.20) | 0.99-1.00 (0) | not run | not run |
+| YTMA stage | 1.00-1.01 (0.20) | 0.99-1.00 (0) | 1.00-1.02 | 0 / 0 |
 
-On the stage cohort (163 patients) a sandwich permutation is a refit of about an hour, and
-its permutation null was not run. The sandwich engine runs closer to a spread of 1 but less evenly. It reaches
+On the stage cohort (163 patients) a sandwich permutation is a refit of about an hour, so its
+permutation null has 40 permutations. The sandwich engine runs closer to a spread of 1 but less evenly. It reaches
 1.10 on GSE289194, its filtered procedure called in 7 of 50 permutations on
 YTMA, and it called in 2 of 10 block maps on the stage cohort. It is a useful
 second opinion; the slopes engine is the one to rely on.
