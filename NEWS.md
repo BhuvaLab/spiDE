@@ -11,9 +11,13 @@
     single patient (GSE289194). With many fine cell types almost every patient
     lacks one, and nearly all slopes were lost.
   - **The fix.** A constant column is dropped for that patient only, which
-    gives no slope for that niche. The other slopes are unchanged, because a
-    zero column carries no information about the rest. A patient with every
-    niche present is computed exactly as before.
+    gives no slope for that niche. The patient's other slopes are those it
+    would have had with every niche present, because a zero column carries no
+    information about the rest. The rank check now runs on the correlation
+    scale of the patient's information matrix, so it judges collinearity
+    alone. A niche column of small spread (a sparse niche's tail) no longer
+    drops the patient. Nor do columns on very different scales. A patient that
+    passed the check before gets the same slopes.
   - An existing fit must be refitted: the slopes are computed in
     `fitSpiDE()`.
 

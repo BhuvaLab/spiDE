@@ -89,6 +89,31 @@ test_that("a niche type absent from a patient's tissue drops that slope alone, n
   expect_equal(unname(x$beta[, p, "B"]), b, tolerance = 1e-6)
 })
 
+test_that("the per-patient rank check judges collinearity, not a niche column's scale", {
+  # a niche column shrunk 1e5-fold (a sparse niche's tail, or raw densities next to large
+  # ones) keeps every patient, leaves the other slopes and scales its own by 1e5
+  spe <- spe16
+  smp <- spe$sample_id
+  ik <- spiDE:::.indexCells(spe$cell_type, smp, "A", 10L)
+  NM <- SingleCellExperiment::reducedDim(spe, "Niche30")
+  nc <- spiDE:::.nicheColumns(NM, "A", ik)
+  L <- log1p(NM[ik, c(nc$tested, setdiff(nc$cols, nc$tested)), drop = FALSE])
+  Y <- SummarizedExperiment::assay(spe, "counts")[fit16@index$A$genes, ik, drop = FALSE]
+  des <- spiDE:::.indexDesign(L, NULL, factor(smp[ik]), tested = nc$tested)
+  fit <- spiDE:::.fitIndexGLM(Y, des)
+  tiles <- rep(seq_len(8), length.out = length(ik))
+  a <- spiDE:::.patientSlopes(fit, des, Y, L, tiles)
+  k <- 1e-5
+  L2 <- L; L2[, "C"] <- L2[, "C"] * k
+  des2 <- spiDE:::.indexDesign(L2, NULL, factor(smp[ik]), tested = nc$tested)
+  fit2 <- fit; fit2$alpha[, des$niche_cols[2]] <- fit$alpha[, des$niche_cols[2]] / k
+  b <- spiDE:::.patientSlopes(fit2, des2, Y, L2, tiles)
+  expect_equal(mean(is.finite(b$beta)), mean(is.finite(a$beta)))
+  expect_equal(b$beta[, , "B"], a$beta[, , "B"], tolerance = 1e-8)
+  expect_equal(b$beta[, , "C"] * k, a$beta[, , "C"], tolerance = 1e-8)
+  expect_equal(b$v_model[, , "C"] * k^2, a$v_model[, , "C"], tolerance = 1e-8)
+})
+
 test_that("the pooled test equals a direct limma fit with the effective df", {
   x <- fit16@index$A
   j <- 1L
