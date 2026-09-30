@@ -114,15 +114,19 @@ bandwidth per fit. `testNicheAbundance()` and `spiGSEA()` sit beside it.
    - **slopes engine** (default): one condition-free fit, then `.patientSlopes()`: each patient's
      one-step NB slope from the shared fit, with `v_model` and a within-patient spatial tile
      sandwich `v_tile` (tiles of `3 * sigma`); `.patientFactor()` = per-(patient, niche)
-     `max(1, median_g v_tile / v_model)` for the pooled test.
+     `max(1, median_g v_tile / v_model)`, which scales `v_model` in both tests.
    - **sandwich engine**: the pooled model and, with a condition, the condition x niche model;
      `.sandwichCR2()` = low-rank CR2 + Bell-McCaffrey df (`strata` enters the condition model
      only, as strata x niche nuisance columns; treatment-coded in the pooled model they made its
      slope the first stratum's, fixed in 0.99.31).
-3. **Test** (`R/testSpiDE.R`, `R/test-slopes.R`): slopes engine: per (index, niche) column, limma
-   across patients weighted by `1 / (v + tau2_DL)`, `eBayes(trend = TRUE, robust = TRUE)` on log
-   mean expression, df = `min(df.total, Kish n_eff - p)` (`.slopeColumnTest()`). Pooled test uses
-   `v_model * factor`; condition test uses `v_tile`. `.bhFamilies()`: pooled BH over every
+3. **Test** (`R/testSpiDE.R`, `R/test-slopes.R`): slopes engine: per (index, niche) column, the
+   patients' slopes weighted by `1 / (v_model * factor + tau2_DL)` in both tests. Pooled test:
+   limma, `eBayes(trend = TRUE, robust = TRUE)` on log mean expression, df = `min(df.total, Kish
+   n_eff - 1)` (`.pooledColumnTest()`). Condition test (0.99.32): the same weighted least squares
+   on `[1, condition, strata]` with an HC2 SE across patients and Bell-McCaffrey df
+   (`.robustConditionTest()`; to 0.99.31 limma weighted by the gene's own `v_tile`, which
+   attenuated the contrast: `research/bench2/diag/FINDINGS.md`, `research/release/`).
+   `.bhFamilies()`: pooled BH over every
    triplet; condition BH over the triplets whose pooled q < `fdr` (`procedure = "filtered"`,
    default) or all. `results(test = )` reads one table; `patientSlopes()` the per-patient slopes.
 
@@ -158,8 +162,11 @@ numbers.** Before changing a default, read:
   niche field shifted toroidally, `.blockShuffle()`) and the **permutation null** (condition
   permuted across patients within slide, `.permLabels()`), against the calibration gate: per
   expression band median null RMS of z in [0.90, 1.10], block tail <= 0.10, permutation tail
-  <= 0.07. The slopes engine passes in all five comparisons; the sandwich engine all but one
-  borderline filtered-procedure tail (GSE289194).
+  <= 0.07. `research/release/` measures the SHIPPED package on the five comparisons with fresh
+  nulls (block grids 51-60, permutation seed 20261004; `README.md` is its pre-registration and
+  dated log, `R/11_release_score.R` its scorer). There the slopes engine of 0.99.32 passes
+  everywhere, and the sandwich engine misses on GSE289194 (band 1.10), YTMA (filtered tail) and
+  stage (pooled block tail).
 - **YTMA is down-weighted** (user directive 2026-09-29: suspected data issues). The three public
   cohorts (GSE250346, GSE282639, GSE289194) carry decisions; YTMA enters sensitivity analyses at
   weight 0.25. Under the pre-registered equal-weight rule the sandwich engine would have stayed the
@@ -172,8 +179,19 @@ numbers.** Before changing a default, read:
   (SpaNorm offset equivalent to raw + loglib) is withdrawn. `research/bench2/` holds the new
   benchmark (spline-based, gene-specific LS simulator fitted to real templates; depth options
   `spatial_spline`, `nonlinear`, `spanorm_offset`, `spanorm_covariate`); its README is
-  pre-registered before any run. SpaNorm's block design for the spatial LS spline is on SpaNorm
-  branch `feature/block-design`.
+  pre-registered before any run. Outcome (2026-09-30): the options tie within 0.02, so `"loglib"`
+  stays the default; the spatial spline is kept as an option (compact block design, SpaNorm
+  >= 1.7.15). Its run `final` scores the 0.99.32 default arm (`R/12_compare_runs.R`).
+- **The condition test (0.99.32).** Weighting it by each gene's own `v_tile` attenuated the
+  contrast (`research/bench2/diag/FINDINGS.md`); gene-shared weights with limma's SE failed
+  GSE250346's block null on marker genes; the tile variance at each patient's own slope was
+  conservative on GSE289194. The shipped test (gene-shared weights, HC2 SE, Bell-McCaffrey df,
+  >= 3 Kish-effective patients per group) was chosen on spent nulls and confirmed on untouched
+  ones (`research/release/README.md`, log 2026-10-01). bench2's block null scores the condition
+  test only from run `robustse` on.
+- **Gene sets (0.99.32).** `spiGSEA()` tests a set's per-patient slope with the gene tests;
+  `research/release/R/15_gsea_null.R` and `R/17_gsea_score.R` are its null (GO BP sets, 20 block
+  grids, 200 permutations per cohort).
 - **Composition.** Between-patient association of niche abundance with expression is real signal
   that the patient intercepts absorb by design (it inflated the mixed model's slopes before 0.99.17;
   archived CLAUDE.md, "The cause"). `testNicheAbundance()` tests it on pseudobulk; never report it
@@ -182,7 +200,8 @@ numbers.** Before changing a default, read:
 
 ### Open items
 
-- `spiGSEA()` is experimental: no gene-set null has been run.
+- `spiGSEA()` over many sets (~20,000 MSigDB sets) is minutes per call; its condition test is
+  parallel over sets (`BPPARAM`), the pooled test is limma over all sets of a column.
 - Under `depth = "spatial_spline"` the sandwich engine's CR2 SE sits within ~1.5% of
   clubSandwich's full-design CR2, whose own absorbed and full answers differ by up to 2.4% with
   multi-column blocks; the df agree to two decimals (`tests/testthat/test-depth.R`).
@@ -230,7 +249,8 @@ before an array and size from `sstat`/`seff` (`hpc-job-sizing`). Commit, never p
 ## Where the evidence lives
 
 - `vignettes/spiDE-model.Rmd` (the model), `vignettes/spiDE-calibration.Rmd` (the numbers).
-- `research/simplify/` (the engines), `research/bench2/` (the depth benchmark, in progress),
+- `research/simplify/` (the engines), `research/bench2/` (the depth benchmark and the condition
+  test's attenuation, `diag/`), `research/release/` (the shipped package on the real cohorts),
   `research/public/` (the three public cohorts: builders, nulls, `FINDINGS.md`).
 - `research/mixed/` (the archived mixed model and its whole evidence trail, including
   `CLAUDE-spiDE-0.99.22.md`), `research/reports/benchmarks/` and `research/docs/` (its six reports,

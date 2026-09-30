@@ -3,7 +3,7 @@
 \name{spiGSEA}
 \alias{spiGSEA}
 \alias{spiGSEA,SpiDEResults-method}
-\title{Gene-set tests on spiDE's niche results (experimental)}
+\title{Gene-set tests on spiDE's niche results}
 \usage{
 spiGSEA(object, genesets, ...)
 
@@ -11,52 +11,72 @@ spiGSEA(object, genesets, ...)
   object,
   genesets,
   test = NULL,
+  type = c("competitive", "self-contained"),
   min.size = 5L,
   max.size = 500L,
-  rho = NULL,
+  BPPARAM = BiocParallel::SerialParam(),
   ...
 )
 }
 \arguments{
-\item{object}{a \link[=SpiDEResults-class]{SpiDEResults}.}
+\item{object}{a \link[=SpiDEResults-class]{SpiDEResults} from the slopes engine.}
 
 \item{genesets}{a named list of character vectors of gene names.}
 
 \item{...}{unused.}
 
-\item{test}{\code{NULL} (the condition-specific test if run, else pooled),
-\code{"condition"} or \code{"pooled"}.}
+\item{test}{\code{"pooled"}, \code{"condition"} or both (the default: every
+test the results hold).}
 
-\item{min.size, max.size}{set size limits after intersecting with the tested
-genes of each index type.}
+\item{type}{\code{"competitive"} (default) or \code{"self-contained"}.}
 
-\item{rho}{\code{NULL} (estimate it, slopes engine) or a fixed inter-gene
-correlation.}
+\item{min.size, max.size}{set size limits after intersecting with the genes
+tested in each index type.}
+
+\item{BPPARAM}{a BiocParallelParam; the condition-specific test is run in
+parallel over sets.}
 }
 \value{
-a data.frame: \code{set}, \code{index}, \code{niche}, \code{test},
-\code{size}, \code{mean_z}, \code{t}, \code{p}, \code{q} (BH within each
-(index, niche) column), \code{direction} and \code{rho}.
+a data.frame, one row per (set, index, niche, test):
+\code{size} (genes of the set tested there), \code{estimate} (the mean set
+slope, pooled, or its difference between conditions, in units of the
+genes' between-patient spread), \code{se}, \code{t}, \code{df}, \code{p},
+\code{q} (Benjamini-Hochberg within the (index, niche, test) column),
+\code{q.global} (over every row of that test), \code{n_patients} and
+\code{direction}.
 }
 \description{
-For every (index cell type, niche cell type) column of a test, asks whether
-the genes of a set change with the niche more than the other tested genes
-(a competitive test, as in \code{limma::camera()}): per-gene signed
-\eqn{z}-scores from the test's p-values are averaged over the set and
-compared with the rest, with the set's variance inflated by
-\eqn{1 + (m - 1)\rho} for inter-gene correlation \eqn{\rho}. With the slopes
-engine \eqn{\rho} is the mean correlation between genes of the per-patient
-slopes in that column; otherwise it is \code{rho} (default 0).
+Asks, for every gene set and every (index cell type, niche cell type)
+column, whether the set's genes as a group change with the niche (the
+pooled test) or change with it differently between the two conditions (the
+condition-specific test).
 }
 \details{
-\strong{Experimental.} This replaces the mixed model's \code{spiGSEA()}
-(archived in spiDEmixed); it has not yet passed a gene-set null benchmark
-on the new engines, so its calls should be treated as exploratory.
+A gene set is tested exactly like a gene. Every patient gets a slope for the
+set: the average of its genes' niche slopes in that patient, each gene's
+slope first put on a common scale (divided by the gene's typical spread of
+slopes between patients, so a highly expressed gene does not dominate). By
+default the set's slope is \emph{competitive}: the same average over the
+column's other tested genes is subtracted, so the test asks whether the set
+moves \emph{more} than the typical gene. This guards against a shift that
+moves every gene, e.g. from segmentation spillover. With \code{type =
+"self-contained"} nothing is subtracted.
+
+The patients' set slopes then go through the same pooled and condition
+tests as the genes' slopes (see \code{\link[=testSpiDE]{testSpiDE()}} and the model vignette).
+Because the patient is the unit of replication, the correlation between the
+genes of a set is accounted for without being estimated: it is already in
+how much the set's slope varies from patient to patient.
+
+Needs the slopes engine, whose fit holds each patient's slopes.
 }
 \examples{
 data(toySpiDE)
 res <- spiDE(toySpiDE, condition = "condition", sigma = 30, index = "A",
              procedure = "all")
 sets <- list(first = paste0("G", 1:5), second = paste0("G", 6:12))
-spiGSEA(res, sets, test = "pooled", min.size = 3)
+spiGSEA(res, sets, min.size = 3)
+}
+\seealso{
+\code{\link[=testSpiDE]{testSpiDE()}}
 }

@@ -25,6 +25,8 @@
 #' @param strata \code{NULL} (the fit's) or a patient-level column adjusted for
 #'   in the slopes engine's condition test (e.g. slide, where the condition is
 #'   confounded with it).
+#' @param BPPARAM a BiocParallelParam; the slopes engine's condition-specific
+#'   test is run in parallel over genes.
 #' @param ... unused.
 #' @return a [SpiDEResults-class]; read it with [results()].
 #' @examples
@@ -39,7 +41,7 @@
 setMethod(
   "testSpiDE", "SpiDEFit",
   function(object, condition = NULL, procedure = c("filtered", "all"), fdr = 0.05,
-           strata = NULL, ...) {
+           strata = NULL, BPPARAM = BiocParallel::SerialParam(), ...) {
     .assertCurrent(object)
     procedure <- match.arg(procedure)
     checkFdr(fdr)
@@ -61,7 +63,7 @@ setMethod(
         st <- if (!is.null(trt) && !is.null(strata)) {
           stats::setNames(as.character(pt[[strata]]), pt$patient)[x$patients]
         } else NULL
-        tk <- .slopesTests(x, trt = trt, strata = st)
+        tk <- .slopesTests(x, trt = trt, strata = st, BPPARAM = BPPARAM)
       } else {
         tk <- x$coef
         if (is.null(condition)) tk <- tk[tk$test == "pooled", , drop = FALSE]

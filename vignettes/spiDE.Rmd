@@ -115,21 +115,18 @@ added with `covariates`.
 `engine` chooses how the between-patient error is estimated:
 
 - **`"slopes"`** (the default) fits the model once, without the condition,
-  then estimates every patient's own niche slopes (a one-step negative
-  binomial estimate from the shared fit) with a within-patient spatial
-  variance. `testSpiDE()` combines them across patients with weighted
-  `limma`, allowing the slope to vary between patients. Because the fit
+  then estimates every patient's own niche slopes, each with a variance that
+  allows for spatially correlated cells. `testSpiDE()` combines them across
+  patients, allowing the slope to vary between patients. Because the fit
   never sees the condition, any patient-level condition can be tested
   afterwards, and a permutation of the condition reruns only the test.
 - **`"sandwich"`** fits the condition-specific model directly and tests its
-  coefficients with a patient-clustered CR2 sandwich and Bell-McCaffrey
-  degrees of freedom. It needs the condition at fit time.
+  coefficients with a patient-clustered sandwich standard error. It needs the
+  condition at fit time.
 
-The slopes engine passes every calibration null of five comparisons in four
-spatial cohorts, and the sandwich engine all but one borderline tail. The
-slopes engine is the more powerful when effects vary between patients, the
-sandwich engine competitive when every patient shares the effect; the
-calibration vignette gives the numbers.
+The slopes engine is the more powerful, most of all when effects vary between
+patients, and it is needed for `spiGSEA()`. The model vignette explains both
+engines, and the calibration vignette shows how they hold up on real data.
 
 ## Each patient's slopes
 
@@ -187,6 +184,28 @@ per unit `log1p` density (`q` =
 res <- spiDE(toySpiDE, condition = "condition", sigma = 30)
 ```
 
+# Gene sets
+
+`spiGSEA()` tests gene sets the way `testSpiDE()` tests genes. Each patient
+gets a slope for the set: the average of its genes' slopes, each gene put on a
+common scale. By default the average over all other tested genes is
+subtracted, so a set is called when it moves *more than the typical gene*
+(`type = "competitive"`). The set slopes then go through the pooled and the
+condition-specific test, so the correlation between genes of a set is
+accounted for without being estimated. Any named list of gene symbols works,
+for example MSigDB collections from the `msigdb` package:
+
+```{r gsea}
+sets <- list(planted = c("G1", "G2", "G3"), other = paste0("G", 4:8),
+             rest = paste0("G", 9:20))
+gs <- spiGSEA(res, sets, min.size = 3)
+head(gs[, c("set", "index", "niche", "test", "size", "estimate", "p", "q", "q.global")])
+```
+
+`q` adjusts within each (index, niche, test) column and `q.global` over every
+set, index and niche of a test. With many sets and many columns, `q.global`
+is the one to read.
+
 # A different question: niche abundance
 
 spiDE's slopes are within-patient. A patient whose index cells sit among many
@@ -213,10 +232,9 @@ Never report a result of one as a result of the other.
   otherwise.
 - **Counts must be integers.** A back-transformed normalised assay is not a
   count and is refused.
-- **Objects from spiDE 0.99.22 and earlier** came from a different model (a
-  joint mixed-effects GLM). They cannot be read by this version; the engine
-  is archived as the research package `spiDEmixed` (`research/mixed` in the
-  spiDE repository), whose `readSpiDE()` reads them.
+- **Objects from spiDE 0.99.22 and earlier** came from a different model and
+  are refused by this version, with a message naming the archive that reads
+  them.
 
 # Session information
 

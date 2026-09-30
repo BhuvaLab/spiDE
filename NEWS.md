@@ -1,3 +1,42 @@
+# spiDE 0.99.32
+
+* **Slopes engine: a new condition test.**
+  - **What it is.** The condition x niche contrast is now weighted least squares
+    across patients, with the pooled test's weights
+    `1 / (v_model * factor + tau2)`, an HC2 standard error and Bell-McCaffrey
+    df.
+  - **Why the weights changed.** Through 0.99.31 the test was limma weighted by
+    each gene's own tile variance `v_tile`. `v_tile` is computed at the shared,
+    condition-free fit, so it grows with a patient's departure from the pooled
+    slope. As a weight it gave the patients furthest from that slope the least
+    say, which pulled each condition's mean toward it and attenuated the
+    contrast (`research/bench2/diag/FINDINGS.md`).
+  - **Why the SE changed.** With the gene-shared weights, limma's model-based
+    SE let spatially patterned marker genes through a real-data block null. The
+    robust SE does not (`research/release/README.md`).
+  - **What is unchanged.** The fit and the pooled test: an existing fit needs
+    only `testSpiDE()` again.
+  - The calibration vignette has the re-measured nulls.
+* **Strata.** A condition fully confounded with `strata` is now refused by the
+  slopes engine. Before, the strata column was silently dropped and the
+  condition tested unadjusted.
+* **`spiGSEA()` rewritten.**
+  - **The method.** A gene set is now tested like a gene. Each patient gets a
+    set slope: the mean of its genes' slopes, each scaled by the gene's
+    between-patient spread, less the other genes' mean (`type =
+    "competitive"`, the default) or not (`"self-contained"`). The set slopes
+    go through the pooled and condition-specific tests.
+  - **Correlation between genes** needs no estimate: the patient is the unit.
+  - **Calibration.** The gene-set null is calibrated on the five cohorts (the
+    calibration vignette), so the function is no longer experimental.
+  - **Output.** Adds `q.global`, `se`, `df` and `n_patients`; drops `rho`.
+  - **Engine.** Slopes engine only.
+* **`testSpiDE()` and `spiGSEA()` take `BPPARAM`** for the condition-specific
+  test, and `spiDE()` passes its own on.
+* **Vignettes rewritten for users.** The model is explained step by step,
+  plainly and with the formulae; the calibration vignette gives the checks on
+  real and simulated data.
+
 # spiDE 0.99.31
 
 * **Sandwich engine: `strata` no longer enter the pooled model.** In 0.99.30
