@@ -90,7 +90,7 @@ plotPatientSlopes <- function(x, gene, index, niche, ci = 0.95) {
     guides(colour = "none", size = guide_legend(order = 1, override.aes = list(colour = .spideCols[["grey"]])),
            fill = guide_legend(order = 2)) +
     theme_spiDE() + theme(axis.text.y = element_text(size = rel(0.65)))
-  if (length(x@condition)) p <- p + labs(caption = sprintf("Δ: slope difference, %s", x@contrast))
+  if (length(x@condition)) p <- p + labs(caption = sprintf("\u0394: slope difference, %s", x@contrast))
   p
 }
 
@@ -101,7 +101,7 @@ plotPatientSlopes <- function(x, gene, index, niche, ci = 0.95) {
   r <- .tripletRows(x@table, if (cond) "condition" else "pooled", gene, index, niche)
   est <- ifelse(is.finite(r$estimate), formatC(r$estimate, format = "f", digits = 2, flag = "+"), "NA")
   stats::setNames(sprintf('atop(%s, scriptstyle("%s = %s, q = %s"))', .itGene(gene),
-                          if (cond) "Δ" else "slope", est, .fmtq(r$q)), gene)
+                          if (cond) "\u0394" else "slope", est, .fmtq(r$q)), gene)
 }
 
 #' What the patient intercepts, or slopes, capture

@@ -58,3 +58,32 @@ test_that("merged niches: the plots accept the group, the fold pools its members
   builds(plotTopTriplets(rmg, spe = sm, n = 5))
   builds(plotCallMap(rmg))
 })
+
+test_that("plotTripletHeatmap() draws genes, marks calls, greys untested cells", {
+  p <- plotTripletHeatmap(res, test = "pooled", n = 8)
+  builds(p)
+  expect_true(all(c("feature", "index", "niche", "t", "called") %in% names(p$data)))
+  expect_equal(length(unique(p$data$feature)), 8L)
+  r2 <- res
+  r2@table <- r2@table[!(r2@table$gene == "G2" & r2@table$index == "B"), ]
+  p <- plotTripletHeatmap(r2, features = c("G1", "G2"), test = "pooled")
+  b <- builds(p)
+  expect_true(any(vapply(b$data, function(l) nrow(l) > 0 && "linetype" %in% names(l), logical(1))))
+})
+
+test_that("plotTripletHeatmap() draws spiGSEA() sets", {
+  gs <- spiGSEA(res, list(one = paste0("G", 1:5), two = paste0("G", 6:12), three = paste0("G", 13:20)),
+                min.size = 3)
+  p <- plotTripletHeatmap(gs, test = "pooled")
+  builds(p)
+  expect_setequal(unique(as.character(p$data$feature)), c("one", "two", "three"))
+  expect_error(plotTripletHeatmap(data.frame(a = 1)), "SpiDEResults or a spiGSEA")
+})
+
+test_that("plotPValues() draws each test in expression fifths", {
+  p <- plotPValues(res)
+  b <- builds(p)
+  expect_true(all(c("p", "test", "band") %in% names(p$data)))
+  expect_equal(nlevels(p$data$band), 5L)
+  expect_setequal(as.character(unique(p$data$test)), c("pooled", "condition"))
+})

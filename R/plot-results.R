@@ -162,9 +162,9 @@ plotTopTriplets <- function(x, test = NULL, n = 30L, gene = NULL, index = NULL, 
     geom_point(aes(shape = .data$marker), size = 2, fill = "white", stroke = 0.8) +
     .scaleDirection(.directionLabels(x, test)) +
     scale_shape_manual(values = c(`FALSE` = 16, `TRUE` = 24), breaks = "TRUE",
-                       labels = sprintf("≥ %g-fold higher\nin the niche type", fold), name = NULL,
+                       labels = sprintf("\u2265 %g-fold higher\nin the niche type", fold), name = NULL,
                        drop = FALSE) +
-    scale_alpha_manual(values = c(yes = 1, no = 0.35), name = sprintf("q ≤ %s", format(fdr)), drop = FALSE) +
+    scale_alpha_manual(values = c(yes = 1, no = 0.35), name = sprintf("q \u2264 %s", format(fdr)), drop = FALSE) +
     scale_y_discrete(labels = .parseLabels) +
     labs(x = if (test == "pooled") "slope on niche density (log1p)" else sprintf("slope difference (%s)", x@contrast),
          y = NULL, colour = NULL) +
@@ -226,7 +226,7 @@ plotSpillover <- function(x, spe, test = "pooled", fold = 4, label = 6L, fdr = x
   ggplot(tab, aes(.data$fold, .data$z)) +
     annotate("rect", xmin = log2(fold), xmax = Inf, ymin = -Inf, ymax = Inf, fill = .spideCols[["faint"]]) +
     annotate("text", x = Inf, y = -Inf, hjust = 1.05, vjust = -0.5, size = 3.4,
-             label = sprintf("%d of %d calls\n≥ %g-fold in niche type", sum(mk), sum(called), fold)) +
+             label = sprintf("%d of %d calls\n\u2265 %g-fold in niche type", sum(mk), sum(called), fold)) +
     geom_hline(yintercept = 0, linewidth = 0.3) +
     geom_vline(xintercept = log2(fold), linetype = "dashed", linewidth = 0.4) +
     geom_point(data = function(d) d[d$status == "not called", ], aes(colour = .data$status), size = 0.7, shape = 16) +
@@ -236,4 +236,133 @@ plotSpillover <- function(x, spe, test = "pooled", fold = 4, label = 6L, fdr = x
     labs(x = "log2 fold (niche type / index type)", y = "signed z", colour = NULL) +
     guides(colour = guide_legend(override.aes = list(size = 2.5))) +
     theme_spiDE()
+}
+
+#' Niche-response profiles of genes or gene sets
+#'
+#' Features (genes, or gene sets from [spiGSEA()]) against every (index,
+#' niche) column: the fill is the test's t (amber: the slope rises with the
+#' niche's density, or is steeper in the second condition; violet: the
+#' reverse), a dot marks a call, grey a feature not tested in that index type.
+#' Rows are clustered on their t profiles. Read it for a gene's or pathway's
+#' response across all cell-type pairs, and for pairs that share responses.
+#'
+#' @param x a [SpiDEResults-class] (genes) or the table [spiGSEA()] returns
+#'   (sets; calls by \code{q.global}).
+#' @param features \code{NULL} (the \code{n} features with the smallest
+#'   p-value in any column) or the features to show.
+#' @param test \code{NULL} (the condition-specific test if present, else the
+#'   pooled test), \code{"pooled"} or \code{"condition"}.
+#' @param n the number of features when \code{features} is \code{NULL}.
+#' @param fdr the q-value threshold of a call (default: the results', or 0.05
+#'   for sets).
+#' @param limit the |t| at which the fill saturates (default: the 98th
+#'   percentile).
+#' @param cluster order rows by hierarchical clustering of their t profiles.
+#' @return a ggplot; \code{p$data} has the plotted rows with \code{feature}
+#'   and \code{called}.
+#' @examples
+#' data(toySpiDE)
+#' res <- spiDE(toySpiDE, condition = "condition", sigma = 30, verbose = FALSE)
+#' plotTripletHeatmap(res, test = "pooled", n = 10)
+#' @export
+plotTripletHeatmap <- function(x, features = NULL, test = NULL, n = 30L, fdr = NULL, limit = NULL, cluster = TRUE) {
+  if (is(x, "SpiDEResults")) {
+    .assertCurrent(x)
+    tab <- x@table
+    feature <- "gene"
+    qcol <- "q"
+    if (is.null(fdr)) fdr <- x@fdr
+    test <- .resolveTest(x, test)
+  } else if (is.data.frame(x) && all(c("set", "index", "niche", "test", "t", "p", "q.global") %in% names(x))) {
+    tab <- x
+    feature <- "set"
+    qcol <- "q.global"
+    if (is.null(fdr)) fdr <- 0.05
+    if (is.null(test)) test <- if ("condition" %in% tab$test) "condition" else "pooled"
+    test <- match.arg(test, c("pooled", "condition"))
+  } else {
+    stop("'x' must be a SpiDEResults or a spiGSEA() table", call. = FALSE)
+  }
+  checkFdr(fdr)
+  tab <- as.data.frame(tab)
+  tab <- tab[tab$test == test & is.finite(tab$t), , drop = FALSE]
+  tab$feature <- as.character(tab[[feature]])
+  if (is.null(features)) {
+    best <- stats::aggregate(p ~ feature, tab, min)
+    features <- utils::head(best$feature[order(best$p)], n)
+  }
+  tab <- tab[tab$feature %in% features, , drop = FALSE]
+  if (!nrow(tab)) stop("none of the features was tested", call. = FALSE)
+  ord <- unique(tab$feature)
+  if (cluster && length(ord) > 2L) {
+    m <- stats::xtabs(t ~ feature + paste(index, niche, sep = "\r"), tab)
+    ord <- rownames(m)[stats::hclust(stats::dist(unclass(m)))$order]
+  }
+  tab$feature <- factor(tab$feature, ord)
+  lim <- if (is.null(limit)) max(stats::quantile(abs(tab$t), 0.98), 1) else limit
+  tab$called <- !is.na(tab[[qcol]]) & tab[[qcol]] <= fdr
+  cols <- unique(tab[, c("index", "niche")])
+  nt <- merge(data.frame(feature = factor(ord, ord)), cols)
+  nt <- nt[!paste(nt$feature, nt$index, nt$niche) %in% paste(tab$feature, tab$index, tab$niche), , drop = FALSE]
+  ylabs <- if (feature == "gene") function(v) .parseLabels(.itGene(v)) else waiver()
+  # the "not tested" tiles and the call dots each get a legend key, only when present
+  untested <- if (nrow(nt)) {
+    list(geom_tile(data = nt, aes(linetype = "not tested"), fill = .spideCols[["light"]], colour = "white",
+                   linewidth = 0.4),
+         scale_linetype_manual(values = c(`not tested` = 1), name = NULL))
+  }
+  calls <- if (any(tab$called)) {
+    list(geom_point(data = function(d) d[d$called, ], aes(shape = sprintf("%s \u2264 %s", qcol, format(fdr))),
+                    size = 0.9),
+         scale_shape_manual(values = 16, name = NULL))
+  }
+  ggplot(tab, aes(.data$niche, .data$feature)) +
+    untested +
+    geom_tile(aes(fill = .data$t), colour = "white", linewidth = 0.4) +
+    calls +
+    .scaleT(lim) +
+    scale_x_discrete(expand = c(0, 0)) + scale_y_discrete(expand = c(0, 0), labels = ylabs) +
+    facet_grid(~ index, scales = "free_x", space = "free_x", labeller = label_wrap_gen(10)) +
+    labs(x = "niche type", y = NULL) +
+    guides(fill = guide_colourbar(order = 1), shape = guide_legend(order = 2), linetype = guide_legend(order = 3)) +
+    theme_spiDE() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), panel.spacing = unit(0.25, "lines"),
+          strip.text = element_text(size = rel(0.85)))
+}
+
+#' p-values by test and expression band
+#'
+#' Histograms of every triplet's p-value, one row per test and one column per
+#' fifth of each index type's genes by mean expression, with the level of a
+#' uniform distribution dashed. A spike at 0 on a flat floor is signal. A floor
+#' that rises toward 0 only in the brightest genes, or a hump at 1 (low power,
+#' conservative p-values), deserves a look at the calibration vignette. This
+#' is a sanity check, not a calibration test: real signal also moves p-values
+#' toward 0, and calibration needs data where there is nothing to find.
+#'
+#' @param x a [SpiDEResults-class].
+#' @param bands the number of expression bands.
+#' @return a ggplot; \code{p$data} has one row per tested triplet with
+#'   \code{p}, \code{test} and \code{band}.
+#' @examples
+#' data(toySpiDE)
+#' res <- spiDE(toySpiDE, condition = "condition", sigma = 30, procedure = "all", verbose = FALSE)
+#' plotPValues(res)
+#' @export
+plotPValues <- function(x, bands = 5L) {
+  checkResults(x, "plotPValues()")
+  tab <- x@table[is.finite(x@table$p), c("gene", "index", "niche", "test", "p"), drop = FALSE]
+  tab <- merge(tab, .expressionBands(x@fit, as.integer(bands)), by = c("gene", "index"))
+  tab$test <- factor(tab$test, intersect(c("pooled", "condition"), unique(tab$test)))
+  uni <- stats::aggregate(list(level = tab$p), list(test = tab$test, band = tab$band), function(v) length(v) / 20)
+  ggplot(tab, aes(.data$p)) +
+    geom_histogram(breaks = seq(0, 1, 0.05), fill = .magnitudeRamp(9L)[5], colour = "white", linewidth = 0.2) +
+    geom_hline(data = uni, aes(yintercept = .data$level, linetype = "uniform"), linewidth = 0.4) +
+    scale_linetype_manual(values = c(uniform = "dashed"), name = NULL) +
+    facet_grid(test ~ band, scales = "free_y") +
+    scale_x_continuous(breaks = c(0, 0.5, 1), labels = c("0", "0.5", "1"), expand = expansion(add = 0.03)) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+    labs(x = "p-value", y = "triplets") +
+    theme_spiDE() + theme(panel.spacing = unit(1, "lines"))
 }
