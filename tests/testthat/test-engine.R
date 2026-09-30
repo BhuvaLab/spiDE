@@ -62,8 +62,9 @@ test_that("the pooled and condition tests equal a direct limma fit with the effe
   x <- fit16@index$A
   j <- 1L
   b <- matrix(x$beta[, , j], nrow = length(x$genes))
-  vt <- matrix(x$v_tile[, , j], nrow = length(x$genes))
-  tau <- spiDE:::.dlTau2(x$beta, x$v_tile)[, j]
+  vp <- sweep(x$v_model, c(2, 3), x$factor, "*")
+  vt <- matrix(vp[, , j], nrow = length(x$genes))
+  tau <- spiDE:::.dlTau2(x$beta, vp)[, j]
   trt <- as.numeric(fit16@patients$condition[match(x$patients, fit16@patients$patient)] == "Responder")
   got <- spiDE:::.slopeColumnTest(b, vt, tau, x$mean_expr, trt = trt)
   w <- 1 / (vt + tau); w[!is.finite(w) | !is.finite(b)] <- NA
@@ -77,6 +78,34 @@ test_that("the pooled and condition tests equal a direct limma fit with the effe
   expect_equal(got$df, unname(df), tolerance = 1e-10)
   ok <- is.finite(got$t)
   expect_equal(got$p[ok], unname(2 * pt(-abs(f$t[ok, 2]), df[ok])), tolerance = 1e-10)
+})
+
+test_that("the condition test is the one-column test the package runs, weighted like the pooled test", {
+  x <- fit16@index$A
+  trt <- as.numeric(fit16@patients$condition[match(x$patients, fit16@patients$patient)] == "Responder")
+  tab <- spiDE:::.slopesTests(x, trt = trt)
+  vp <- sweep(x$v_model, c(2, 3), x$factor, "*")
+  tau <- spiDE:::.dlTau2(x$beta, vp)
+  for (j in seq_along(x$niches)) {
+    direct <- spiDE:::.slopeColumnTest(matrix(x$beta[, , j], nrow = length(x$genes)),
+                                       matrix(vp[, , j], nrow = length(x$genes)), tau[, j],
+                                       x$mean_expr, trt = trt)
+    got <- tab[tab$test == "condition" & tab$niche == x$niches[j], ]
+    expect_equal(got$estimate, direct$estimate, tolerance = 1e-12)
+    expect_equal(got$p, direct$p, tolerance = 1e-12)
+  }
+})
+
+test_that("a gene's own tile sandwich never weights its own test", {
+  # v_tile grows with the gene's departure from the shared fit; as a weight it
+  # attenuated the condition contrast. Only the gene-shared factor may use it.
+  f2 <- fit16
+  set.seed(9)
+  f2@index$A$v_tile <- fit16@index$A$v_tile * stats::runif(length(fit16@index$A$v_tile), 0.2, 5)
+  r1 <- testSpiDE(fit16, condition = "condition", procedure = "all")@table
+  r2 <- testSpiDE(f2, condition = "condition", procedure = "all")@table
+  expect_equal(r2$p, r1$p, tolerance = 1e-12)
+  expect_equal(r2$estimate, r1$estimate, tolerance = 1e-12)
 })
 
 test_that("the pooled test and its filter never look at the condition", {

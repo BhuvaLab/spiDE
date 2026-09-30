@@ -127,11 +127,15 @@ gene.
   Patients with fewer than `min.tiles` tiles take $v^{\text{model}}$ times the
   gene's median tile-to-model ratio (at least 1).
 
-The condition-specific test uses $v^{\text{tile}}$. The pooled test uses
-$v^{\text{model}} f_{sn}$, with one factor per (patient, niche),
-$f_{sn} = \max\{1, \mathrm{median}_g(v^{\text{tile}}_{gsn}/v^{\text{model}}_{gsn})\}$:
-the per-gene tile sandwich is noisy on sparse genes, and a pooled null
-calibrated on it was not.
+Both tests use $v^{\text{model}} f_{sn}$, with one factor per (patient, niche),
+$f_{sn} = \max\{1, \mathrm{median}_g(v^{\text{tile}}_{gsn}/v^{\text{model}}_{gsn})\}$.
+The per-gene tile sandwich is noisy on sparse genes, and a pooled null
+calibrated on it was not. It is also computed at the shared fit, so it grows
+with the gene's own departure from the pooled slope in that patient. As a
+weight it gives the patients furthest from the pooled slope the least say,
+which pulls each condition's mean toward the pooled slope and attenuates the
+condition contrast (spiDE <= 0.99.31 weighted the condition test this way).
+The factor, a median over genes, does not move with any one gene's departure.
 
 **Combining patients.** For each (index, niche) column, the slopes of all
 genes are combined across patients with `limma`, weighted by

@@ -87,20 +87,26 @@
              stringsAsFactors = FALSE)
 }
 
-# The slopes engine's tests for one index type's stored slopes.
+# The slopes engine's tests for one index type's stored slopes. Both tests
+# weight patient s by 1 / (v_model * factor + tau2). The per-patient factor is
+# shared across genes, so a gene's own departure from the shared fit cannot
+# move its own weight. The gene's own tile sandwich v_tile, computed at the
+# shared fit, grows with that departure: as the condition test's weight (to
+# 0.99.31) it down-weighted the patients furthest from the pooled slope and
+# pulled each condition's mean toward it, attenuating the contrast
+# (research/bench2/diag/FINDINGS.md).
 .slopesTests <- function(x, trt = NULL, strata = NULL) {
   out <- list()
   vpool <- sweep(x$v_model, c(2, 3), x$factor, "*")
   tau_pool <- .dlTau2(x$beta, vpool)
-  tau_cond <- if (!is.null(trt)) .dlTau2(x$beta, x$v_tile) else NULL
   for (j in seq_along(x$niches)) {
     b <- matrix(x$beta[, , j], nrow = length(x$genes))
-    p <- .slopeColumnTest(b, matrix(vpool[, , j], nrow = length(x$genes)), tau_pool[, j], x$mean_expr)
+    vj <- matrix(vpool[, , j], nrow = length(x$genes))
+    p <- .slopeColumnTest(b, vj, tau_pool[, j], x$mean_expr)
     out[[length(out) + 1L]] <- data.frame(gene = x$genes, niche = x$niches[j], test = "pooled", p,
                                           stringsAsFactors = FALSE)
     if (!is.null(trt)) {
-      cc <- .slopeColumnTest(b, matrix(x$v_tile[, , j], nrow = length(x$genes)), tau_cond[, j],
-                             x$mean_expr, trt = trt, strata = strata)
+      cc <- .slopeColumnTest(b, vj, tau_pool[, j], x$mean_expr, trt = trt, strata = strata)
       out[[length(out) + 1L]] <- data.frame(gene = x$genes, niche = x$niches[j], test = "condition", cc,
                                             stringsAsFactors = FALSE)
     }

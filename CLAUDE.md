@@ -114,7 +114,7 @@ bandwidth per fit. `testNicheAbundance()` and `spiGSEA()` sit beside it.
    - **slopes engine** (default): one condition-free fit, then `.patientSlopes()`: each patient's
      one-step NB slope from the shared fit, with `v_model` and a within-patient spatial tile
      sandwich `v_tile` (tiles of `3 * sigma`); `.patientFactor()` = per-(patient, niche)
-     `max(1, median_g v_tile / v_model)` for the pooled test.
+     `max(1, median_g v_tile / v_model)`, which scales `v_model` in both tests.
    - **sandwich engine**: the pooled model and, with a condition, the condition x niche model;
      `.sandwichCR2()` = low-rank CR2 + Bell-McCaffrey df (`strata` enters the condition model
      only, as strata x niche nuisance columns; treatment-coded in the pooled model they made its
@@ -122,7 +122,8 @@ bandwidth per fit. `testNicheAbundance()` and `spiGSEA()` sit beside it.
 3. **Test** (`R/testSpiDE.R`, `R/test-slopes.R`): slopes engine: per (index, niche) column, limma
    across patients weighted by `1 / (v + tau2_DL)`, `eBayes(trend = TRUE, robust = TRUE)` on log
    mean expression, df = `min(df.total, Kish n_eff - p)` (`.slopeColumnTest()`). Pooled test uses
-   `v_model * factor`; condition test uses `v_tile`. `.bhFamilies()`: pooled BH over every
+   `v_model * factor`, and so does the condition test (0.99.32; `v_tile` as a weight attenuated
+   the contrast, `research/bench2/diag/FINDINGS.md`). `.bhFamilies()`: pooled BH over every
    triplet; condition BH over the triplets whose pooled q < `fdr` (`procedure = "filtered"`,
    default) or all. `results(test = )` reads one table; `patientSlopes()` the per-patient slopes.
 

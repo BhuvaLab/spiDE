@@ -1,3 +1,16 @@
+# spiDE 0.99.32
+
+* **Slopes engine: the condition test is weighted like the pooled test**, by
+  `1 / (v_model * factor + tau2)`, not by each gene's own tile sandwich
+  `v_tile`. `v_tile` is computed at the shared, condition-free fit, so it grows
+  with a patient's own departure from the pooled slope. As a weight it gave the
+  patients furthest from that slope the least say, which pulled each
+  condition's mean toward it and attenuated the condition contrast in the depth
+  benchmark (`research/bench2/diag/FINDINGS.md`). The per-patient factor is a
+  median over genes, so no gene's departure moves its own weight. The fit and
+  the pooled test are unchanged: an existing fit only needs `testSpiDE()`
+  again. The calibration vignette has the re-measured nulls.
+
 # spiDE 0.99.31
 
 * **Sandwich engine: `strata` no longer enter the pooled model.** In 0.99.30
