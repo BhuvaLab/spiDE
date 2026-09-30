@@ -185,7 +185,7 @@ plotPatientEffects <- function(x, index, niche = NULL, covariates = NULL, type =
   }
   a <- expand.grid(pc = seq_len(n.pcs), covariate = names(cvm), stringsAsFactors = FALSE)
   a$r2 <- mapply(function(k, v) .adjR2(pc$x[, k], cvm[[v]]), a$pc, a$covariate)
-  pcl <- sprintf("PC%d\n%.0f%%", seq_len(n.pcs), 100 * ve[seq_len(n.pcs)])
+  pcl <- sprintf("%d\n%.0f%%", seq_len(n.pcs), 100 * ve[seq_len(n.pcs)])
   a$pc <- factor(pcl[a$pc], pcl)
   a$group <- factor(cv$group[a$covariate], c("patient", "derived"))
   a$covariate <- factor(a$covariate, rev(names(cvm)))
@@ -198,7 +198,7 @@ plotPatientEffects <- function(x, index, niche = NULL, covariates = NULL, type =
                          name = expression(adjusted ~ R^2)) +
     scale_x_discrete(expand = c(0, 0)) + scale_y_discrete(expand = c(0, 0)) +
     facet_grid(group ~ ., scales = "free_y", space = "free_y") +
-    labs(x = sprintf("PCs of %s", what), y = NULL) +
+    labs(x = sprintf("principal component of %s (%% variance)", what), y = NULL) +
     theme_spiDE()
 }
 

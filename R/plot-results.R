@@ -87,6 +87,7 @@ plotCallMap <- function(x, test = NULL, fdr = x@fdr, style = c("heatmap", "graph
   e$ye <- e$y1 - r * (e$y1 - e$y0) / len
   e$panel <- factor(unname(lab[e$direction]), unname(lab[c("up", "down")]))
   nodes <- merge(pos, data.frame(panel = factor(unname(lab[c("up", "down")]), unname(lab[c("up", "down")]))))
+  nodes$label <- vapply(strwrap(nodes$type, 12, simplify = FALSE), paste, character(1), collapse = "\n")
   # labels outside the nodes, anchored away from the circle's centre
   nodes$hj <- ifelse(abs(nodes$x) < 0.2, 0.5, ifelse(nodes$x > 0, 0, 1))
   nodes$vj <- ifelse(nodes$y > 0.3, 0, ifelse(nodes$y < -0.3, 1, 0.5))
@@ -97,13 +98,13 @@ plotCallMap <- function(x, test = NULL, fdr = x@fdr, style = c("heatmap", "graph
                arrow = arrow(length = unit(2, "mm"), type = "closed")) +
     geom_point(data = nodes, aes(.data$x, .data$y), size = 6, shape = 21, fill = "white", colour = "black",
                stroke = 0.6) +
-    geom_text(data = nodes, aes(1.3 * .data$x, 1.3 * .data$y, label = .data$type, hjust = .data$hj,
+    geom_text(data = nodes, aes(1.3 * .data$x, 1.3 * .data$y, label = .data$label, hjust = .data$hj,
                                 vjust = .data$vj), size = 3.6) +
     .scaleDirection(lab) +
     scale_linewidth(range = c(0.3, 2.6), name = "genes") +
     guides(colour = "none", linewidth = guide_legend(override.aes = list(colour = .spideCols[["grey"]]))) +
     facet_wrap(~ panel, drop = FALSE) + coord_equal(clip = "off") +
-    scale_x_continuous(expand = expansion(add = 0.6)) + scale_y_continuous(expand = expansion(add = 0.3)) +
+    scale_x_continuous(expand = expansion(add = 0.8)) + scale_y_continuous(expand = expansion(add = 0.45)) +
     theme_spiDE() + theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank())
 }
 

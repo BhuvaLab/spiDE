@@ -46,7 +46,8 @@ with several sections gets one panel each.}
 }
 \value{
 a ggplot; \code{p$data} has one row per cell of the sample:
-\code{x}, \code{y}, \code{cell_type}, \code{density} (log1p),
+\code{x}, \code{y} (from each section's own origin), \code{cell_type},
+\code{density} (log1p),
 \code{section} and \code{focal} (coloured).
 }
 \description{

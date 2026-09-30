@@ -27,7 +27,8 @@
 #' @param unit the coordinates' unit, for the scale bar's label (e.g.
 #'   \code{"µm"}).
 #' @return a ggplot; \code{p$data} has one row per cell of the sample:
-#'   \code{x}, \code{y}, \code{cell_type}, \code{density} (log1p),
+#'   \code{x}, \code{y} (from each section's own origin), \code{cell_type},
+#'   \code{density} (log1p),
 #'   \code{section} and \code{focal} (coloured).
 #' @examples
 #' data(toySpiDE)
@@ -59,6 +60,10 @@ plotNicheMap <- function(spe, niche, sample, index = NULL, sigma = NULL, cell_ty
                   section = if (is.null(section)) sample else as.character(cd[[section]])[i],
                   stringsAsFactors = FALSE)
   d$focal <- if (is.null(index)) rep(TRUE, nrow(d)) else d$cell_type == index
+  # each section on its own origin: sections' coordinates are unrelated, and a
+  # fixed aspect ratio cannot give facets free scales
+  d$x <- d$x - stats::ave(d$x, d$section, FUN = min)
+  d$y <- d$y - stats::ave(d$y, d$section, FUN = min)
   if (is.null(point.size)) point.size <- min(1.5, max(0.05, 50 / sqrt(nrow(d))))
   p <- ggplot(d, aes(.data$x, .data$y))
   if (!is.null(index)) {

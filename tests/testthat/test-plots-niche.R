@@ -72,3 +72,13 @@ test_that("plotNicheResponse() references the patients' median intercept, robust
   s1 <- function(p) p$data$expr[p$data$patient == "S1"]
   expect_lt(max(abs(log(s1(p2) / s1(p1)))), 0.5)
 })
+
+test_that("plotNicheMap() puts each section of a patient on its own origin", {
+  s2 <- spe
+  s2$section <- ifelse(SpatialExperiment::spatialCoords(s2)[, 1] > 250, "right", "left")
+  p <- plotNicheMap(s2, niche = "B", sample = "S1", section = "section")
+  builds(p)
+  expect_setequal(unique(p$data$section), c("left", "right"))
+  expect_equal(as.numeric(tapply(p$data$x, p$data$section, min)), c(0, 0))
+  expect_equal(as.numeric(tapply(p$data$y, p$data$section, min)), c(0, 0))
+})

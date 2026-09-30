@@ -70,3 +70,9 @@ test_that("plotPatientEffects() keeps its patients when many genes were not fitt
   p <- plotPatientEffects(f, index = "A", type = "pca")
   expect_equal(nrow(p$data), length(f@index$A$patients))
 })
+
+test_that("plotPatientEffects() numbers its components and names them in the axis title", {
+  p <- plotPatientEffects(res, index = "A")
+  expect_true(all(grepl("^[0-9]+\n[0-9]+%$", levels(p$data$pc))))
+  expect_match(p$labels$x, "principal component")
+})

@@ -94,3 +94,13 @@ test_that("the p-value and heatmap plots stop readably when nothing has a p-valu
   expect_error(plotPValues(r0), "no tested triplet")
   expect_error(plotTripletHeatmap(r0, test = "pooled"), "no tested triplet")
 })
+
+test_that("the call graph wraps long cell-type names", {
+  r3 <- res
+  r3@table$niche[r3@table$niche == "B"] <- "Airway epithelium B"
+  r3@table$index[r3@table$index == "B"] <- "Airway epithelium B"
+  g <- plotCallMap(r3, test = "pooled", style = "graph")
+  b <- builds(g)
+  txt <- b$data[[which(vapply(g$layers, function(l) inherits(l$geom, "GeomText"), logical(1)))]]
+  expect_true(all(nchar(unlist(strsplit(txt$label, "\n"))) <= 12))
+})
