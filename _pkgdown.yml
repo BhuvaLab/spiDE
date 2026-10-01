@@ -25,6 +25,10 @@ navbar:
         href: https://bhuvalab.github.io/spiDE-research/simplify-top5.html
       - text: How sequencing depth should enter spiDE — the depth benchmark (research site)
         href: https://bhuvalab.github.io/spiDE-research/bench2-depth.html
+      - text: How much data does spiDE need? — the power benchmark (research site)
+        href: https://bhuvalab.github.io/spiDE-research/power-results.html
+      - text: Simulating realistic spatial data — the power benchmark's design (research site)
+        href: https://bhuvalab.github.io/spiDE-research/power-design.html
 
 # The package site carries only the package's own vignettes. The validation
 # reports are rendered and published by the research repository (submodule

@@ -20,6 +20,15 @@
     passed the check before gets the same slopes.
   - An existing fit must be refitted: the slopes are computed in
     `fitSpiDE()`.
+* **Documentation: how much data spiDE needs.**
+  - **What.** A power benchmark measured the pooled and condition-specific
+    tests across the number of patients, the cells per patient, the effect
+    size, the kind of gene, the tissue architecture and the panel. Counts were
+    simulated from four real tissues.
+  - **Where.** Two reports on the research site, linked from the Validation
+    menu: the results, with an interactive study planner, and the simulation
+    design. The calibration vignette has a new section, "How much data is
+    needed", with the headline numbers.
 
 # spiDE 0.99.32
 
