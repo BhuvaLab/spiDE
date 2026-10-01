@@ -205,6 +205,11 @@ numbers.** Before changing a default, read:
 
 - `spiGSEA()` over many sets (~20,000 MSigDB sets) is minutes per call; its condition test is
   parallel over sets (`BPPARAM`), the pooled test is limma over all sets of a column.
+- `spiGSEA()`'s competitive pooled test missed its block null on the YTMA LUAD stage cohort (13
+  compartments, all genes, MSigDB): sets were called in 2 of 10 grids (3-4 sets each), and the
+  overall null set RMS is 1.17 (`YTMACosMxWTAv2/claude/reports/v2_progress.md`, 2026-10-01). The
+  release study's gene-set null (GO BP, top-5 types) passes on the same cohort, and so do the ICI
+  arms (RMS 1.09, no calls). Unexplained; it is not seen at gene level.
 - Under `depth = "spatial_spline"` the sandwich engine's CR2 SE sits within ~1.5% of
   clubSandwich's full-design CR2, whose own absorbed and full answers differ by up to 2.4% with
   multi-column blocks; the df agree to two decimals (`tests/testthat/test-depth.R`).

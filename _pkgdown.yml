@@ -44,3 +44,14 @@ articles:
   - spiDE
   - spiDE-model
   - spiDE-calibration
+
+reference:
+- title: Analysis
+  contents: [spiDE, buildNiches, mergeNiches, fitSpiDE, testSpiDE, results, spiGSEA, testNicheAbundance]
+- title: Per-patient estimates
+  contents: [patientSlopes, patientIntercepts]
+- title: Plots
+  contents: [plotNicheMap, plotPatientSlopes, plotNicheResponse, plotCallMap, plotTopTriplets,
+             plotSpillover, plotTripletHeatmap, plotPValues, plotPatientEffects, theme_spiDE, spiDEColours]
+- title: Classes and data
+  contents: [SpiDEFit-class, SpiDEResults-class, toySpiDE, spiDE-package]

@@ -175,3 +175,86 @@ checkNiche <- function(spe, sigma, name = "Niche") {
   }
   invisible(TRUE)
 }
+
+# The patient intercepts a plot or accessor reads; fits from spiDE <= 0.99.33
+# did not keep them.
+checkIntercepts <- function(xi, what) {
+  if (is.null(xi$intercept)) {
+    stop(sprintf("%s needs the patient intercepts that fitSpiDE() keeps from spiDE 0.99.34 on: ", what),
+         "refit this object with the installed spiDE", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+# A plotting function's input: a current SpiDEResults (or, where the plot needs
+# only the fit, a SpiDEFit).
+checkResults <- function(x, what, fit.ok = FALSE) {
+  if (!(is(x, "SpiDEResults") || (fit.ok && is(x, "SpiDEFit")))) {
+    stop(sprintf("%s needs a SpiDEResults from testSpiDE() or spiDE()%s", what,
+                 if (fit.ok) ", or a SpiDEFit from fitSpiDE()" else ""), call. = FALSE)
+  }
+  .assertCurrent(x)
+  invisible(TRUE)
+}
+
+# Views of each patient's own slopes exist only for the slopes engine.
+checkSlopesEngine <- function(fit, what) {
+  if (fit@engine != "slopes") {
+    stop(sprintf("%s needs the slopes engine's per-patient slopes: fit with engine = \"slopes\"", what),
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+# An index type the fit has, one of its tested niches, genes it tested.
+checkTriplet <- function(fit, index, niche = NULL, gene = NULL) {
+  if (!is.character(index) || length(index) != 1L || !index %in% names(fit@index)) {
+    stop(sprintf("'index' must be one of the fitted index types: %s", paste(names(fit@index), collapse = ", ")),
+         call. = FALSE)
+  }
+  xi <- fit@index[[index]]
+  if (!is.null(niche) && (!is.character(niche) || length(niche) != 1L || !niche %in% xi$niches)) {
+    stop(sprintf("'niche' must be one of the niches tested in %s: %s", index, paste(xi$niches, collapse = ", ")),
+         call. = FALSE)
+  }
+  if (!is.null(gene)) {
+    if (!is.character(gene) || !length(gene)) stop("'gene' must be a character vector", call. = FALSE)
+    miss <- setdiff(gene, xi$genes)
+    if (length(miss)) {
+      stop(sprintf("gene(s) not tested in %s: %s", index, paste(miss, collapse = ", ")), call. = FALSE)
+    }
+  }
+  invisible(TRUE)
+}
+
+# The SpatialExperiment a plot reads must be the one the fit was made from:
+# the same index cells per patient (the fit's usable rule: cells with counts
+# when depth enters, every cell under depth = "none"), and every niche column
+# the results name.
+checkFitSPE <- function(spe, fit, index, niches = NULL, assay = "counts", name = "Niche") {
+  hint <- "is it the object the fit was made from?"
+  cd <- SummarizedExperiment::colData(spe)
+  ct <- as.character(cd[[fit@params$cell_type]])
+  smp <- as.character(cd[[fit@params$sample_id]])
+  if (!length(ct) || !length(smp)) {
+    stop(sprintf("'spe' lacks the fit's cell type or sample columns: %s", hint), call. = FALSE)
+  }
+  usable <- if (fit@params$depth != "none") Matrix::colSums(SummarizedExperiment::assay(spe, assay)) > 0 else
+    rep(TRUE, length(ct))
+  for (k in index) {
+    xi <- fit@index[[k]]
+    n <- table(factor(smp[!is.na(ct) & ct == k & usable], levels = xi$patients))
+    same <- if (!is.null(xi$ncells)) all(as.integer(n) == as.integer(xi$ncells[xi$patients])) else all(n > 0)
+    if (!same) stop(sprintf("'spe' does not hold the fit's %s cells: %s", k, hint), call. = FALSE)
+  }
+  if (length(niches)) {
+    rd <- paste0(name, fit@sigma)
+    have <- if (rd %in% SingleCellExperiment::reducedDimNames(spe)) colnames(SingleCellExperiment::reducedDim(spe, rd)) else character()
+    miss <- setdiff(niches, have)
+    if (length(miss)) {
+      stop(sprintf("niche(s) %s are not columns of %s in 'spe': %s", paste(miss, collapse = ", "), rd, hint),
+           call. = FALSE)
+    }
+  }
+  invisible(TRUE)
+}

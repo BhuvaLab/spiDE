@@ -131,27 +131,21 @@ engines, and the calibration vignette shows how they hold up on real data.
 ## Each patient's slopes
 
 The slopes engine keeps every patient's slope, which is the evidence the
-tests weigh:
+tests weigh. `plotPatientSlopes()` draws them, one column per gene: each
+point is a patient's slope with its interval, sized by the patient's weight
+in the tests; the grey band is the pooled estimate, and each condition's
+weighted mean is a coloured line.
 
-```{r slopes, fig.width = 6, fig.height = 3.5}
+```{r slopes, fig.width = 7, fig.height = 5}
 ps <- patientSlopes(fit, gene = "G1", index = "A", niche = "B")
 head(ps[, c("patient", "condition", "slope", "var_spatial", "ncells")])
-if (requireNamespace("ggplot2", quietly = TRUE)) {
-  library(ggplot2)
-  ggplot(ps, aes(condition, slope)) +
-    geom_hline(yintercept = 0, colour = "grey60") +
-    geom_pointrange(aes(ymin = slope - 2 * sqrt(var_spatial),
-                        ymax = slope + 2 * sqrt(var_spatial)),
-                    position = position_jitter(width = 0.15, seed = 1)) +
-    labs(x = NULL, y = "G1 slope on B density in A cells\n(log scale per unit log1p density)") +
-    theme_minimal()
-}
+res <- testSpiDE(fit)
+plotPatientSlopes(res, gene = c("G1", "G2"), index = "A", niche = "B")
 ```
 
 # Test
 
 ```{r test}
-res <- testSpiDE(fit)
 res
 head(results(res, test = "pooled"))
 ```
@@ -204,7 +198,12 @@ head(gs[, c("set", "index", "niche", "test", "size", "estimate", "p", "q", "q.gl
 
 `q` adjusts within each (index, niche, test) column and `q.global` over every
 set, index and niche of a test. With many sets and many columns, `q.global`
-is the one to read.
+is the one to read. `plotTripletHeatmap()` shows the sets' t across every
+(index, niche) column, a dot where `q.global` passes:
+
+```{r gsea-plot, fig.width = 6, fig.height = 3}
+plotTripletHeatmap(gs, test = "pooled")
+```
 
 # A different question: niche abundance
 
@@ -223,6 +222,62 @@ head(ab)
 ```
 
 Never report a result of one as a result of the other.
+
+# Plots
+
+Every plot is a ggplot2 object in one house style (`theme_spiDE()`) and one
+colour-blind-safe palette (`spiDEColours()`): amber and violet for a slope that
+rises or falls with the niche's density, teal and rufous for the first and
+second level of the condition. Each returns its data in `p$data`, so a plot is
+changed by adding layers or a theme, and any two combine with patchwork.
+
+Where the calls are, and the strongest of them. With `spe`, a triangle marks a
+gene several-fold higher in the niche type than in the index type:
+
+```{r plots-results, fig.width = 7, fig.height = 3.5}
+plotCallMap(res, test = "pooled")
+plotTopTriplets(res, test = "pooled", n = 12, spe = spe)
+```
+
+The cells behind a slope. By default each patient's fitted intercept is
+divided out, so the patients share one level and the slopes the tests compare
+are visible; `adjust = FALSE` shows the raw data, where the trend through the
+patients' means is the between-patient association of the previous section:
+
+```{r plots-response, fig.width = 7, fig.height = 3.5}
+plotNicheResponse(spe, res, gene = c("G1", "G2"), index = "A", niche = "B")
+plotNicheResponse(spe, res, gene = "G1", index = "A", niche = "B", adjust = FALSE)
+```
+
+The niche covariate in one sample (the bandwidth is right when the field is
+neither speckled nor flat), and whether the calls are the niche type's own
+markers, as transcripts leaking across segmentation boundaries would make
+them:
+
+```{r plots-niche, fig.width = 7, fig.height = 3.5}
+plotNicheMap(spe, niche = "B", sample = "S1", index = "A")
+plotSpillover(res, spe)
+```
+
+Diagnostics: the p-values by expression band (a sanity check; the calibration
+vignette has the real one), and what the patients' intercepts capture. The
+intercepts absorb every difference between patients by design; with `niche`,
+the same plot on the slopes shows whether a batch or slide structures them, in
+which case it belongs in `strata`:
+
+```{r plots-diagnostics, fig.width = 7, fig.height = 4}
+plotPValues(res)
+plotPatientEffects(res, index = "A")
+```
+
+Figures combine with patchwork:
+
+```{r plots-patchwork, fig.width = 9, fig.height = 4, eval = requireNamespace("patchwork", quietly = TRUE)}
+library(patchwork)
+plotPatientSlopes(res, gene = "G1", index = "A", niche = "B") +
+  plotNicheResponse(spe, res, gene = "G1", index = "A", niche = "B") +
+  plot_annotation(tag_levels = "A")
+```
 
 # Practicalities
 

@@ -37,3 +37,7 @@ setGeneric("testNicheAbundance", function(spe, ...) standardGeneric("testNicheAb
 #' @rdname spiGSEA
 #' @export
 setGeneric("spiGSEA", function(object, genesets, ...) standardGeneric("spiGSEA"))
+
+#' @rdname patientIntercepts
+#' @export
+setGeneric("patientIntercepts", function(object, ...) standardGeneric("patientIntercepts"))
