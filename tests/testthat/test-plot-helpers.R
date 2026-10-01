@@ -88,3 +88,29 @@ test_that("the niche fold names genes that are not in spe", {
   tb$gene[1] <- "nope"
   expect_error(.nicheFold(tb, spe, fit), "not in 'spe': nope")
 })
+
+test_that("a merged niche named after one of its members pools all its members", {
+  sm <- mergeNiches(spe, groups = list(B = c("B", "C")), sigma = 30)
+  fm <- fitSpiDE(sm, sigma = 30, index = "A", verbose = FALSE)
+  tb <- testSpiDE(fm)@table
+  f <- .nicheFold(tb[tb$gene == "G1" & tb$niche == "B", ], sm, fm)
+  M <- .cellTypeMeans(spe, "G1", "counts", "cell_type")
+  n <- attr(M, "ncells")
+  pooled <- (M["G1", "B"] * n[["B"]] + M["G1", "C"] * n[["C"]]) / (n[["B"]] + n[["C"]])
+  expect_equal(f[1], (pooled + 0.01) / (M["G1", "A"] + 0.01), tolerance = 1e-10)
+})
+
+test_that("an spe that is not the fit's is refused, however it differs", {
+  other <- buildNiches(.toySPE(n_samples = 16, n_per = 150, seed = 99), sigma = 30)
+  expect_error(.indexCellData(other, fit, "A", "B", "G1"), "made from")
+  half <- spe[, !(spe$cell_type == "A" & seq_len(ncol(spe)) %% 2 == 0)]
+  expect_error(.indexCellData(half, fit, "A", "B", "G1"), "made from")
+  sm <- mergeNiches(spe, groups = list(BC = c("B", "C")), sigma = 30)
+  rmg <- testSpiDE(fitSpiDE(sm, sigma = 30, index = "A", verbose = FALSE))
+  expect_error(.nicheFold(rmg@table, spe, rmg@fit), "made from")
+})
+
+test_that("condition directions name the level whose slope is higher", {
+  expect_equal(unname(.directionLabels(res, "condition")),
+               c("higher slope in Responder", "higher slope in Non-responder"))
+})

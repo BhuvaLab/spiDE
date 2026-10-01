@@ -31,8 +31,8 @@ niche, direction): \code{calls} and \code{tested}.
 \description{
 The number of genes called for every (index, niche) pair, split by
 direction: for the pooled test, a slope that rises or falls with the niche's
-density; for the condition-specific test, a slope steeper in one condition
-or the other. The heatmap gives exact counts and marks untested pairs (an
+density; for the condition-specific test, a slope higher in one condition
+than in the other. The heatmap gives exact counts and marks untested pairs (an
 index type against its own niche) in grey; the graph draws cell types on a
 fixed circle with an arrow from niche to index type, its width the number
 of genes -- it reads best when calls are few (the condition test), the

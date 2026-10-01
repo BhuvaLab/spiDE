@@ -76,3 +76,19 @@ test_that("plotPatientEffects() numbers its components and names them in the axi
   expect_true(all(grepl("^[0-9]+\n[0-9]+%$", levels(p$data$pc))))
   expect_match(p$labels$x, "principal component")
 })
+
+test_that("plotPatientEffects() finds the planted condition, and one pinned intercept does not take it over", {
+  r2 <- function(p) p$data$r2[p$data$covariate == "condition" & grepl("^1\n", p$data$pc)]
+  expect_gt(r2(plotPatientEffects(res, index = "A")), 0.5)
+  f <- fit
+  f@index$A$intercept["G2", "S3"] <- -8.8
+  expect_gt(r2(plotPatientEffects(f, index = "A")), 0.5)
+})
+
+test_that("plotPatientEffects() colours a 0/1 numeric condition as two groups", {
+  f <- fit
+  f@patients$condition <- as.numeric(f@patients$condition == "Responder")
+  p <- plotPatientEffects(f, index = "A", type = "pca")
+  builds(p)
+  expect_true(is.factor(p$data$condition))
+})

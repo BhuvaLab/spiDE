@@ -178,6 +178,9 @@ plotNicheResponse <- function(spe, x, gene, index, niche, adjust = TRUE, bins = 
     e <- as.numeric(cells$counts[g, ]) / cells$lib * 1e4
     if (adjust) {
       a <- xi$intercept[g, ]
+      # CP10k has divided out each cell's depth already; where the intercepts sit
+      # at each patient's own mean depth, that depth comes off them too
+      if (.interceptAtOwnDepth(fit)) a <- a - (xi$loglib_mean[names(a)] - stats::median(xi$loglib_mean, na.rm = TRUE))
       # the reference is the patients' median intercept: one patient pinned at an
       # extreme value by the intercepts' ridge would move a mean
       e <- e * exp(-(a - stats::median(a[is.finite(a)])))[pat]
@@ -290,4 +293,14 @@ plotNicheResponse <- function(spe, x, gene, index, niche, adjust = TRUE, bins = 
   pooled <- function(g) cf$estimate[match(g, cf$gene)]
   list(patient = function(g, pats) rep(pooled(g), length(pats)),
        group = function(g, pats) pooled(g))
+}
+
+# Whether the patient intercepts sit at each patient's own mean depth: under
+# depth = "spatial_spline" (log depth centred per section) and under "none" with
+# no offset or covariates (no depth term). Under "loglib" and "nonlinear" the
+# depth covariate is centred over the index type, a reference shared by every
+# patient.
+.interceptAtOwnDepth <- function(fit) {
+  p <- fit@params
+  identical(p$depth, "spatial_spline") || (identical(p$depth, "none") && is.null(p$offset) && !length(p$covariates))
 }

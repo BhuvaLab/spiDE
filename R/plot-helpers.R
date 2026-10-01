@@ -35,7 +35,7 @@
 .directionLabels <- function(x, test) {
   if (test == "pooled") return(c(up = "rises with density", down = "falls with density"))
   lv <- attr(.conditionCoding(x@fit@patients, x@condition), "levels")
-  c(up = sprintf("steeper in %s", lv[2]), down = sprintf("steeper in %s", lv[1]))
+  c(up = sprintf("higher slope in %s", lv[2]), down = sprintf("higher slope in %s", lv[1]))
 }
 
 # The table rows of one test for these genes, in the genes' order.
@@ -83,19 +83,25 @@
 # over its expression in the index type (CP10k, + pseudo on both). A merged
 # niche (mergeNiches()) pools its member cell types' cells.
 .nicheFold <- function(tab, spe, fit, assay = "counts", name = "Niche", pseudo = 0.01) {
+  checkFitSPE(spe, fit, unique(tab$index), unique(tab$niche), assay, name)
   genes <- unique(tab$gene)
   M <- .cellTypeMeans(spe, genes, assay, fit@params$cell_type)
   n <- attr(M, "ncells")
   groups <- S4Vectors::metadata(spe)[["spiDE_niche_groups"]][[paste0(name, fit@sigma)]]
-  typeExpr <- function(type) {
-    if (type %in% colnames(M)) return(M[, type])
-    m <- intersect(groups[[type]], colnames(M))
+  pooled <- function(members) {
+    m <- intersect(members, colnames(M))
     if (!length(m)) return(rep(NA_real_, nrow(M)))
     as.numeric(M[, m, drop = FALSE] %*% n[m]) / sum(n[m])
   }
-  types <- unique(c(tab$index, tab$niche))
-  E <- matrix(unlist(lapply(types, typeExpr)), nrow(M), length(types), dimnames = list(genes, types))
-  (E[cbind(tab$gene, tab$niche)] + pseudo) / (E[cbind(tab$gene, tab$index)] + pseudo)
+  # a niche column is its group's members (a group may be named after one of
+  # them); an index type is its own cells
+  members <- function(type) if (!is.null(groups[[type]])) groups[[type]] else type
+  side <- function(types, f) {
+    matrix(unlist(lapply(types, f)), nrow(M), length(types), dimnames = list(genes, types))
+  }
+  En <- side(unique(tab$niche), function(t) pooled(members(t)))
+  Ei <- side(unique(tab$index), pooled)
+  (En[cbind(tab$gene, tab$niche)] + pseudo) / (Ei[cbind(tab$gene, tab$index)] + pseudo)
 }
 
 # One index type's cells as the fit used them (the fit's patients, cells with
@@ -109,13 +115,10 @@
   Y <- SummarizedExperiment::assay(spe, assay)
   miss <- setdiff(genes, rownames(Y))
   if (length(miss)) stop(sprintf("gene(s) not in 'spe': %s", paste(miss, collapse = ", ")), call. = FALSE)
+  checkNiche(spe, fit@sigma, name)
+  checkFitSPE(spe, fit, index, niche, assay, name)
   lib <- Matrix::colSums(Y)
   ik <- which(!is.na(ct) & ct == index & smp %in% xi$patients & lib > 0)
-  if (!length(ik) || !all(xi$patients %in% smp[ik])) {
-    stop(sprintf("the fit's %s cells are not all in 'spe': is it the object the fit was made from?", index),
-         call. = FALSE)
-  }
-  checkNiche(spe, fit@sigma, name)
   NM <- SingleCellExperiment::reducedDim(spe, paste0(name, fit@sigma))
   if (!niche %in% colnames(NM)) {
     stop(sprintf("niche '%s' is not a column of %s%s", niche, name, fit@sigma), call. = FALSE)

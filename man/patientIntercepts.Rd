@@ -27,9 +27,10 @@ index type), plus the patient-level colData columns recorded by
 }
 \description{
 Every index type's shared fit has an intercept per patient and gene: the
-patient's expression level of the gene in that type, at a common reference
-(zero niche density; with \code{depth = "loglib"}, the index type's mean
-depth). The intercepts absorb
+patient's expression level of the gene in that type, at zero niche density
+and a reference depth: the index type's mean log library size under
+\code{depth = "loglib"} or \code{"nonlinear"}, each patient's own mean
+under \code{"spatial_spline"}. The intercepts absorb
 every difference between patients -- the condition's main effect,
 composition, batch -- which is why the niche slopes are within-patient
 slopes. \code{\link[=plotPatientEffects]{plotPatientEffects()}} shows what they capture. Kept by

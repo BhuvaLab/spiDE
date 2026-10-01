@@ -41,7 +41,7 @@ and \code{called}.
 \description{
 Features (genes, or gene sets from \code{\link[=spiGSEA]{spiGSEA()}}) against every (index,
 niche) column: the fill is the test's t (amber: the slope rises with the
-niche's density, or is steeper in the second condition; violet: the
+niche's density, or is higher in the second condition; violet: the
 reverse), a dot marks a call, grey a feature not tested in that index type.
 Rows are clustered on their t profiles. Read it for a gene's or pathway's
 response across all cell-type pairs, and for pairs that share responses.

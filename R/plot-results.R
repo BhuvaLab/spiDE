@@ -6,8 +6,8 @@
 #'
 #' The number of genes called for every (index, niche) pair, split by
 #' direction: for the pooled test, a slope that rises or falls with the niche's
-#' density; for the condition-specific test, a slope steeper in one condition
-#' or the other. The heatmap gives exact counts and marks untested pairs (an
+#' density; for the condition-specific test, a slope higher in one condition
+#' than in the other. The heatmap gives exact counts and marks untested pairs (an
 #' index type against its own niche) in grey; the graph draws cell types on a
 #' fixed circle with an arrow from niche to index type, its width the number
 #' of genes -- it reads best when calls are few (the condition test), the
@@ -37,6 +37,7 @@ plotCallMap <- function(x, test = NULL, fdr = x@fdr, style = c("heatmap", "graph
   test <- .resolveTest(x, test)
   checkFdr(fdr)
   tab <- x@table[x@table$test == test, , drop = FALSE]
+  if (!any(is.finite(tab$p))) stop("no tested triplet has a p-value", call. = FALSE)
   tested <- unique(tab[is.finite(tab$p), c("index", "niche")])
   hit <- tab[!is.na(tab$q) & tab$q <= fdr, , drop = FALSE]
   n <- if (nrow(hit)) {
@@ -208,6 +209,7 @@ plotSpillover <- function(x, spe, test = "pooled", fold = 4, label = 6L, fdr = x
   checkFdr(fdr)
   checkSPE(spe, assay = assay, cell_type = x@fit@params$cell_type, sample_id = x@fit@params$sample_id)
   tab <- x@table[x@table$test == test & is.finite(x@table$p), , drop = FALSE]
+  if (!nrow(tab)) stop("no tested triplet has a p-value", call. = FALSE)
   tab$fold <- log2(.nicheFold(tab, spe, x@fit, assay, name))
   tab$z <- sign(tab$t) * stats::qnorm(pmin(pmax(tab$p, 1e-300), 1) / 2, lower.tail = FALSE)
   called <- !is.na(tab$q) & tab$q <= fdr
@@ -244,7 +246,7 @@ plotSpillover <- function(x, spe, test = "pooled", fold = 4, label = 6L, fdr = x
 #'
 #' Features (genes, or gene sets from [spiGSEA()]) against every (index,
 #' niche) column: the fill is the test's t (amber: the slope rises with the
-#' niche's density, or is steeper in the second condition; violet: the
+#' niche's density, or is higher in the second condition; violet: the
 #' reverse), a dot marks a call, grey a feature not tested in that index type.
 #' Rows are clustered on their t profiles. Read it for a gene's or pathway's
 #' response across all cell-type pairs, and for pairs that share responses.

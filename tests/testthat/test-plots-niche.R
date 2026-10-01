@@ -82,3 +82,12 @@ test_that("plotNicheMap() puts each section of a patient on its own origin", {
   expect_equal(as.numeric(tapply(p$data$x, p$data$section, min)), c(0, 0))
   expect_equal(as.numeric(tapply(p$data$y, p$data$section, min)), c(0, 0))
 })
+
+test_that("the adjusted display does not remove depth twice under depth = \"spatial_spline\"", {
+  fs <- fitSpiDE(spe, sigma = 30, index = "A", depth = "spatial_spline", verbose = FALSE)
+  p <- plotNicheResponse(spe, fs, "G1", "A", "B")
+  keep <- p$data$expr > 0
+  lev <- tapply(log(p$data$expr[keep]), p$data$patient[keep], mean)
+  d <- fs@index$A$loglib_mean[names(lev)]
+  expect_lt(abs(stats::coef(stats::lm(lev ~ d))[2]), 0.5)
+})

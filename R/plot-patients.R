@@ -172,6 +172,9 @@ plotPatientEffects <- function(x, index, niche = NULL, covariates = NULL, type =
     }
     d <- data.frame(patient = rownames(pc$x), PC1 = pc$x[, 1], PC2 = pc$x[, 2], stringsAsFactors = FALSE)
     d[[colour.by]] <- cvm[[colour.by]]
+    if (length(condition) && identical(colour.by, condition)) {
+      d[[colour.by]] <- factor(as.character(d[[colour.by]]), attr(.conditionCoding(fit@patients, condition), "levels"))
+    }
     v <- d[[colour.by]]
     sc <- if (length(condition) && identical(colour.by, condition)) {
       .scaleCondition(attr(.conditionCoding(fit@patients, condition), "levels"))
@@ -212,6 +215,11 @@ plotPatientEffects <- function(x, index, niche = NULL, covariates = NULL, type =
 .patientEffectMatrix <- function(xi, niche, ntop) {
   if (is.null(niche)) {
     M <- xi$intercept
+    # a patient with no counts of a gene has an intercept held only by the 1e-3
+    # ridge, far below the other patients': it is missing, not a patient effect
+    med <- apply(M, 1, stats::median, na.rm = TRUE)
+    spread <- pmax(apply(M, 1, stats::mad, na.rm = TRUE), 0.1)
+    M[!is.na(M) & M < med - 5 * spread] <- NA
   } else {
     j <- match(niche, xi$niches)
     sw <- .slopeWeights(xi)

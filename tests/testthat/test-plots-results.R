@@ -104,3 +104,11 @@ test_that("the call graph wraps long cell-type names", {
   txt <- b$data[[which(vapply(g$layers, function(l) inherits(l$geom, "GeomText"), logical(1)))]]
   expect_true(all(nchar(unlist(strsplit(txt$label, "\n"))) <= 12))
 })
+
+test_that("plots of a test without finite p-values stop readably", {
+  r0 <- res
+  r0@table$p[r0@table$test == "condition"] <- NA_real_
+  r0@table$q[r0@table$test == "condition"] <- NA_real_
+  expect_error(plotCallMap(r0), "no tested triplet")
+  expect_error(plotSpillover(r0, spe, test = "condition"), "no tested triplet")
+})
