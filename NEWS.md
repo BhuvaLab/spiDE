@@ -1,3 +1,35 @@
+# spiDE 0.99.33
+
+* **Slopes engine: a niche type missing from a patient no longer drops the
+  patient.**
+  - **The bug.** A patient's slopes were estimated jointly over all the
+    index type's niche columns. A niche type absent from the patient's tissue
+    (or of constant density across its cells) leaves a zero column, and the
+    rank check then discarded the patient for every niche, not only the empty
+    one.
+  - **Who it hit.** Designs with rare niche types. On the public cohorts a
+    single patient (GSE289194). With many fine cell types almost every patient
+    lacks one, and nearly all slopes were lost.
+  - **The fix.** A constant column is dropped for that patient only, which
+    gives no slope for that niche. The patient's other slopes are those it
+    would have had with every niche present, because a zero column carries no
+    information about the rest. The rank check now runs on the correlation
+    scale of the patient's information matrix, so it judges collinearity
+    alone. A niche column of small spread (a sparse niche's tail) no longer
+    drops the patient. Nor do columns on very different scales. A patient that
+    passed the check before gets the same slopes.
+  - An existing fit must be refitted: the slopes are computed in
+    `fitSpiDE()`.
+* **Documentation: how much data spiDE needs.**
+  - **What.** A power benchmark measured the pooled and condition-specific
+    tests across the number of patients, the cells per patient, the effect
+    size, the kind of gene, the tissue architecture and the panel. Counts were
+    simulated from four real tissues.
+  - **Where.** Two reports on the research site, linked from the Validation
+    menu: the results, with an interactive study planner, and the simulation
+    design. The calibration vignette has a new section, "How much data is
+    needed", with the headline numbers.
+
 # spiDE 0.99.32
 
 * **Slopes engine: a new condition test.**

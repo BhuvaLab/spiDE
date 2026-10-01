@@ -71,7 +71,7 @@ Ten block-null maps and 1,000 condition permutations per cohort:
 |---|---|---|---|---|
 | GSE250346 | 0.94-0.96 (0) | 0.95-0.96 (0) | 0.98-0.99 | 0 / 0.010 |
 | GSE282639 | 0.92-0.96 (0) | 0.97-1.00 (0) | 0.99-1.00 | 0.015 / 0.042 |
-| GSE289194 | 0.93-0.95 (0) | 0.97-0.99 (0) | 0.99 | 0.011 / 0.034 |
+| GSE289194 | 0.93-0.95 (0) | 0.97-0.99 (0) | 0.99 | 0.015 / 0.027 |
 | YTMA | 0.93-0.94 (0) | 0.98 (0) | 0.99 | 0.010 / 0.035 |
 | YTMA stage | 0.96-0.97 (0) | 0.98 (0) | 0.99 | 0.012 / 0.023 |
 
@@ -137,6 +137,74 @@ The pooled test found 26% of the planted pooled effects on GSE289194 and 3% on
 YTMA with the slopes engine (14% and 5% with the sandwich engine); on YTMA the
 effects were small against the count noise of whole-transcriptome data.
 
+# How much data is needed
+
+A separate benchmark measured how recall and false discoveries change with the
+design. It used the same four simulated tissues, the shipped slopes engine and
+1,020 simulated datasets. The design varied:
+
+- the number of patients, 6 to 32, half per condition;
+- the cells per patient and index type, 25 to 1,000;
+- the gene panel.
+
+Every dataset carried planted niche effects of six sizes on known genes. A
+size is a *standardised slope*: a log fold change per within-patient standard
+deviation of the log1p niche density. A slope of 0.2 is about a 1.6-fold
+change between index cells at the niche's 10th and 90th percentiles; 0.4 is
+about 2.7-fold. On the three public cohorts the median pooled call is 0.07 to 0.14.
+
+The smallest effect the pooled test finds with 80% recall at BH 0.05, at 200
+cells per patient and index type:
+
+| patients | GSE289194 | GSE282639 | GSE250346 | YTMA |
+|---|---|---|---|---|
+| 8 | > 0.8 | > 0.8 | > 0.8 | > 0.8 |
+| 12 | > 0.8 | 0.65 | 0.77 | > 0.8 |
+| 16 | 0.65 | 0.45 | 0.58 | > 0.8 |
+| 24 | 0.41 | 0.32 | 0.35 | 0.63 |
+| 32 | 0.32 | 0.26 | 0.31 | 0.43 |
+| 32, with 1,000 cells | 0.19 | 0.18 | 0.17 | 0.44 |
+
+- **Patients set the power.**
+  - For a fixed number of cells, dividing them among more patients did better
+    in all but 5 of 528 comparisons, none of them beyond noise. At 3,200 cells
+    per type on GSE289194, 8 patients found 2% of effects of 0.4, 16 patients
+    50% and 32 patients 84%.
+  - Below 12 patients, neither test calls anything but very large effects.
+  - With 3 patients per condition, the condition-specific test cannot run.
+- **Cells help once patients are adequate.** At 32 patients, recall of effects
+  of 0.2 on GSE289194 rose from 0.59 at 200 cells to 0.84 at 1,000.
+- **The condition-specific test needs larger effects.** Take the test over all
+  triplets, for an effect present in one condition only. Where both tests
+  reach 80% recall, it needs 2.2 to 3.0 times the pooled test's effect. This
+  is a lower bound: the condition test reaches 80% in fewer designs.
+  - The default filtered procedure cannot find an effect that reverses between
+    the conditions, since such an effect has no mean slope.
+  - `procedure = "all"` found as many condition effects or more at 98% of
+    design points.
+- **Dim genes are found last.** Recall rises steadily with the gene's
+  expression in the index type.
+- **False discoveries.**
+  - The false discovery proportion stayed within its nominal level across most
+    designs. The all-null datasets gave almost no calls at any size, up to
+    1,000 cells and 32 patients.
+  - It ran above nominal in the most precise designs, above all on the 343-gene
+    panel of GSE250346 (up to 0.31 at a nominal 0.05). On the 1,000-gene panels
+    the excess appeared only at 32 patients with 400 to 1,000 cells (up to 0.14).
+  - The measurements point to a compositional cause. Strong niche effects in
+    bright genes move the library size with the niche, and relative to the
+    library every other gene in that (index, niche) column then moves the
+    other way. Those changes are real changes in a gene's share of the counts,
+    but they are not niche effects on the gene itself.
+  - If many weak calls share one column and one sign, check that column's
+    median slope and the library size against the niche.
+
+The full results, with an interactive planner over patients, cells and effect
+size, are in
+[How much data does spiDE need?](https://bhuvalab.github.io/spiDE-research/power-results.html).
+The simulation design is in
+[Simulating realistic spatial data](https://bhuvalab.github.io/spiDE-research/power-design.html).
+
 # Sequencing depth
 
 A cell's library size mixes technical capture with its biological RNA
@@ -188,6 +256,10 @@ Spread is read per fifth of sets by size, and a tail counts a call at
 - **Many index types at once on small panels.** The checks used five index
   types per cohort. With many more, the pooled test's multiple-testing burden
   grows and power falls accordingly; calibration is not expected to change.
-- **Very small cohorts.** The smallest group checked had 9 patients. With
-  fewer, the condition-specific test has few effective patients, and genes
-  whose weight rests on one or two patients are not tested.
+- **Very small cohorts on real data.** The smallest real group checked had 9
+  patients. The power benchmark above simulated cohorts down to 6 patients
+  (3 per condition).
+  - There the pooled test is conservative: the spread of its null statistics is
+    0.83 to 0.88, against 1 for a calibrated test.
+  - The condition-specific test cannot run, because it needs at least 3
+    effective patients per condition.

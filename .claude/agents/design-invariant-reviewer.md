@@ -154,9 +154,14 @@ a change inside `research/mixed`.
    error. Flag new methods without the call, and slot reads before it.
 
 9. **A patient drops out of a gene's slope rather than the gene failing.**
-   - In `.patientSlopes()`, a patient whose niche columns are collinear
-     within its cells (smallest eigenvalue of `I_s` below `1e-8` of the
-     largest), or with fewer than `min.cells` cells, gets `NA` for that gene.
+   - In `.patientSlopes()`, a niche column that is constant within the
+     patient (a niche type absent from its tissue) gets `NA` for that
+     (patient, niche) alone, and the other slopes are solved without it. A
+     patient whose remaining columns are collinear (smallest eigenvalue of
+     `I_s` on the correlation scale below `1e-8` of the largest), or with
+     fewer than `min.cells` cells, gets `NA` for that gene. Flag any change
+     that lets one niche column cost the patient every niche (the 0.99.32
+     bug: it emptied designs with many rare niche types).
      A patient with too few tiles falls back to `v_model` times the gene's
      median tile/model ratio.
    - `.slopeColumnTest()` turns a gene's test into `NA` below `min.pooled` /

@@ -58,6 +58,62 @@ test_that("a patient slope is one Fisher-scoring step from the pooled fit", {
   expect_equal(unname(x$beta[g, s, ]), unname(b[seq_along(nc$tested)]), tolerance = 1e-6)
 })
 
+test_that("a niche type absent from a patient's tissue drops that slope alone, not the patient", {
+  spe <- .toySPE(n_samples = 16, n_per = 120, n_genes = 12, seed = 2)
+  s0 <- "S3"
+  ct <- spe$cell_type; ct[spe$sample_id == s0 & ct == "C"] <- "B"; spe$cell_type <- ct
+  spe <- buildNiches(spe, sigma = 30, verbose = FALSE)
+  x <- fitSpiDE(spe, index = "A", sigma = 30, verbose = FALSE)@index$A
+  p <- which(x$patients == s0)
+  expect_true(all(is.na(x$beta[, p, "C"])) && all(is.na(x$v_model[, p, "C"])))
+  expect_true(all(is.finite(x$beta[, p, "B"])) && all(x$v_tile[, p, "B"] > 0))
+  # the kept slope is the one-step estimate with the absent niche's column left out
+  smp <- spe$sample_id
+  ik <- spiDE:::.indexCells(spe$cell_type, smp, "A", 10L)
+  NM <- SingleCellExperiment::reducedDim(spe, "Niche30")
+  nc <- spiDE:::.nicheColumns(NM, "A", ik)
+  L <- log1p(NM[ik, c(nc$tested, setdiff(nc$cols, nc$tested)), drop = FALSE])
+  Y <- SummarizedExperiment::assay(spe, "counts")[x$genes, ik, drop = FALSE]
+  cov <- scale(matrix(log(Matrix::colSums(SummarizedExperiment::assay(spe, "counts")))[ik],
+                      dimnames = list(NULL, "loglib")), scale = FALSE)
+  des <- spiDE:::.indexDesign(L, cov, factor(smp[ik]), tested = nc$tested)
+  fit <- spiDE:::.fitIndexGLM(Y, des)
+  i <- which(des$patient == p)
+  keep <- colnames(L) != "C"
+  b <- vapply(seq_along(x$genes), function(g) {
+    wr <- spiDE:::.workingWR(as.numeric(Y[g, ]), des$W, fit$alpha[g, ], fit$psi[g])
+    Lt <- sweep(L[i, keep, drop = FALSE], 2, colSums(L[i, keep, drop = FALSE] * wr$w[i]) / sum(wr$w[i]))
+    step <- solve(crossprod(Lt * sqrt(wr$w[i])), colSums(Lt * wr$r[i]))
+    fit$alpha[g, des$niche_cols[1]] + step[[1]]
+  }, 0)
+  expect_equal(unname(x$beta[, p, "B"]), b, tolerance = 1e-6)
+})
+
+test_that("the per-patient rank check judges collinearity, not a niche column's scale", {
+  # a niche column shrunk 1e5-fold (a sparse niche's tail, or raw densities next to large
+  # ones) keeps every patient, leaves the other slopes and scales its own by 1e5
+  spe <- spe16
+  smp <- spe$sample_id
+  ik <- spiDE:::.indexCells(spe$cell_type, smp, "A", 10L)
+  NM <- SingleCellExperiment::reducedDim(spe, "Niche30")
+  nc <- spiDE:::.nicheColumns(NM, "A", ik)
+  L <- log1p(NM[ik, c(nc$tested, setdiff(nc$cols, nc$tested)), drop = FALSE])
+  Y <- SummarizedExperiment::assay(spe, "counts")[fit16@index$A$genes, ik, drop = FALSE]
+  des <- spiDE:::.indexDesign(L, NULL, factor(smp[ik]), tested = nc$tested)
+  fit <- spiDE:::.fitIndexGLM(Y, des)
+  tiles <- rep(seq_len(8), length.out = length(ik))
+  a <- spiDE:::.patientSlopes(fit, des, Y, L, tiles)
+  k <- 1e-5
+  L2 <- L; L2[, "C"] <- L2[, "C"] * k
+  des2 <- spiDE:::.indexDesign(L2, NULL, factor(smp[ik]), tested = nc$tested)
+  fit2 <- fit; fit2$alpha[, des$niche_cols[2]] <- fit$alpha[, des$niche_cols[2]] / k
+  b <- spiDE:::.patientSlopes(fit2, des2, Y, L2, tiles)
+  expect_equal(mean(is.finite(b$beta)), mean(is.finite(a$beta)))
+  expect_equal(b$beta[, , "B"], a$beta[, , "B"], tolerance = 1e-8)
+  expect_equal(b$beta[, , "C"] * k, a$beta[, , "C"], tolerance = 1e-8)
+  expect_equal(b$v_model[, , "C"] * k^2, a$v_model[, , "C"], tolerance = 1e-8)
+})
+
 test_that("the pooled test equals a direct limma fit with the effective df", {
   x <- fit16@index$A
   j <- 1L

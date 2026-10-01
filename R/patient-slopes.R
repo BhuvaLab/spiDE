@@ -9,7 +9,11 @@
 # with w = mu / (1 + psi mu), r = (y - mu) / (1 + psi mu) at the shared fit and
 # l~ the niche log-densities centred within the patient with weights w. This is
 # one Fisher-scoring step from the pooled slope toward the patient's own NB
-# optimum: it uses each cell's count through the NB likelihood.
+# optimum: it uses each cell's count through the NB likelihood. A niche type
+# absent from the patient's tissue leaves a zero column in l~: that niche gets
+# no slope for this patient (NA), and the others are solved without it. The
+# rank check is on the correlation scale of I_s, so a niche column's spread or
+# units never drop a patient; only collinear niche columns do.
 #
 # Two variances per slope (research/simplify, 2026-09-28/29):
 #   v_model = diag(I_s^-1), which treats a patient's cells as independent; and
@@ -60,20 +64,32 @@
         # a non-finite weight or residual (an overflowing mean) would make
         # eigen() stop and take the whole gene block with it: this patient drops
         if (!all(is.finite(Is)) || !all(is.finite(us))) next
-        e <- eigen(Is, symmetric = TRUE)
-        # a patient whose niche columns are (near) collinear within its cells
-        # gives no usable slope for this gene: it drops out, not the gene
-        if (!all(is.finite(e$values)) || e$values[length(e$values)] <= max(e$values[1], 1e-12) * 1e-8) next
-        Iinv <- e$vectors %*% (t(e$vectors) / e$values)
-        d <- Iinv %*% us
+        # a niche type absent from this patient's tissue (or constant across its
+        # cells) leaves nothing after centring: the patient has no slope for that
+        # niche, and only that slope drops. The other slopes are unchanged, since
+        # a zero column has no cross-information with the rest.
+        dg <- diag(Is)
+        keep <- which(dg > 1e-12 * colSums(Ls^2 * ws))
+        if (!length(keep)) next
+        # the rank check runs on the correlation scale, so it judges collinearity
+        # alone, not a column's spread or units (a sparse niche, raw densities)
+        sc <- 1 / sqrt(dg[keep])
+        e <- eigen(Is[keep, keep, drop = FALSE] * outer(sc, sc), symmetric = TRUE)
+        # a patient whose remaining niche columns are (near) collinear within its
+        # cells gives no usable slope for this gene: it drops out, not the gene
+        if (!all(is.finite(e$values)) || e$values[length(e$values)] <= e$values[1] * 1e-8) next
+        Iinv <- (e$vectors %*% (t(e$vectors) / e$values)) * outer(sc, sc)
+        d <- vd <- rep(NA_real_, ncol(Is))
+        d[keep] <- Iinv %*% us[keep]
+        vd[keep] <- diag(Iinv)
         bb[s, ] <- (beta + d)[seq_len(nt)]
-        vv[s, ] <- diag(Iinv)[seq_len(nt)]
+        vv[s, ] <- vd[seq_len(nt)]
         tt <- tiles[i]; nT <- length(unique(tt))
         if (nT >= min.tiles) {
-          Ut <- rowsum(Lt * r[i], tt)
+          Ut <- rowsum(Lt[, keep, drop = FALSE] * r[i], tt)
           Ut <- sweep(Ut, 2, colMeans(Ut))
-          Vs <- Iinv %*% crossprod(Ut) %*% Iinv * nT / (nT - 1)
-          vt[s, ] <- diag(Vs)[seq_len(nt)]
+          vd[keep] <- diag(Iinv %*% crossprod(Ut) %*% Iinv) * nT / (nT - 1)
+          vt[s, ] <- vd[seq_len(nt)]
         }
       }
       rat <- apply(vt / vv, 2, stats::median, na.rm = TRUE)

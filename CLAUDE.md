@@ -112,7 +112,8 @@ bandwidth per fit. `testNicheAbundance()` and `spiGSEA()` sit beside it.
    `"none"`, and `offset =` an assay of per-gene log offsets. `.fitStatus()`: genes polishNB
    could not fit drop out; a dispersion on its search bound takes the bound, mean refitted.
    - **slopes engine** (default): one condition-free fit, then `.patientSlopes()`: each patient's
-     one-step NB slope from the shared fit, with `v_model` and a within-patient spatial tile
+     one-step NB slope from the shared fit (rank check on the correlation scale; a constant niche
+     column drops for that patient alone), with `v_model` and a within-patient spatial tile
      sandwich `v_tile` (tiles of `3 * sigma`); `.patientFactor()` = per-(patient, niche)
      `max(1, median_g v_tile / v_model)`, which scales `v_model` in both tests.
    - **sandwich engine**: the pooled model and, with a condition, the condition x niche model;
@@ -145,7 +146,9 @@ input checks in `R/checkers.R` (extend them; do not duplicate validation).
 5. Counts are never densified whole (per-gene rows, or genes x patients).
 6. One BLAS thread per forked worker (`.bpGenes()` via RhpcBLASctl).
 7. A bad gene or patient drops out (`NA`); it never aborts a run. Every per-gene inversion is
-   guarded.
+   guarded. The smallest unit drops: a niche type absent from a patient's tissue costs that
+   (patient, niche) slope only, never the patient (to 0.99.32 it cost the patient every niche,
+   which emptied designs with many rare niche types; check patients with slopes per index type).
 
 ## Evidence and decisions
 
