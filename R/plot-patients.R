@@ -90,7 +90,7 @@ plotPatientSlopes <- function(x, gene, index, niche, ci = 0.95) {
     guides(colour = "none", size = guide_legend(order = 1, override.aes = list(colour = .spideCols[["grey"]])),
            fill = guide_legend(order = 2)) +
     theme_spiDE() + theme(axis.text.y = element_text(size = rel(0.65)))
-  if (length(x@condition)) p <- p + labs(caption = sprintf("\u0394: slope difference, %s", x@contrast))
+  if (length(x@condition)) p <- p + labs(caption = bquote(Delta * ": slope difference, " * .(x@contrast)))
   p
 }
 
@@ -100,8 +100,10 @@ plotPatientSlopes <- function(x, gene, index, niche, ci = 0.95) {
   cond <- length(x@condition) == 1L
   r <- .tripletRows(x@table, if (cond) "condition" else "pooled", gene, index, niche)
   est <- ifelse(is.finite(r$estimate), formatC(r$estimate, format = "f", digits = 2, flag = "+"), "NA")
-  stats::setNames(sprintf('atop(%s, scriptstyle("%s = %s, q = %s"))', .itGene(gene),
-                          if (cond) "\u0394" else "slope", est, .fmtq(r$q)), gene)
+  # plotmath's Delta, not the Unicode letter: the PDF device cannot convert it
+  stat <- sprintf(" = %s, q = %s", est, .fmtq(r$q))
+  stat <- if (cond) sprintf('Delta * "%s"', stat) else sprintf('"slope%s"', stat)
+  stats::setNames(sprintf("atop(%s, scriptstyle(%s))", .itGene(gene), stat), gene)
 }
 
 #' What the patient intercepts, or slopes, capture

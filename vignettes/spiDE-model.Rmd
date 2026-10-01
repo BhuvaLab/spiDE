@@ -295,6 +295,19 @@ A result from this test says "patients with more of this niche differ". A
 result from `testSpiDE()` says "within a patient, cells with more of this niche
 differ". Report each as what it is.
 
+`plotNicheResponse(adjust = FALSE)` draws both on the example data. Each
+segment is one patient's slope, the within-patient association spiDE tests; the
+dashed line through the patients' means (open circles) is the between-patient
+association the intercepts absorb:
+
+```{r abundance-figure, fig.width = 6, fig.height = 3.5, message = FALSE}
+library(spiDE)
+data(toySpiDE)
+spe <- buildNiches(toySpiDE, sigma = 30)
+res <- spiDE(spe, condition = "condition", sigma = 30, index = "A", verbose = FALSE)
+plotNicheResponse(spe, res, gene = "G1", index = "A", niche = "B", adjust = FALSE)
+```
+
 # What the model does not address
 
 - **Smoothness of the niche itself.** A niche density is smooth over space.

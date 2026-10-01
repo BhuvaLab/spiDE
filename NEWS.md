@@ -1,3 +1,26 @@
+# spiDE 0.99.34
+
+* **Plots.** Nine ggplot2 functions, one per question, in one house style
+  (`theme_spiDE()`) and one colour-blind-safe palette (`spiDEColours()`):
+  `plotNicheMap()` (the niche covariate in tissue), `plotPatientSlopes()` (each
+  patient's slope: the evidence the tests weigh), `plotNicheResponse()` (the
+  cells behind a slope, adjusted for each patient's level or raw),
+  `plotCallMap()` (calls per cell-type pair, heatmap or graph),
+  `plotTopTriplets()` (a forest of the strongest triplets or chosen genes),
+  `plotSpillover()` (whether the calls are the niche type's own markers),
+  `plotTripletHeatmap()` (genes' or gene sets' profiles across pairs),
+  `plotPValues()` (p-values by expression band) and `plotPatientEffects()`
+  (what the patient intercepts, or slopes, capture). Each returns one ggplot
+  with its data in `p$data`; any two combine with patchwork.
+* **The fit keeps each patient's intercept.** `fitSpiDE()` now stores, for both
+  engines, the patients' intercepts from the shared, condition-free fit, their
+  mean log1p niche densities and mean log library size; `patientIntercepts()`
+  returns them. The slopes engine's fit still never sees the condition. Fits
+  from 0.99.33 and earlier work in every plot except
+  `plotNicheResponse(adjust = TRUE)` and `plotPatientEffects()`, which ask for
+  a refit.
+* ggplot2 and scales are now imported; ggrepel and patchwork are suggested.
+
 # spiDE 0.99.33
 
 * **Slopes engine: a niche type missing from a patient no longer drops the

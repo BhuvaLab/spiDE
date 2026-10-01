@@ -163,9 +163,9 @@ plotTopTriplets <- function(x, test = NULL, n = 30L, gene = NULL, index = NULL, 
     geom_point(aes(shape = .data$marker), size = 2, fill = "white", stroke = 0.8) +
     .scaleDirection(.directionLabels(x, test)) +
     scale_shape_manual(values = c(`FALSE` = 16, `TRUE` = 24), breaks = "TRUE",
-                       labels = sprintf("\u2265 %g-fold higher\nin the niche type", fold), name = NULL,
+                       labels = list(bquote("" >= .(fold) * "-fold higher in the niche type")), name = NULL,
                        drop = FALSE) +
-    scale_alpha_manual(values = c(yes = 1, no = 0.35), name = sprintf("q \u2264 %s", format(fdr)), drop = FALSE) +
+    scale_alpha_manual(values = c(yes = 1, no = 0.35), name = bquote(italic(q) <= .(fdr)), drop = FALSE) +
     scale_y_discrete(labels = .parseLabels) +
     labs(x = if (test == "pooled") "slope on niche density (log1p)" else sprintf("slope difference (%s)", x@contrast),
          y = NULL, colour = NULL) +
@@ -227,7 +227,8 @@ plotSpillover <- function(x, spe, test = "pooled", fold = 4, label = 6L, fdr = x
   ggplot(tab, aes(.data$fold, .data$z)) +
     annotate("rect", xmin = log2(fold), xmax = Inf, ymin = -Inf, ymax = Inf, fill = .spideCols[["faint"]]) +
     annotate("text", x = Inf, y = -Inf, hjust = 1.05, vjust = -0.5, size = 3.4,
-             label = sprintf("%d of %d calls\n\u2265 %g-fold in niche type", sum(mk), sum(called), fold)) +
+             label = sprintf('atop("%d of %d calls", "" >= %s * "-fold in niche type")', sum(mk), sum(called),
+                             format(fold)), parse = TRUE) +
     geom_hline(yintercept = 0, linewidth = 0.3) +
     geom_vline(xintercept = log2(fold), linetype = "dashed", linewidth = 0.4) +
     geom_point(data = function(d) d[d$status == "not called", ], aes(colour = .data$status), size = 0.7, shape = 16) +
@@ -315,9 +316,8 @@ plotTripletHeatmap <- function(x, features = NULL, test = NULL, n = 30L, fdr = N
          scale_linetype_manual(values = c(`not tested` = 1), name = NULL))
   }
   calls <- if (any(tab$called)) {
-    list(geom_point(data = function(d) d[d$called, ], aes(shape = sprintf("%s \u2264 %s", qcol, format(fdr))),
-                    size = 0.9),
-         scale_shape_manual(values = 16, name = NULL))
+    list(geom_point(data = function(d) d[d$called, ], aes(shape = "called"), size = 0.9),
+         scale_shape_manual(values = c(called = 16), labels = list(bquote(.(as.name(qcol)) <= .(fdr))), name = NULL))
   }
   ggplot(tab, aes(.data$niche, .data$feature)) +
     untested +
