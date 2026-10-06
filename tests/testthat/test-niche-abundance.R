@@ -130,3 +130,32 @@ test_that("a pair the cap would leave without support drops out instead of stopp
   r <- expect_no_error(spiDE:::.abundancePair(Y, df, max.leverage = 2))
   if (!is.null(r)) expect_true(all(vapply(r$terms, function(x) all(is.finite(x$p)), TRUE)))
 })
+
+test_that("gene sets: a set's score is its genes' mean standardised expression, less the others' when competitive", {
+  set.seed(7)
+  Y <- matrix(rnorm(30 * 10, 5), 30, 10, dimnames = list(paste0("g", 1:30), paste0("s", 1:10)))
+  sets <- list(a = paste0("g", 1:6), b = paste0("g", 4:12), small = c("g1", "g2"), absent = c("x", "y", "z", "w", "v"))
+  Z <- t(scale(t(Y)))
+  sc <- spiDE:::.abundanceSetScores(Y, sets, "self-contained", 5L, 500L)
+  expect_equal(rownames(sc$S), c("a", "b"))                       # too small and absent sets dropped
+  expect_equal(unname(sc$size), c(6L, 9L))
+  expect_equal(unname(sc$S["a", ]), unname(colMeans(Z[1:6, ])), tolerance = 1e-12)
+  cp <- spiDE:::.abundanceSetScores(Y, sets, "competitive", 5L, 500L)
+  expect_equal(unname(cp$S["b", ]), unname(colMeans(Z[4:12, ]) - colMeans(Z[-(4:12), ])), tolerance = 1e-12)
+})
+
+test_that("testNicheAbundance(genesets = ) tests sets like genes, with the same terms and families", {
+  sets <- list(with_G2 = c("G2", "G3", "G4", "G5", "G6"), other = c("G7", "G8", "G9", "G10", "G11"))
+  ab <- testNicheAbundance(spe_c, condition = "condition", sigma = 50, genesets = sets, verbose = FALSE)
+  expect_true(all(c("set", "size", "index", "niche", "term", "estimate", "t", "p", "n_patients",
+                    "leverage", "downweighted", "q", "q.global", "direction") %in% names(ab)))
+  expect_false("gene" %in% names(ab))
+  expect_setequal(unique(ab$term), c("niche", "condition:niche"))
+  for (tm in unique(ab$term)) expect_equal(ab$q.global[ab$term == tm], stats::p.adjust(ab$p[ab$term == tm], "BH"))
+  # the planted G2 confound (A cells, B prevalence, Responders) reaches the set holding G2
+  x <- ab[ab$index == "A" & ab$niche == "B" & ab$term == "condition:niche", ]
+  expect_gt(x$t[x$set == "with_G2"], x$t[x$set == "other"])
+  # min.size above every set: nothing to test
+  expect_error(testNicheAbundance(spe_c, sigma = 50, genesets = sets, min.size = 50L, verbose = FALSE), "min.size")
+  expect_error(testNicheAbundance(spe_c, sigma = 50, genesets = c("G1", "G2"), verbose = FALSE), "genesets")
+})

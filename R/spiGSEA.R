@@ -21,7 +21,8 @@
 #' genes of a set is accounted for without being estimated: it is already in
 #' how much the set's slope varies from patient to patient.
 #'
-#' Needs the slopes engine, whose fit holds each patient's slopes.
+#' Needs the slopes engine, whose fit holds each patient's slopes. For gene sets
+#' in the between-patient test, use [testNicheAbundance()] with \code{genesets}.
 #'
 #' @param object a [SpiDEResults-class] from the slopes engine.
 #' @param genesets a named list of character vectors of gene names.
@@ -55,9 +56,7 @@ setMethod("spiGSEA", "SpiDEResults", function(object, genesets, test = NULL,
                                              BPPARAM = BiocParallel::SerialParam(), ...) {
   .assertCurrent(object)
   type <- match.arg(type)
-  if (!is.list(genesets) || is.null(names(genesets)) || anyDuplicated(names(genesets))) {
-    stop("'genesets' must be a named list of character vectors with unique names", call. = FALSE)
-  }
+  checkGenesets(genesets)
   fit <- object@fit
   if (fit@engine != "slopes") {
     stop("spiGSEA() needs the slopes engine's per-patient slopes: fit with engine = \"slopes\"",

@@ -84,6 +84,17 @@
 #' Each row reports the largest leverage before the cap and how many samples
 #' were down-weighted.
 #'
+#' \strong{Gene sets.} With \code{genesets}, sets are tested instead of genes,
+#' each like a gene. Every gene of the index type is standardised across
+#' samples, and a set's score in a sample is the mean of its genes' standardised
+#' pseudobulk expression there. With \code{type = "competitive"} (the default),
+#' the mean over all other genes is subtracted, so a shift that moves every gene
+#' together does not make a set call. The scores then go through the same
+#' regression, leverage cap and multiple testing as genes. This is the
+#' between-patient counterpart of [spiGSEA()], which tests sets on the
+#' within-patient slopes. The set version has not yet been checked against
+#' permutation nulls.
+#'
 #' \strong{Multiple testing.} \code{q.global} is a Benjamini-Hochberg
 #' adjustment over every row of the same term, so the two terms are separate
 #' families: a strong \code{"niche"} signal no longer loosens the threshold
@@ -115,6 +126,12 @@
 #' @param max.leverage a number above 1: samples whose leverage in a design
 #'   exceeds this multiple of the average leverage are down-weighted until none
 #'   does (\code{Inf} turns this off).
+#' @param genesets a named list of character vectors (gene identifiers as in
+#'   \code{rownames(spe)}), or \code{NULL} to test genes.
+#' @param type with \code{genesets}: \code{"competitive"} (the set against
+#'   the other genes) or \code{"self-contained"} (the set alone).
+#' @param min.size,max.size with \code{genesets}: set size limits after
+#'   intersecting with each index type's genes.
 #' @param verbose report progress.
 #' @param ... further arguments passed to the method.
 #' @return a data.frame with one row per (gene, index type, niche type, term):
@@ -123,12 +140,20 @@
 #'   \code{n_patients}, \code{leverage} (the largest sample leverage before the
 #'   cap, as a multiple of the average), \code{downweighted} (the samples
 #'   down-weighted), \code{q} (BH within each (index, niche, term) over genes)
-#'   and \code{q.global} (BH over every row of the same term).
+#'   and \code{q.global} (BH over every row of the same term). With
+#'   \code{genesets}, one row per (set, index type, niche type, term): the
+#'   column \code{gene} becomes \code{set}, followed by \code{size}, and a
+#'   \code{direction} column is added; \code{estimate} is in standard
+#'   deviations of the set score per unit log1p density.
 #' @examples
 #' data(toySpiDE)
 #' spe <- buildNiches(toySpiDE, sigma = 30)
 #' na <- testNicheAbundance(spe, condition = "condition", sigma = 30)
 #' head(na[order(na$p), ])
+#' sets <- list(first = paste0("G", 1:6), second = paste0("G", 7:12))
+#' nas <- testNicheAbundance(spe, condition = "condition", sigma = 30,
+#'                           genesets = sets, verbose = FALSE)
+#' head(nas)
 #' @importFrom limma lmFit eBayes
 #' @importFrom stats model.matrix p.adjust
 #' @rdname testNicheAbundance
@@ -140,12 +165,16 @@ setMethod(
                         covariates = character(), assay = "counts",
                         cell_type = "cell_type", sample_id = "sample_id",
                         name = "Niche", min.cells = 10L, prior.count = 1,
-                        max.leverage = 3, verbose = TRUE) {
+                        max.leverage = 3, genesets = NULL,
+                        type = c("competitive", "self-contained"),
+                        min.size = 5L, max.size = 500L, verbose = TRUE) {
     checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
     if (!is.numeric(max.leverage) || length(max.leverage) != 1L || is.na(max.leverage) || max.leverage <= 1)
       stop("'max.leverage' must be a single number above 1 (Inf switches the cap off)")
     if (!is.null(condition)) checkCondition(spe, condition)
     checkCovariates(spe, covariates)
+    if (!is.null(genesets)) checkGenesets(genesets)
+    type <- match.arg(type)
     if (length(sigma) != 1L) stop("'sigma' must be a single bandwidth")
     checkNiche(spe, sigma, name = name)
 
@@ -173,6 +202,12 @@ setMethod(
     rows <- list()
     for (k in names(pb)) {
       b <- pb[[k]]
+      # with gene sets, each patient's set score takes the place of a gene
+      if (!is.null(genesets)) {
+        sc <- .abundanceSetScores(b$Y, genesets, type, min.size, max.size)
+        if (is.null(sc)) next
+        b$Y <- sc$S
+      }
       for (n in setdiff(niches, k)) {
         if (verbose) message(sprintf("testNicheAbundance: %s x %s (%d samples)", k, n, length(b$samples)))
         df <- data.frame(niche = as.numeric(b$niche[b$samples, n]))
@@ -181,15 +216,21 @@ setMethod(
         r <- .abundancePair(b$Y, df, covariates, max.leverage)
         if (is.null(r)) next
         for (tm in names(r$terms)) {
-          rows[[length(rows) + 1L]] <- data.frame(
+          d <- data.frame(
             gene = rownames(b$Y), index = k, niche = n, term = tm,
             estimate = r$terms[[tm]]$estimate, t = r$terms[[tm]]$t, p = r$terms[[tm]]$p,
             n_patients = r$n, leverage = r$leverage, downweighted = r$downweighted,
             row.names = NULL, stringsAsFactors = FALSE)
+          if (!is.null(genesets)) {
+            names(d)[1L] <- "set"
+            d <- cbind(d[1L], size = unname(sc$size[d$set]), d[-1L])
+          }
+          rows[[length(rows) + 1L]] <- d
         }
       }
     }
-    if (!length(rows)) stop("no (index, niche) pair had enough samples to fit")
+    if (!length(rows)) stop(if (is.null(genesets)) "no (index, niche) pair had enough samples to fit" else
+      "no gene set within min.size and max.size, or no (index, niche) pair had enough samples to fit")
     out <- do.call(rbind, rows)
     out <- out[is.finite(out$p), , drop = FALSE]
     key <- paste(out$index, out$niche, out$term)
@@ -197,6 +238,7 @@ setMethod(
     # one family per term: pooling them let a strong "niche" signal loosen the
     # threshold for the condition:niche rows (2026-10-06, YTMA permutation nulls)
     out$q.global <- stats::ave(out$p, out$term, FUN = function(p) stats::p.adjust(p, "BH"))
+    if (!is.null(genesets)) out$direction <- ifelse(out$t > 0, "up", "down")
     rownames(out) <- NULL
     out
   }
@@ -248,6 +290,35 @@ setMethod(
                                          p = unname(fit$p.value[, tm])))
   names(out) <- ifelse(terms == "niche", "niche", "condition:niche")
   list(terms = out, n = nrow(X), leverage = cap$leverage, downweighted = cap$downweighted)
+}
+
+# Per-patient gene-set scores for one index type, from its pseudobulk (genes x
+# samples of log2-CPM): each gene is standardised across the samples, and a
+# set's score in a sample is the mean of its genes' standardised values there;
+# competitive scores subtract the mean over every other gene, so a shift shared
+# by all genes (depth, spillover of a whole profile) does not make a set call.
+# Sets keep min.size to max.size of the index type's genes (and, when
+# competitive, leave at least one gene out). Returns NULL when none do, else S
+# (sets x samples) and the sets' sizes.
+.abundanceSetScores <- function(Y, genesets, type, min.size, max.size) {
+  sdv <- apply(Y, 1L, stats::sd)
+  Y <- Y[is.finite(sdv) & sdv > 0, , drop = FALSE]
+  if (!nrow(Y)) return(NULL)
+  Z <- (Y - rowMeans(Y)) / apply(Y, 1L, stats::sd)
+  member <- lapply(genesets, function(g) which(rownames(Z) %in% g))
+  size <- lengths(member)
+  keep <- size >= min.size & size <= max.size & (type == "self-contained" | size < nrow(Z))
+  if (!any(keep)) return(NULL)
+  member <- member[keep]; size <- size[keep]
+  M <- Matrix::sparseMatrix(i = rep(seq_along(member), size), j = unlist(member), x = rep(1 / size, size),
+                            dims = c(length(member), nrow(Z)))
+  S <- as.matrix(M %*% Z)
+  if (type == "competitive") {
+    tot <- colSums(Z)
+    S <- S - sweep(-sweep(S, 1L, size, "*"), 2L, tot, "+") / (nrow(Z) - size)
+  }
+  dimnames(S) <- list(names(member), colnames(Y))
+  list(S = S, size = size)
 }
 
 # Mallows-type weights for a design: samples whose leverage (hat value)

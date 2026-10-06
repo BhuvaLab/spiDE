@@ -1,3 +1,19 @@
+# spiDE 0.99.36
+
+* **Gene sets for the between-patient test.**
+  - `testNicheAbundance(genesets = )` tests sets instead of genes.
+  - **The score.** Each gene is standardised across patients. A set's score in a
+    patient is the mean of its genes' standardised pseudobulk expression.
+    `type = "competitive"`, the default, subtracts the mean over the other
+    genes; `"self-contained"` subtracts nothing.
+  - **The test.** The scores go through the same regression, leverage cap and
+    per-term multiple testing as genes.
+  - **Coverage.** Gene sets are now available for all four tests: `spiGSEA()`
+    for the within-patient slopes, `testNicheAbundance()` for the
+    between-patient associations.
+  - **Not yet checked against permutation nulls.**
+* One gene-set input check, shared by both functions (`checkGenesets()`).
+
 # spiDE 0.99.35
 
 * **`testNicheAbundance()`: three fixes after permutation nulls.** Permuting

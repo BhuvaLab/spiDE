@@ -68,7 +68,8 @@ Because the patient is the unit of replication, the correlation between the
 genes of a set is accounted for without being estimated: it is already in
 how much the set's slope varies from patient to patient.
 
-Needs the slopes engine, whose fit holds each patient's slopes.
+Needs the slopes engine, whose fit holds each patient's slopes. For gene sets
+in the between-patient test, use \code{\link[=testNicheAbundance]{testNicheAbundance()}} with \code{genesets}.
 }
 \examples{
 data(toySpiDE)

@@ -235,7 +235,9 @@ over the two conditions, and those with `"condition:niche"` test whether it
 differs between them (second level minus first). Each term is its own
 multiple-testing family (`q.global`), and a patient who alone carries most of
 a niche type's spread is down-weighted (`max.leverage`), so that one patient
-cannot make a call on its own.
+cannot make a call on its own. Gene sets go through the same test with
+`testNicheAbundance(genesets = )`, as they go through the within-patient tests
+with `spiGSEA()`.
 
 Never report a result of one as a result of the other.
 

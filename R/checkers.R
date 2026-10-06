@@ -258,3 +258,13 @@ checkFitSPE <- function(spe, fit, index, niches = NULL, assay = "counts", name =
   }
   invisible(TRUE)
 }
+
+# Gene sets: a named list of character vectors with unique names (spiGSEA(),
+# testNicheAbundance(genesets = )).
+checkGenesets <- function(genesets) {
+  if (!is.list(genesets) || is.null(names(genesets)) || anyDuplicated(names(genesets)) ||
+      !all(vapply(genesets, is.character, logical(1)))) {
+    stop("'genesets' must be a named list of character vectors with unique names", call. = FALSE)
+  }
+  invisible(TRUE)
+}

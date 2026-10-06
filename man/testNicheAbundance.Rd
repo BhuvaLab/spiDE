@@ -21,6 +21,10 @@ testNicheAbundance(spe, ...)
   min.cells = 10L,
   prior.count = 1,
   max.leverage = 3,
+  genesets = NULL,
+  type = c("competitive", "self-contained"),
+  min.size = 5L,
+  max.size = 500L,
   verbose = TRUE
 )
 }
@@ -55,6 +59,15 @@ sample is used).}
 exceeds this multiple of the average leverage are down-weighted until none
 does (\code{Inf} turns this off).}
 
+\item{genesets}{a named list of character vectors (gene identifiers as in
+\code{rownames(spe)}), or \code{NULL} to test genes.}
+
+\item{type}{with \code{genesets}: \code{"competitive"} (the set against
+the other genes) or \code{"self-contained"} (the set alone).}
+
+\item{min.size, max.size}{with \code{genesets}: set size limits after
+intersecting with each index type's genes.}
+
 \item{verbose}{report progress.}
 }
 \value{
@@ -64,7 +77,11 @@ a data.frame with one row per (gene, index type, niche type, term):
 \code{n_patients}, \code{leverage} (the largest sample leverage before the
 cap, as a multiple of the average), \code{downweighted} (the samples
 down-weighted), \code{q} (BH within each (index, niche, term) over genes)
-and \code{q.global} (BH over every row of the same term).
+and \code{q.global} (BH over every row of the same term). With
+\code{genesets}, one row per (set, index type, niche type, term): the
+column \code{gene} becomes \code{set}, followed by \code{size}, and a
+\code{direction} column is added; \code{estimate} is in standard
+deviations of the set score per unit log1p density.
 }
 \description{
 A between-patient question that the within-patient engines cannot see:
@@ -100,6 +117,17 @@ the default.
 Each row reports the largest leverage before the cap and how many samples
 were down-weighted.
 
+\strong{Gene sets.} With \code{genesets}, sets are tested instead of genes,
+each like a gene. Every gene of the index type is standardised across
+samples, and a set's score in a sample is the mean of its genes' standardised
+pseudobulk expression there. With \code{type = "competitive"} (the default),
+the mean over all other genes is subtracted, so a shift that moves every gene
+together does not make a set call. The scores then go through the same
+regression, leverage cap and multiple testing as genes. This is the
+between-patient counterpart of \code{\link[=spiGSEA]{spiGSEA()}}, which tests sets on the
+within-patient slopes. The set version has not yet been checked against
+permutation nulls.
+
 \strong{Multiple testing.} \code{q.global} is a Benjamini-Hochberg
 adjustment over every row of the same term, so the two terms are separate
 families: a strong \code{"niche"} signal no longer loosens the threshold
@@ -119,4 +147,8 @@ data(toySpiDE)
 spe <- buildNiches(toySpiDE, sigma = 30)
 na <- testNicheAbundance(spe, condition = "condition", sigma = 30)
 head(na[order(na$p), ])
+sets <- list(first = paste0("G", 1:6), second = paste0("G", 7:12))
+nas <- testNicheAbundance(spe, condition = "condition", sigma = 30,
+                          genesets = sets, verbose = FALSE)
+head(nas)
 }

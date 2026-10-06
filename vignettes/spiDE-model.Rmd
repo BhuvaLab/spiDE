@@ -257,6 +257,9 @@ spiDE's tests read only the $\beta_{gs}$. The intercepts $a_{gs}$ absorb C to
 E, and F changes only where along the density axis each patient's slope is
 measured.
 
+Gene sets can be tested for the first four effects: A and B with `spiGSEA()`,
+C and D with `testNicheAbundance(genesets = )`.
+
 # Step 1: the niche
 
 For every cell, `buildNiches()` measures how many cells of each type surround
@@ -536,6 +539,13 @@ spe <- buildNiches(toySpiDE, sigma = 30)
 res <- spiDE(spe, condition = "condition", sigma = 30, index = "A", verbose = FALSE)
 plotNicheResponse(spe, res, gene = "G1", index = "A", niche = "B", adjust = FALSE)
 ```
+
+With `genesets`, `testNicheAbundance()` tests gene sets the same way. Each
+gene is standardised across patients, and a set's score in a patient is the
+mean of its genes' standardised pseudobulk expression. With
+`type = "competitive"` (the default), the mean over the other genes is
+subtracted, as in `spiGSEA()`. The scores then go through the same regression
+as genes. This set version has not yet been checked against permutation nulls.
 
 # What the model does not address
 
