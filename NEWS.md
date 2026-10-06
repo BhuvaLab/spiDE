@@ -1,3 +1,26 @@
+# spiDE 0.99.35
+
+* **`testNicheAbundance()`: three fixes after permutation nulls.** Permuting
+  the condition across patients, the old test made condition:niche calls in
+  nearly every permutation, as many as on the real labels.
+  - **One multiple-testing family per term.** `q.global` was a single
+    Benjamini-Hochberg adjustment over both terms. A strong `"niche"` signal
+    then loosened the threshold for the `"condition:niche"` rows. It is now
+    computed over every row of the same term.
+  - **Centred condition coding.** With a condition, `"niche"` is now the
+    association averaged over the two conditions; it was the first level's.
+    `"condition:niche"` is unchanged: the difference, second level minus
+    first.
+  - **A leverage cap** (`max.leverage = 3`). With a few dozen patients, one
+    patient at the edge of a niche type's abundance could carry a slope. A gene
+    unusual in that patient then got a p-value far smaller than the moderated
+    t allows. Patients whose leverage in the design exceeds `max.leverage`
+    times the average are now down-weighted until none does. The weights come
+    from the design only, so the tests stay exact. New columns: `leverage` and
+    `downweighted`.
+  - **Covariates.** A covariate constant over an index type's patients is
+    dropped from that design, where it stopped the fit before.
+
 # spiDE 0.99.34
 
 * **Plots.** Nine ggplot2 functions, one per question, in one house style

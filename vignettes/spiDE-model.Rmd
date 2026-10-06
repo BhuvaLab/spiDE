@@ -181,7 +181,8 @@ against the patient's mean niche density.
 - **C. Patients with more of the niche differ** (independent of the
   condition). Within each patient the gene is flat, but the patients' means
   rise with their mean niche density (panel C). The term `"niche"` of
-  `testNicheAbundance()` run without a condition detects it. A call means:
+  `testNicheAbundance()` detects it: across all patients without a condition,
+  averaged over the two groups with one. A call means:
   patients whose index cells sit among more of this niche type have more (or
   less) of the gene in those cells.
 - **D. That association differs between the groups** (condition-specific).
@@ -247,7 +248,7 @@ how these quantities vary across patients:
 |---|---|---|---|
 | A. slope in every patient | the average $\beta_{gs}$ is not 0 | `testSpiDE()`, pooled test | within a patient, index cells with more of the niche around them express more (or less) of the gene |
 | B. slope differs between groups | the average $\beta_{gs}$ differs with $c_s$ | `testSpiDE(condition = )`, condition-specific test | that within-patient response differs between the groups |
-| C. patients with more niche differ | $a_{gs}$ changes with $\bar\ell_s$ | `testNicheAbundance()` without a condition, term `"niche"` | patients whose index cells sit among more of the niche differ in the gene's level |
+| C. patients with more niche differ | $a_{gs}$ changes with $\bar\ell_s$ | `testNicheAbundance()`, term `"niche"` | patients whose index cells sit among more of the niche differ in the gene's level |
 | D. that association differs between groups | the change of $a_{gs}$ with $\bar\ell_s$ differs with $c_s$ | `testNicheAbundance(condition = )`, term `"condition:niche"` | the between-patient association differs between the groups |
 | E. level differs between groups | $a_{gs}$ differs with $c_s$ | not spiDE: pseudobulk differential expression | the gene's overall level differs between the groups |
 | F. amount of niche differs between groups | $\bar\ell_s$ differs with $c_s$ | not spiDE: composition analysis | the groups differ in how much of the niche surrounds their index cells |
@@ -505,10 +506,19 @@ composition, or signal spilling between neighbouring cells.
   difference between conditions when a condition is given.
 
 Without a condition, the term `"niche"` is the association across all patients
-(effect C of *What kinds of effects can spiDE find?*). With a condition, the
-term `"condition:niche"` is its difference between the conditions, second level
-minus first (effect D), and `"niche"` is then the association within the first
-level of the condition alone.
+(effect C of *What kinds of effects can spiDE find?*). With a condition,
+`"niche"` is the association averaged over the two conditions, and the term
+`"condition:niche"` is its difference between them, second level minus first
+(effect D). The two terms are separate multiple-testing families.
+
+With a few dozen patients, one patient at the edge of a niche type's
+abundance can carry a whole between-patient slope; if a gene is also unusual
+in that patient, the slope looks far more certain than it is. So patients
+whose leverage in the regression exceeds `max.leverage` times the average are
+down-weighted until none does. The weights come from the patients' niche
+densities and conditions only, never from expression, so the tests stay
+exact. Each row reports the largest leverage before this cap and how many
+patients were down-weighted.
 
 A result from this test says "patients with more of this niche differ". A
 result from `testSpiDE()` says "within a patient, cells with more of this niche

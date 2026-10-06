@@ -20,6 +20,7 @@ testNicheAbundance(spe, ...)
   name = "Niche",
   min.cells = 10L,
   prior.count = 1,
+  max.leverage = 3,
   verbose = TRUE
 )
 }
@@ -50,14 +51,20 @@ sample is used).}
 
 \item{prior.count}{the pseudocount in the log2-CPM.}
 
+\item{max.leverage}{a number above 1: samples whose leverage in a design
+exceeds this multiple of the average leverage are down-weighted until none
+does (\code{Inf} turns this off).}
+
 \item{verbose}{report progress.}
 }
 \value{
 a data.frame with one row per (gene, index type, niche type, term):
 \code{gene}, \code{index}, \code{niche}, \code{term}, \code{estimate}
 (log2-CPM per unit log1p density), \code{t}, \code{p},
-\code{n_patients}, \code{q} (BH within each (index, niche, term) over
-genes) and \code{q.global} (BH over every row).
+\code{n_patients}, \code{leverage} (the largest sample leverage before the
+cap, as a multiple of the average), \code{downweighted} (the samples
+down-weighted), \code{q} (BH within each (index, niche, term) over genes)
+and \code{q.global} (BH over every row of the same term).
 }
 \description{
 A between-patient question that the within-patient engines cannot see:
@@ -73,15 +80,28 @@ the per-sample mean log1p niche density of type \eqn{n} around those cells,
 across samples, with a \code{limma} moderated \eqn{t}-test. Without a
 condition the design is \code{~ niche + covariates} and one term is
 reported, \code{"niche"}: the association across all samples. With a
-\code{condition} the design is \code{~ niche * condition + covariates},
-treatment-coded, and two terms are reported: \code{"condition:niche"}, the
-difference in the association between the conditions (second level minus
-first) -- the patient-level counterpart of the condition-specific niche
-test that \code{\link[=testSpiDE]{testSpiDE()}} runs within patients -- and \code{"niche"}, the
-association within the first level of the condition alone. For the
-association across both conditions, run the test without a condition.
-Where the conditions leave too few samples to estimate the difference, only
-\code{"niche"} is reported, across all samples.
+\code{condition} the design is \code{~ niche * condition + covariates}
+with the condition coded \eqn{-1/2, +1/2}, and two terms are reported:
+\code{"niche"}, the association averaged over the two conditions, and
+\code{"condition:niche"}, its difference between them (second level minus
+first) -- the patient-level counterpart of the condition-specific niche test
+that \code{\link[=testSpiDE]{testSpiDE()}} runs within patients. Where the conditions leave fewer
+than two samples each, only \code{"niche"} is reported, across all samples.
+
+\strong{Influential samples.} With tens of samples, one sample at the edge
+of a niche type's abundances can carry the whole slope, and a gene whose
+expression is extreme in that same sample then gets a far smaller
+\eqn{p}-value than the moderated \eqn{t} allows. Samples whose leverage
+(hat value) in the design exceeds \code{max.leverage} times the average are
+therefore down-weighted until none does. The weights depend on the design
+only, never on expression, so the tests stay exact under the linear model.
+Each row reports the largest leverage before the cap and how many samples
+were down-weighted.
+
+\strong{Multiple testing.} \code{q.global} is a Benjamini-Hochberg
+adjustment over every row of the same term, so the two terms are separate
+families: a strong \code{"niche"} signal no longer loosens the threshold
+for \code{"condition:niche"}.
 
 This is the association that \code{\link[=fitSpiDE]{fitSpiDE()}}'s per-patient intercepts
 deliberately absorb. It is a between-patient effect with \eqn{S} experimental units; it is not

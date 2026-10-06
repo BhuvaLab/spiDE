@@ -15,7 +15,7 @@ test_that("testNicheAbundance returns the documented tidy schema", {
   ct <- testNicheAbundance(spe_c, condition = "condition", sigma = 50, verbose = FALSE)
   expect_s3_class(ct, "data.frame")
   expect_true(all(c("gene", "index", "niche", "term", "estimate", "t", "p",
-                    "n_patients", "q", "q.global") %in% names(ct)))
+                    "n_patients", "leverage", "downweighted", "q", "q.global") %in% names(ct)))
   expect_setequal(unique(ct$term), c("niche", "condition:niche"))
   # an index type is never tested against its own niche
   expect_false(any(ct$index == ct$niche))
@@ -65,4 +65,50 @@ test_that("index and niche restrictions are honoured", {
                         index = "A", niche = c("B", "C"), verbose = FALSE)
   expect_equal(unique(ct$index), "A")
   expect_setequal(unique(ct$niche), c("B", "C"))
+})
+
+test_that("with a condition, niche is the mean of the two conditions' associations, condition:niche their difference", {
+  # no leverage cap, no covariates: the coefficients are those of per-condition simple regressions
+  set.seed(4)
+  Y <- matrix(rnorm(5 * 12), 5, 12, dimnames = list(paste0("g", 1:5), NULL))
+  df <- data.frame(niche = rnorm(12), condition = factor(rep(c("a", "b"), each = 6), levels = c("a", "b")))
+  r <- spiDE:::.abundancePair(Y, df, max.leverage = Inf)
+  slope <- function(i) apply(Y[, i], 1, function(y) stats::coef(stats::lm(y ~ df$niche[i]))[[2]])
+  sa <- slope(1:6); sb <- slope(7:12)
+  expect_equal(r$terms$niche$estimate, unname((sa + sb) / 2), tolerance = 1e-10)
+  expect_equal(r$terms$`condition:niche`$estimate, unname(sb - sa), tolerance = 1e-10)
+  # one condition with a single sample: only the pooled association, across all samples
+  df1 <- transform(df, condition = factor(c(rep("a", 11), "b"), levels = c("a", "b")))
+  r1 <- spiDE:::.abundancePair(Y, df1, max.leverage = Inf)
+  expect_equal(names(r1$terms), "niche")
+  expect_equal(r1$terms$niche$estimate,
+               unname(apply(Y, 1, function(y) stats::coef(stats::lm(y ~ df$niche))[[2]])), tolerance = 1e-10)
+})
+
+test_that("q.global is one Benjamini-Hochberg family per term", {
+  ct <- testNicheAbundance(spe_c, condition = "condition", sigma = 50, verbose = FALSE)
+  for (tm in unique(ct$term)) {
+    i <- ct$term == tm
+    expect_equal(ct$q.global[i], stats::p.adjust(ct$p[i], "BH"))
+  }
+})
+
+test_that("the leverage cap down-weights an influential sample, and only from the design", {
+  set.seed(5)
+  X <- cbind(1, c(rnorm(19), 12))                       # one sample far out on the niche axis
+  cap <- spiDE:::.capLeverage(X, max.leverage = 3)
+  expect_gt(cap$leverage, 3)
+  expect_equal(cap$downweighted, 1L)
+  expect_lt(cap$w[20], 1)
+  expect_lte(max(stats::hat(X * sqrt(cap$w), intercept = FALSE)), 3 * ncol(X) / nrow(X) * 1.001)
+  expect_identical(spiDE:::.capLeverage(X, Inf)$w, rep(1, 20))
+  # the weighted fit equals weighted least squares with those weights
+  Y <- matrix(rnorm(3 * 20), 3, 20, dimnames = list(paste0("g", 1:3), NULL))
+  r <- spiDE:::.abundancePair(Y, data.frame(niche = X[, 2]), max.leverage = 3)
+  expect_equal(r$downweighted, 1L)
+  expect_equal(r$terms$niche$estimate,
+               unname(apply(Y, 1, function(y) stats::coef(stats::lm(y ~ X[, 2], weights = cap$w))[[2]])), tolerance = 1e-10)
+  # no influential sample: nothing is down-weighted
+  expect_equal(spiDE:::.capLeverage(cbind(1, seq(-1, 1, length.out = 20)), 3)$downweighted, 0L)
+  expect_error(testNicheAbundance(spe_c, sigma = 50, max.leverage = 1, verbose = FALSE), "max.leverage")
 })

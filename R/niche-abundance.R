@@ -64,15 +64,28 @@
 #' across samples, with a \code{limma} moderated \eqn{t}-test. Without a
 #' condition the design is \code{~ niche + covariates} and one term is
 #' reported, \code{"niche"}: the association across all samples. With a
-#' \code{condition} the design is \code{~ niche * condition + covariates},
-#' treatment-coded, and two terms are reported: \code{"condition:niche"}, the
-#' difference in the association between the conditions (second level minus
-#' first) -- the patient-level counterpart of the condition-specific niche
-#' test that [testSpiDE()] runs within patients -- and \code{"niche"}, the
-#' association within the first level of the condition alone. For the
-#' association across both conditions, run the test without a condition.
-#' Where the conditions leave too few samples to estimate the difference, only
-#' \code{"niche"} is reported, across all samples.
+#' \code{condition} the design is \code{~ niche * condition + covariates}
+#' with the condition coded \eqn{-1/2, +1/2}, and two terms are reported:
+#' \code{"niche"}, the association averaged over the two conditions, and
+#' \code{"condition:niche"}, its difference between them (second level minus
+#' first) -- the patient-level counterpart of the condition-specific niche test
+#' that [testSpiDE()] runs within patients. Where the conditions leave fewer
+#' than two samples each, only \code{"niche"} is reported, across all samples.
+#'
+#' \strong{Influential samples.} With tens of samples, one sample at the edge
+#' of a niche type's abundances can carry the whole slope, and a gene whose
+#' expression is extreme in that same sample then gets a far smaller
+#' \eqn{p}-value than the moderated \eqn{t} allows. Samples whose leverage
+#' (hat value) in the design exceeds \code{max.leverage} times the average are
+#' therefore down-weighted until none does. The weights depend on the design
+#' only, never on expression, so the tests stay exact under the linear model.
+#' Each row reports the largest leverage before the cap and how many samples
+#' were down-weighted.
+#'
+#' \strong{Multiple testing.} \code{q.global} is a Benjamini-Hochberg
+#' adjustment over every row of the same term, so the two terms are separate
+#' families: a strong \code{"niche"} signal no longer loosens the threshold
+#' for \code{"condition:niche"}.
 #'
 #' This is the association that [fitSpiDE()]'s per-patient intercepts
 #' deliberately absorb. It is a between-patient effect with \eqn{S} experimental units; it is not
@@ -97,13 +110,18 @@
 #' @param name the niche reducedDim prefix.
 #' @param min.cells minimum cells of the index type a sample must contribute.
 #' @param prior.count the pseudocount in the log2-CPM.
+#' @param max.leverage a number above 1: samples whose leverage in a design
+#'   exceeds this multiple of the average leverage are down-weighted until none
+#'   does (\code{Inf} turns this off).
 #' @param verbose report progress.
 #' @param ... further arguments passed to the method.
 #' @return a data.frame with one row per (gene, index type, niche type, term):
 #'   \code{gene}, \code{index}, \code{niche}, \code{term}, \code{estimate}
 #'   (log2-CPM per unit log1p density), \code{t}, \code{p},
-#'   \code{n_patients}, \code{q} (BH within each (index, niche, term) over
-#'   genes) and \code{q.global} (BH over every row).
+#'   \code{n_patients}, \code{leverage} (the largest sample leverage before the
+#'   cap, as a multiple of the average), \code{downweighted} (the samples
+#'   down-weighted), \code{q} (BH within each (index, niche, term) over genes)
+#'   and \code{q.global} (BH over every row of the same term).
 #' @examples
 #' data(toySpiDE)
 #' spe <- buildNiches(toySpiDE, sigma = 30)
@@ -120,8 +138,10 @@ setMethod(
                         covariates = character(), assay = "counts",
                         cell_type = "cell_type", sample_id = "sample_id",
                         name = "Niche", min.cells = 10L, prior.count = 1,
-                        verbose = TRUE) {
+                        max.leverage = 3, verbose = TRUE) {
     checkSPE(spe, assay = assay, cell_type = cell_type, sample_id = sample_id)
+    if (!is.numeric(max.leverage) || length(max.leverage) != 1L || is.na(max.leverage) || max.leverage <= 1)
+      stop("'max.leverage' must be a single number above 1 (Inf switches the cap off)")
     if (!is.null(condition)) checkCondition(spe, condition)
     checkCovariates(spe, covariates)
     if (length(sigma) != 1L) stop("'sigma' must be a single bandwidth")
@@ -154,29 +174,16 @@ setMethod(
       for (n in setdiff(niches, k)) {
         if (verbose) message(sprintf("testNicheAbundance: %s x %s (%d samples)", k, n, length(b$samples)))
         df <- data.frame(niche = as.numeric(b$niche[b$samples, n]))
-        if (!is.null(cond_s)) df$condition <- droplevels(cond_s[b$samples])
+        if (!is.null(cond_s)) df$condition <- factor(cond_s[b$samples], levels = levels(cond_s))
         for (cv in covariates) df[[cv]] <- cov_s[[cv]][b$samples]
-        f <- if (is.null(cond_s)) "~ niche" else "~ niche * condition"
-        if (length(covariates)) f <- paste(f, "+", paste(covariates, collapse = " + "))
-        X <- tryCatch(stats::model.matrix(stats::as.formula(f), df), error = function(e) NULL)
-        # both conditions must be present with at least two samples each for
-        # the interaction to be estimable; otherwise report the pooled term only
-        if (is.null(X) || nrow(X) < ncol(X) + 2L || nrow(X) < nrow(df)) {
-          if (!is.null(cond_s) && nrow(df) >= 4L) {
-            f <- "~ niche"; if (length(covariates)) f <- paste(f, "+", paste(covariates, collapse = " + "))
-            X <- stats::model.matrix(stats::as.formula(f), df)
-            if (nrow(X) < ncol(X) + 2L) next
-          } else next
-        }
-        fit <- limma::lmFit(b$Y, design = X)
-        fit <- limma::eBayes(fit, robust = nrow(X) >= 6L)
-        terms <- intersect(c("niche", grep("^niche:condition", colnames(X), value = TRUE)), colnames(X))
-        for (tm in terms) {
+        r <- .abundancePair(b$Y, df, covariates, max.leverage)
+        if (is.null(r)) next
+        for (tm in names(r$terms)) {
           rows[[length(rows) + 1L]] <- data.frame(
-            gene = rownames(b$Y), index = k, niche = n,
-            term = if (tm == "niche") "niche" else "condition:niche",
-            estimate = fit$coefficients[, tm], t = fit$t[, tm], p = fit$p.value[, tm],
-            n_patients = nrow(X), row.names = NULL, stringsAsFactors = FALSE)
+            gene = rownames(b$Y), index = k, niche = n, term = tm,
+            estimate = r$terms[[tm]]$estimate, t = r$terms[[tm]]$t, p = r$terms[[tm]]$p,
+            n_patients = r$n, leverage = r$leverage, downweighted = r$downweighted,
+            row.names = NULL, stringsAsFactors = FALSE)
         }
       }
     }
@@ -185,11 +192,80 @@ setMethod(
     out <- out[is.finite(out$p), , drop = FALSE]
     key <- paste(out$index, out$niche, out$term)
     out$q <- stats::ave(out$p, key, FUN = function(p) stats::p.adjust(p, "BH"))
-    out$q.global <- stats::p.adjust(out$p, "BH")
+    # one family per term: pooling them let a strong "niche" signal loosen the
+    # threshold for the condition:niche rows (2026-10-06, YTMA permutation nulls)
+    out$q.global <- stats::ave(out$p, out$term, FUN = function(p) stats::p.adjust(p, "BH"))
     rownames(out) <- NULL
     out
   }
 )
+
+# One (index, niche) pair of testNicheAbundance(): the design, the leverage
+# cap and the limma fit. df holds the samples' niche abundance, optionally the
+# condition (a factor with the two levels of the whole data) and covariates.
+# The condition is coded -1/2, +1/2, so "niche" is the mean of the two
+# conditions' associations and "condition:niche" their difference (second
+# level minus first); where the conditions leave too few samples for the
+# difference, the design is the pooled one and only "niche" is reported.
+# Returns NULL when no design is estimable, else the per-term t, p and
+# estimate, the samples used, the largest leverage before the cap (as a
+# multiple of the average) and the number of samples down-weighted.
+# (Shared with the null runs of YTMACosMxWTAv2/claude/code/94_abundance_null.R.)
+.abundancePair <- function(Y, df, covariates = character(), max.leverage = 3) {
+  # a covariate constant over these samples is carried by the intercept
+  covariates <- covariates[vapply(covariates, function(cv)
+    length(unique(df[[cv]][!is.na(df[[cv]])])) > 1L, logical(1))]
+  rhs <- list("niche")
+  if (!is.null(df$condition)) {
+    tab <- table(df$condition)
+    if (length(tab) == 2L && all(tab >= 2L)) {
+      df$condition <- as.numeric(df$condition == levels(df$condition)[2L]) - 0.5
+      rhs <- c(list("niche * condition"), rhs)
+    } else df$condition <- NULL
+  }
+  X <- NULL
+  for (r in rhs) {
+    f <- paste("~", paste(c(r, covariates), collapse = " + "))
+    X <- tryCatch(stats::model.matrix(stats::as.formula(f), df), error = function(e) NULL)
+    if (!is.null(X) && nrow(X) == nrow(df) && nrow(X) >= ncol(X) + 2L && qr(X)$rank == ncol(X)) break
+    X <- NULL
+  }
+  if (is.null(X)) return(NULL)
+  cap <- .capLeverage(X, max.leverage)
+  w <- if (cap$downweighted) {
+    # a weight vector as long as the genes would be read as gene weights
+    if (nrow(Y) == ncol(Y)) matrix(cap$w, nrow(Y), ncol(Y), byrow = TRUE) else cap$w
+  }
+  fit <- limma::eBayes(limma::lmFit(Y, design = X, weights = w), robust = nrow(X) >= 6L)
+  terms <- intersect(c("niche", "niche:condition"), colnames(X))
+  out <- lapply(terms, function(tm) list(estimate = unname(fit$coefficients[, tm]), t = unname(fit$t[, tm]),
+                                         p = unname(fit$p.value[, tm])))
+  names(out) <- ifelse(terms == "niche", "niche", "condition:niche")
+  list(terms = out, n = nrow(X), leverage = cap$leverage, downweighted = cap$downweighted)
+}
+
+# Mallows-type weights for a design: samples whose leverage (hat value)
+# exceeds max.leverage times the average, ncol(X) / nrow(X), are down-weighted
+# until none does. With few samples, one sample at the edge of the niche
+# abundances carries the slope; with genes whose expression in that sample is
+# extreme too, the t statistics get heavy tails that the moderated t does not
+# expect (2026-10-06, YTMA permutation nulls). The weights depend on the design
+# only, never on expression, so the weighted tests stay exact under the linear
+# model.
+.capLeverage <- function(X, max.leverage) {
+  n <- nrow(X); avg <- ncol(X) / n
+  h <- stats::hat(X, intercept = FALSE)
+  w <- rep(1, n)
+  cap <- max.leverage * avg
+  if (is.finite(cap) && cap < 1 && max(h) > cap * (1 + 1e-6)) {
+    for (it in seq_len(100L)) {
+      hw <- stats::hat(X * sqrt(w), intercept = FALSE)
+      if (max(hw) <= cap * (1 + 1e-3)) break
+      w <- w * pmin(1, cap / hw)
+    }
+  }
+  list(w = w, leverage = max(h) / avg, downweighted = sum(w < 1))
+}
 
 # ---- patient-level helpers (shared with the archived two-stage estimator) -----
 

@@ -230,10 +230,12 @@ ab <- testNicheAbundance(spe, condition = "condition", sigma = 30, verbose = FAL
 head(ab)
 ```
 
-With a condition, the rows with `term` `"condition:niche"` test whether the
-association differs between the conditions (second level minus first), and
-those with `"niche"` give the association within the first condition. Run it
-without `condition` for the association across all patients.
+With a condition, the rows with `term` `"niche"` give the association averaged
+over the two conditions, and those with `"condition:niche"` test whether it
+differs between them (second level minus first). Each term is its own
+multiple-testing family (`q.global`), and a patient who alone carries most of
+a niche type's spread is down-weighted (`max.leverage`), so that one patient
+cannot make a call on its own.
 
 Never report a result of one as a result of the other.
 
