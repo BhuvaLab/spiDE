@@ -210,6 +210,18 @@ numbers.** Before changing a default, read:
   overall null set RMS is 1.17 (`YTMACosMxWTAv2/claude/reports/v2_progress.md`, 2026-10-01). The
   release study's gene-set null (GO BP, top-5 types) passes on the same cohort, and so do the ICI
   arms (RMS 1.09, no calls). Unexplained; it is not seen at gene level.
+- `testNicheAbundance()` has never passed a null. On the YTMA v12 arms, with 200 permutations
+  within TMA (`YTMACosMxWTAv2/claude/code/94_abundance_null.R`, 2026-10-06):
+  - its `condition:niche` calls are indistinguishable from permutation noise. Every permutation
+    makes calls, and the real counts sit inside the null.
+  - Cause 1: `q.global` is BH over both terms together, so a strong `niche` signal loosens the
+    interaction's threshold.
+  - Cause 2: heavy-tailed, leverage-prone statistics. A single patient can carry most of a niche's
+    between-patient spread.
+  - The `niche` term's calls hold up (beyond every permutation). With a condition, `niche` is the
+    first level's association, not the pooled one (treatment coding; the help text says so).
+  - Candidate fixes: per-term BH, centred condition coding, a leverage guard or robust fit, a
+    permutation p.
 - Under `depth = "spatial_spline"` the sandwich engine's CR2 SE sits within ~1.5% of
   clubSandwich's full-design CR2, whose own absorbed and full answers differ by up to 2.4% with
   multi-column blocks; the df agree to two decimals (`tests/testthat/test-depth.R`).
