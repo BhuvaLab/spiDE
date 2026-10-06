@@ -234,11 +234,15 @@ setMethod(
   }
   if (is.null(X)) return(NULL)
   cap <- .capLeverage(X, max.leverage)
+  # the weighted design must still estimate every column (a pair that cannot drops out, never the run)
+  if (cap$downweighted && qr(X * sqrt(cap$w))$rank < ncol(X)) return(NULL)
   w <- if (cap$downweighted) {
     # a weight vector as long as the genes would be read as gene weights
     if (nrow(Y) == ncol(Y)) matrix(cap$w, nrow(Y), ncol(Y), byrow = TRUE) else cap$w
   }
-  fit <- limma::eBayes(limma::lmFit(Y, design = X, weights = w), robust = nrow(X) >= 6L)
+  fit <- tryCatch(limma::eBayes(limma::lmFit(Y, design = X, weights = w), robust = nrow(X) >= 6L),
+                  error = function(e) NULL)
+  if (is.null(fit)) return(NULL)
   terms <- intersect(c("niche", "niche:condition"), colnames(X))
   out <- lapply(terms, function(tm) list(estimate = unname(fit$coefficients[, tm]), t = unname(fit$t[, tm]),
                                          p = unname(fit$p.value[, tm])))
@@ -248,13 +252,13 @@ setMethod(
 
 # Mallows-type weights for a design: samples whose leverage (hat value)
 # exceeds max.leverage times the average, ncol(X) / nrow(X), are down-weighted
-# until none does. With few samples, one sample at the edge of the niche
+# until none does, or until they reach the floor (1/20 by default). With few samples, one sample at the edge of the niche
 # abundances carries the slope, and the t statistics get heavier tails than
 # the moderated t expects (2026-10-06, YTMA permutation nulls). The weights
 # depend on the design only, never on expression, so the estimates stay
 # unbiased and no gene picks its own weights; the variance is then slightly
 # misstated for a down-weighted sample, which the permutation nulls measure.
-.capLeverage <- function(X, max.leverage) {
+.capLeverage <- function(X, max.leverage, floor = 0.05) {
   n <- nrow(X); avg <- ncol(X) / n
   h <- stats::hat(X, intercept = FALSE)
   w <- rep(1, n)
@@ -263,7 +267,9 @@ setMethod(
     for (it in seq_len(100L)) {
       hw <- stats::hat(X * sqrt(w), intercept = FALSE)
       if (max(hw) <= cap * (1 + 1e-3)) break
-      w <- w * pmin(1, cap / hw)
+      # never below the floor: a sample weighted towards zero would leave its
+      # condition, and so the design, without support
+      w <- pmax(w * pmin(1, cap / hw), floor)
     }
   }
   list(w = w, leverage = max(h) / avg, downweighted = sum(w < 1))

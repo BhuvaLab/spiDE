@@ -100,7 +100,14 @@ test_that("the leverage cap down-weights an influential sample, and only from th
   expect_gt(cap$leverage, 3)
   expect_equal(cap$downweighted, 1L)
   expect_lt(cap$w[20], 1)
-  expect_lte(max(stats::hat(X * sqrt(cap$w), intercept = FALSE)), 3 * ncol(X) / nrow(X) * 1.001)
+  # every sample ends at or below the cap, or at the weight floor (1/20)
+  hw <- stats::hat(X * sqrt(cap$w), intercept = FALSE)
+  expect_true(all(hw <= 3 * ncol(X) / nrow(X) * 1.001 | cap$w <= 0.05 + 1e-12))
+  # a milder outlier is brought exactly to the cap
+  X2 <- cbind(1, c(rnorm(19), 6))
+  c2 <- spiDE:::.capLeverage(X2, max.leverage = 3)
+  expect_gt(min(c2$w), 0.05)
+  expect_lte(max(stats::hat(X2 * sqrt(c2$w), intercept = FALSE)), 3 * ncol(X2) / nrow(X2) * 1.001)
   expect_identical(spiDE:::.capLeverage(X, Inf)$w, rep(1, 20))
   # the weighted fit equals weighted least squares with those weights
   Y <- matrix(rnorm(3 * 20), 3, 20, dimnames = list(paste0("g", 1:3), NULL))
@@ -111,4 +118,15 @@ test_that("the leverage cap down-weights an influential sample, and only from th
   # no influential sample: nothing is down-weighted
   expect_equal(spiDE:::.capLeverage(cbind(1, seq(-1, 1, length.out = 20)), 3)$downweighted, 0L)
   expect_error(testNicheAbundance(spe_c, sigma = 50, max.leverage = 1, verbose = FALSE), "max.leverage")
+})
+
+test_that("a pair the cap would leave without support drops out instead of stopping the run", {
+  # 14 samples, one group of two with an extreme sample: the cap pushes its weight to the floor
+  set.seed(6)
+  Y <- matrix(rnorm(4 * 14), 4, 14, dimnames = list(paste0("g", 1:4), NULL))
+  df <- data.frame(niche = c(rnorm(12), 0, 25), condition = factor(c(rep("a", 12), "b", "b"), levels = c("a", "b")))
+  cap <- spiDE:::.capLeverage(model.matrix(~ niche * condition, transform(df, condition = as.numeric(condition == "b") - 0.5)), 2)
+  expect_gte(min(cap$w), 0.05)
+  r <- expect_no_error(spiDE:::.abundancePair(Y, df, max.leverage = 2))
+  if (!is.null(r)) expect_true(all(vapply(r$terms, function(x) all(is.finite(x$p)), TRUE)))
 })
