@@ -11,7 +11,9 @@
     association averaged over the two conditions; it was the first level's.
     `"condition:niche"` is unchanged: the difference, second level minus
     first.
-  - **A leverage cap** (`max.leverage = 3`). With a few dozen patients, one
+  - **A leverage cap** (`max.leverage = 3`, the weakest cap that keeps the
+    condition term's permutation null within its limit on all three public
+    cohorts; see the calibration vignette). With a few dozen patients, one
     patient at the edge of a niche type's abundance could carry a slope. A gene
     unusual in that patient then got a p-value far smaller than the moderated
     t allows. Patients whose leverage in the design exceeds `max.leverage`
@@ -20,6 +22,9 @@
     `downweighted`.
   - **Covariates.** A covariate constant over an index type's patients is
     dropped from that design, where it stopped the fit before.
+  - **Not calibrated everywhere.** In designs with only a few cells per patient
+    and index type, the condition term still makes false calls at the default
+    cap (the calibration vignette, "The between-patient test").
 
 # spiDE 0.99.34
 

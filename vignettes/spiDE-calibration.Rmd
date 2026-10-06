@@ -248,6 +248,41 @@ permutations:
 Spread is read per fifth of sets by size, and a tail counts a call at
 `q.global` < 0.05. The set tests are calibrated in every cohort.
 
+# The between-patient test
+
+`testNicheAbundance()` was checked with 200 permutations within slide per
+cohort, each of two kinds:
+
+- **condition permutations:** the condition labels shuffled across patients,
+  the null of the term `"condition:niche"`;
+- **niche permutations:** each patient's niche abundances shuffled across
+  patients, the null of the term `"niche"`.
+
+The tail is the share of permutations with any call at `q.global` < 0.05,
+against a limit of 0.07:
+
+| cohort | condition:niche, no cap | condition:niche, default cap | niche, no cap | niche, default cap |
+|---|---|---|---|---|
+| GSE250346 | 0.15 | 0.050 | 0.15 | 0.010 |
+| GSE282639 | 0.03 | 0.025 | 0.07 | 0.055 |
+| GSE289194 | 0.07 | 0.040 | 0.14 | 0.075 |
+| YTMA | 0.07 | 0.025 | 0.145 | 0.060 |
+| YTMA stage | 0.28 | 0.010 | 0.33 | 0.020 |
+
+- **Without the leverage cap**, a single patient at the edge of a niche type's
+  abundances made false calls in up to a third of permutations.
+- **The default, `max.leverage = 3`,** is the weakest cap that keeps the
+  condition test within its limit on all three public cohorts. A cap of 2
+  over-corrects: its null spread falls to 0.56-0.68.
+- **At the default the test is slightly conservative** on GSE250346 (spread
+  0.86-0.95) and YTMA stage (0.86-0.88), and calibrated on the other three
+  (0.93-1.02).
+- **A finer design breaks it.** On the YTMA cohort split into 13 or 24 cell
+  types, with many types that have only 14-36 cells per patient, the condition
+  test still made false calls in 11-35% of permutations at the default cap. Its
+  calls are not reliable when each patient contributes few cells of the index
+  type.
+
 # What has not been measured
 
 - **Bandwidth.** Each cohort was checked at one bandwidth. Comparing results
