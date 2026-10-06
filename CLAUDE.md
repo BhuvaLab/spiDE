@@ -218,6 +218,9 @@ numbers.** Before changing a default, read:
   - It is still not calibrated where few cells per patient and index type go into each pseudobulk.
     On the YTMA v12 arms the condition term made false calls in 11-35% of permutations at the
     default (`YTMACosMxWTAv2/claude/code/94_abundance_null.R`).
+  - It is deflated where every column has extreme leverage: on YTMA res553 (102 patients, one TMA; median leverage
+    ratio 8-17 per index type) the median p was 0.79 and nothing was called (`v2_progress.md`, 2026-10-07). The capped
+    fit's model SE is the suspect (unmeasured); a sandwich SE for the weighted fit is the candidate fix.
   - Open: an expression-dependent variance (limma-trend) or a minimum-cells rule for that case.
 - Under `depth = "spatial_spline"` the sandwich engine's CR2 SE sits within ~1.5% of
   clubSandwich's full-design CR2, whose own absorbed and full answers differ by up to 2.4% with
