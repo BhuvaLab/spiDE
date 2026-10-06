@@ -20,6 +20,18 @@
   `plotNicheResponse(adjust = TRUE)` and `plotPatientEffects()`, which ask for
   a refit.
 * ggplot2 and scales are now imported; ggrepel and patchwork are suggested.
+* **Documentation: which effects spiDE tests.** The model vignette has a new
+  section, "What kinds of effects can spiDE find?", with a figure of mock
+  expression trends: a slope within patients, shared or condition-specific
+  (`testSpiDE()`); an association between patients, shared or
+  condition-specific (`testNicheAbundance()`); and the two effects of a
+  condition that spiDE does not test, a shift in a gene's overall level and a
+  change in composition. The quick start points to it.
+* **`?testNicheAbundance` corrected.** With a condition, the term `"niche"` is
+  the association within the first level of the condition (the design is
+  treatment-coded), not across both conditions as the help page said; run the
+  test without a condition for the association across all patients. The
+  function itself is unchanged.
 
 # spiDE 0.99.33
 

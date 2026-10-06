@@ -34,6 +34,15 @@ not of a cell, so spiDE takes the patient as its unit of replication: a
 triplet's evidence is the variation of its niche slope *between* patients,
 never the number of cells.
 
+Both tests look at slopes *within* patients. Patients whose tissue holds more
+of a niche type may also differ as a whole; `testNicheAbundance()` tests that
+between-patient association separately. A condition that only shifts a gene's
+overall level, or only changes how much of a cell type patients have, is not
+tested by spiDE at all: those are questions for pseudobulk differential
+expression and for composition analysis. The model vignette's section *What
+kinds of effects can spiDE find?* draws each kind of effect on mock data and
+names the test that detects it.
+
 Three steps:
 
 1. **Niches**: `buildNiches()` evaluates, per sample, a Gaussian kernel
@@ -220,6 +229,11 @@ mean niche density:
 ab <- testNicheAbundance(spe, condition = "condition", sigma = 30, verbose = FALSE)
 head(ab)
 ```
+
+With a condition, the rows with `term` `"condition:niche"` test whether the
+association differs between the conditions (second level minus first), and
+those with `"niche"` give the association within the first condition. Run it
+without `condition` for the association across all patients.
 
 Never report a result of one as a result of the other.
 

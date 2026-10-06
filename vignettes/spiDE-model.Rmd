@@ -43,6 +43,219 @@ replication**. A result is strong when patients agree, not when a patient
 contributes many cells. Treating cells as replicates would make every result
 look more certain the more cells were measured, even if patients disagreed.
 
+# What kinds of effects can spiDE find?
+
+A gene's expression in the index cells can be tied to a niche type in more
+than one way, and a condition can change each of them. Each of spiDE's tests
+is built for one kind of effect, and two common effects of a condition are
+left to other tools. The first thing to separate is the scale of the
+comparison:
+
+- **Within a patient.** In the same tissue, do index cells with more niche
+  cells around them express more (or less) of the gene than index cells with
+  fewer? This compares cells that share everything that belongs to the
+  patient: its genetics, its treatment, how its sample was handled, and how
+  much of each cell type its tissue contains.
+- **Between patients.** Do patients whose index cells sit, on average, among
+  more of the niche type express more (or less) of the gene overall? This
+  compares patients with one another, one value per patient.
+
+Each of the two can be the same in both groups of patients or differ between
+them. The figure below draws every case on mock data, together with two
+effects of a condition that spiDE does not test.
+
+```{r effect-types, echo = FALSE, fig.width = 7, fig.height = 8.6, out.width = "100%", fig.cap = "Mock expression trends of one gene in one index type, against the density of one niche type, for ten patients in two groups (early and late stage). Each faint dot is an index cell, each thin line a patient's own fitted slope and each open circle a patient's mean; a dashed line follows the patients' means. Each panel names the test that detects its effect. A and B: slopes within patients, tested by `testSpiDE()`. C and D: an association between patients, tested by `testNicheAbundance()`. E and F: effects of the condition that no spiDE test looks at."}
+library(spiDE)
+library(ggplot2)
+set.seed(7)
+groups <- c("early", "late")
+panels <- c(
+  A = "A  Within patients, in both groups\npooled test: testSpiDE()",
+  B = "B  Within patients, in one group only\ncondition-specific test: testSpiDE(condition =)",
+  C = "C  Between patients, in both groups\ntestNicheAbundance(), term \"niche\"",
+  D = "D  Between patients, in one group only\ntestNicheAbundance(), term \"condition:niche\"",
+  E = "E  Only the level differs between groups\nnot a spiDE test: pseudobulk DE",
+  F = "F  Only the amount of niche differs\nnot a spiDE test: composition analysis")
+n_pat <- 10
+n_cell <- 40
+late <- rep(c(FALSE, TRUE), each = n_pat / 2)
+around <- function(lo, hi) runif(n_pat, lo, hi)
+# both groups spread evenly over the same range of patient mean densities
+spread <- c(seq(0.5, 2.7, length.out = n_pat / 2), seq(0.7, 2.9, length.out = n_pat / 2))
+# per panel and patient: the mean niche density m, the level a at that
+# density, and the within-patient slope b
+truth <- list(
+  A = list(m = around(1.2, 2.2), a = rnorm(n_pat, 1.6, 0.35), b = rnorm(n_pat, 0.65, 0.05)),
+  B = list(m = around(1.2, 2.2), a = rnorm(n_pat, 1.6, 0.35),
+           b = ifelse(late, 0.75, 0) + rnorm(n_pat, 0, 0.05)),
+  C = list(m = spread, a = 0.7 + 0.6 * spread + rnorm(n_pat, 0, 0.08), b = rnorm(n_pat, 0, 0.05)),
+  D = list(m = spread, a = ifelse(late, 0.3 + 0.9 * spread, 1.6) + rnorm(n_pat, 0, 0.08),
+           b = rnorm(n_pat, 0, 0.05)),
+  E = list(m = around(1.2, 2.2), a = ifelse(late, 2.4, 1.1) + rnorm(n_pat, 0, 0.12),
+           b = rnorm(n_pat, 0, 0.05)),
+  F = list(m = ifelse(late, around(2.0, 2.8), around(0.6, 1.4)), a = rnorm(n_pat, 1.6, 0.12),
+           b = rnorm(n_pat, 0, 0.05)))
+cells <- do.call(rbind, lapply(names(truth), function(p) {
+  tr <- truth[[p]]
+  do.call(rbind, lapply(seq_len(n_pat), function(s) {
+    l <- pmax(0, tr$m[s] + rnorm(n_cell, 0, 0.4))
+    data.frame(panel = p, patient = s, condition = groups[late[s] + 1L], density = l,
+               expr = tr$a[s] + tr$b[s] * (l - tr$m[s]) + rnorm(n_cell, 0, 0.3))
+  }))
+}))
+# each patient's own least-squares line over the central 90% of its
+# densities, and the patient's mean
+fits <- do.call(rbind, lapply(split(cells, list(cells$panel, cells$patient)), function(d) {
+  cf <- coef(lm(expr ~ density, d))
+  x <- quantile(d$density, c(0.05, 0.95), names = FALSE)
+  data.frame(panel = d$panel[1], condition = d$condition[1], x = x[1], xend = x[2],
+             y = cf[1] + cf[2] * x[1], yend = cf[1] + cf[2] * x[2],
+             mean_density = mean(d$density), mean_expr = mean(d$expr))
+}))
+cells$panel <- factor(panels[cells$panel], panels)
+fits$panel <- factor(panels[fits$panel], panels)
+cells$condition <- factor(cells$condition, groups)
+fits$condition <- factor(fits$condition, groups)
+trend_both <- fits[fits$panel == panels[["C"]], ]
+trend_by_group <- fits[fits$panel == panels[["D"]], ]
+ggplot(cells, aes(density, expr, colour = condition)) +
+  geom_point(size = 0.6, alpha = 0.3, shape = 16) +
+  geom_segment(data = fits, aes(x = x, xend = xend, y = y, yend = yend), linewidth = 0.55) +
+  geom_smooth(data = trend_both, aes(mean_density, mean_expr), inherit.aes = FALSE,
+              method = "lm", formula = y ~ x, se = FALSE, colour = "black",
+              linetype = "22", linewidth = 0.6) +
+  geom_smooth(data = trend_by_group, aes(mean_density, mean_expr), method = "lm",
+              formula = y ~ x, se = FALSE, linetype = "22", linewidth = 0.6) +
+  geom_point(data = fits, aes(mean_density, mean_expr), shape = 21, fill = "white",
+             size = 1.7, stroke = 0.6) +
+  facet_wrap(~ panel, ncol = 2) +
+  scale_colour_manual(values = setNames(spiDEColours("condition"), groups),
+                      name = "patient group") +
+  labs(x = "niche density around the index cell (log1p)",
+       y = "expression in the index cell (log scale)") +
+  theme_spiDE(rl = 0.9) +
+  theme(strip.text = element_text(hjust = 0, lineheight = 1.05), legend.position = "bottom",
+        axis.text = element_blank(), axis.ticks = element_blank()) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1, size = 2, linewidth = 0.8)))
+```
+
+## Within patients: what `testSpiDE()` tests
+
+- **A. The same slope in every patient** (independent of the condition).
+  Within each patient, the gene rises (or falls) with the density of the
+  niche type, and the patients agree. Patients may differ in their overall
+  level of the gene, as the lines in panel A sit at different heights; that
+  does not matter, because only the slopes are compared. The **pooled test**
+  detects it (`testSpiDE()`, then `results(res, test = "pooled")`). A call
+  means: in the same tissue, index cells with more of this niche type around
+  them express more (or less) of the gene, consistently across patients.
+- **B. A slope that differs between the groups** (condition-specific). The
+  slope is present in one group only (panel B), is stronger in one group, or
+  runs in opposite directions. The **condition-specific test** detects it
+  (`testSpiDE(condition = )`, then `results(res, test = "condition")`), as the
+  difference in average slope, second level minus first. A call means: the
+  index cells' response to each extra unit of niche density differs between
+  the groups.
+
+By default (`procedure = "filtered"`) the condition-specific test is run only
+among triplets whose pooled test passes. A slope present in one group only
+still has a non-zero average over all patients and can pass that filter. A
+slope that reverses between the groups averages out close to zero and is
+unlikely to pass; use `procedure = "all"` when such effects matter.
+
+A within-patient slope is not always a response of the index cells.
+Transcripts of neighbouring niche cells can be assigned to index cells when
+cells are segmented, and they too rise with the niche's density.
+`plotSpillover()` shows whether the calls are the niche type's own markers.
+
+## Between patients: what `testNicheAbundance()` tests
+
+spiDE's model gives each patient its own baseline level of every gene (the
+patient intercepts of Step 2). Everything that differs between patients as a
+whole is set aside before the slopes are estimated, including a real
+association: patients whose index cells sit among more of the niche type may
+express the gene differently overall. `testNicheAbundance()` asks that
+question separately, on one pseudobulk profile per patient and index type,
+against the patient's mean niche density.
+
+- **C. Patients with more of the niche differ** (independent of the
+  condition). Within each patient the gene is flat, but the patients' means
+  rise with their mean niche density (panel C). The term `"niche"` of
+  `testNicheAbundance()` run without a condition detects it. A call means:
+  patients whose index cells sit among more of this niche type have more (or
+  less) of the gene in those cells.
+- **D. That association differs between the groups** (condition-specific).
+  The patients' means rise with their niche density in one group only
+  (panel D). The term `"condition:niche"` of
+  `testNicheAbundance(condition = )` detects it, as the difference between
+  the groups, second level minus first.
+
+These are statements about patients, not about cells responding to their
+neighbours. Patients with more of a niche type differ in many other ways too:
+in their overall composition, in sample quality, or in signal spilling
+between cells across the whole section. A between-patient association cannot
+be pinned on the niche, which is why spiDE's own tests work within patients.
+Report each result as what it is, and never a result of one test as a result
+of the other.
+
+## What spiDE does not test
+
+Two effects of a condition are absorbed by the patients' own levels, and no
+spiDE test looks at them:
+
+- **E. The gene's level differs between the groups**, whatever the
+  neighbourhood (panel E). This is ordinary differential expression between
+  conditions. Test it on pseudobulk profiles with a differential expression
+  method such as `limma` or `edgeR`.
+- **F. The amount of the niche differs between the groups** (panel F): a
+  change in tissue composition, here more of the niche type around the index
+  cells of late-stage patients, while expression does not change with it.
+  Test it with a composition method, such as `sccomp` or `speckle` for
+  cell-type proportions.
+
+This matters most for a condition such as disease progression, which changes
+tissue in many ways at once. Most of those changes are differences between
+patients: late-stage tissue has more of some cell types and less of others
+(F), and its cells express some genes more or less (E), often both together
+and often in cell types that interact. Neither is a change in how cells
+respond to their neighbours, and the condition-specific test sees neither. It
+sees only a changed **response per unit of neighbour density** (B): within
+late-stage tissue, index cells with more niche cells around them differ from
+index cells with fewer by more, by less or in the opposite direction than
+within early-stage tissue. A changed interaction between two cell types
+reaches this test only when it changes that response. "Late-stage tumours
+have more fibroblasts, and their tumour cells express more of a gene" is F
+and E, not B, even when both happen in the same patients.
+
+## The effects in the model
+
+Reduced to one niche type, with each patient's niche densities centred at
+their mean, the model of Step 2 reads, for gene $g$ in index cell $i$ of
+patient $s$:
+
+$$
+\log \mathrm{E}[y_{gi}] \;=\; a_{gs} \;+\; \beta_{gs}\,(\ell_i - \bar\ell_s),
+$$
+
+where $\ell_i$ is the cell's niche density on the log1p scale, $\bar\ell_s$
+the mean of $\ell_i$ over the patient's index cells, $\beta_{gs}$ the
+patient's within-patient slope and $a_{gs}$ its level at its own mean
+density. With $c_s$ the patient's group, each effect is a statement about
+how these quantities vary across patients:
+
+| Effect | In the model | Detected by | A call means |
+|---|---|---|---|
+| A. slope in every patient | the average $\beta_{gs}$ is not 0 | `testSpiDE()`, pooled test | within a patient, index cells with more of the niche around them express more (or less) of the gene |
+| B. slope differs between groups | the average $\beta_{gs}$ differs with $c_s$ | `testSpiDE(condition = )`, condition-specific test | that within-patient response differs between the groups |
+| C. patients with more niche differ | $a_{gs}$ changes with $\bar\ell_s$ | `testNicheAbundance()` without a condition, term `"niche"` | patients whose index cells sit among more of the niche differ in the gene's level |
+| D. that association differs between groups | the change of $a_{gs}$ with $\bar\ell_s$ differs with $c_s$ | `testNicheAbundance(condition = )`, term `"condition:niche"` | the between-patient association differs between the groups |
+| E. level differs between groups | $a_{gs}$ differs with $c_s$ | not spiDE: pseudobulk differential expression | the gene's overall level differs between the groups |
+| F. amount of niche differs between groups | $\bar\ell_s$ differs with $c_s$ | not spiDE: composition analysis | the groups differ in how much of the niche surrounds their index cells |
+
+spiDE's tests read only the $\beta_{gs}$. The intercepts $a_{gs}$ absorb C to
+E, and F changes only where along the density axis each patient's slope is
+measured.
+
 # Step 1: the niche
 
 For every cell, `buildNiches()` measures how many cells of each type surround
@@ -290,6 +503,12 @@ composition, or signal spilling between neighbouring cells.
   density;
 - it regresses one on the other across patients with `limma`, adding the
   difference between conditions when a condition is given.
+
+Without a condition, the term `"niche"` is the association across all patients
+(effect C of *What kinds of effects can spiDE find?*). With a condition, the
+term `"condition:niche"` is its difference between the conditions, second level
+minus first (effect D), and `"niche"` is then the association within the first
+level of the condition alone.
 
 A result from this test says "patients with more of this niche differ". A
 result from `testSpiDE()` says "within a patient, cells with more of this niche

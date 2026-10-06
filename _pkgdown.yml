@@ -37,6 +37,10 @@ navbar:
 # spiDE <= 0.99.22. By decision of 2026-09-29, this site links only to the
 # CURRENT validation reports, never to the archive. A new current report is a
 # new entry in the Validation menu above, pointing at its research-site page.
+# The research pages copy this site's look: build_site.R gives them this navbar
+# (change it there when the navbar here changes) and the same light switch,
+# which reads and writes pkgdown's localStorage key "theme", so a reader's
+# light or dark choice holds on both sites.
 articles:
 - title: Articles
   navbar: ~

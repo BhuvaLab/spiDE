@@ -61,13 +61,18 @@
 #' For each index cell type \eqn{k} and niche cell type \eqn{n}, regresses the
 #' per-sample pseudobulk log2-CPM of every gene in the type-\eqn{k} cells on
 #' the per-sample mean log1p niche density of type \eqn{n} around those cells,
-#' across samples, with a \code{limma} moderated \eqn{t}-test. With a
-#' \code{condition} the design is \code{~ niche * condition + covariates} and
-#' two terms are reported: \code{"niche"}, the association pooled across
-#' conditions, and \code{"condition:niche"}, its difference between conditions
-#' -- the patient-level counterpart of the condition-specific niche test that
-#' [testSpiDE()] runs within patients. Without a condition only
-#' \code{"niche"} is reported.
+#' across samples, with a \code{limma} moderated \eqn{t}-test. Without a
+#' condition the design is \code{~ niche + covariates} and one term is
+#' reported, \code{"niche"}: the association across all samples. With a
+#' \code{condition} the design is \code{~ niche * condition + covariates},
+#' treatment-coded, and two terms are reported: \code{"condition:niche"}, the
+#' difference in the association between the conditions (second level minus
+#' first) -- the patient-level counterpart of the condition-specific niche
+#' test that [testSpiDE()] runs within patients -- and \code{"niche"}, the
+#' association within the first level of the condition alone. For the
+#' association across both conditions, run the test without a condition.
+#' Where the conditions leave too few samples to estimate the difference, only
+#' \code{"niche"} is reported, across all samples.
 #'
 #' This is the association that [fitSpiDE()]'s per-patient intercepts
 #' deliberately absorb. It is a between-patient effect with \eqn{S} experimental units; it is not
