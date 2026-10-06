@@ -93,8 +93,10 @@ of a niche type's abundances can carry the whole slope, and a gene whose
 expression is extreme in that same sample then gets a far smaller
 \eqn{p}-value than the moderated \eqn{t} allows. Samples whose leverage
 (hat value) in the design exceeds \code{max.leverage} times the average are
-therefore down-weighted until none does. The weights depend on the design
-only, never on expression, so the tests stay exact under the linear model.
+therefore down-weighted until none does. The weights come from the design
+alone, never from expression, so no gene's own values decide how much a
+sample counts and the estimates stay unbiased; the permutation nulls set
+the default.
 Each row reports the largest leverage before the cap and how many samples
 were down-weighted.
 

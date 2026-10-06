@@ -77,8 +77,10 @@
 #' expression is extreme in that same sample then gets a far smaller
 #' \eqn{p}-value than the moderated \eqn{t} allows. Samples whose leverage
 #' (hat value) in the design exceeds \code{max.leverage} times the average are
-#' therefore down-weighted until none does. The weights depend on the design
-#' only, never on expression, so the tests stay exact under the linear model.
+#' therefore down-weighted until none does. The weights come from the design
+#' alone, never from expression, so no gene's own values decide how much a
+#' sample counts and the estimates stay unbiased; the permutation nulls set
+#' the default.
 #' Each row reports the largest leverage before the cap and how many samples
 #' were down-weighted.
 #'
@@ -247,11 +249,11 @@ setMethod(
 # Mallows-type weights for a design: samples whose leverage (hat value)
 # exceeds max.leverage times the average, ncol(X) / nrow(X), are down-weighted
 # until none does. With few samples, one sample at the edge of the niche
-# abundances carries the slope; with genes whose expression in that sample is
-# extreme too, the t statistics get heavy tails that the moderated t does not
-# expect (2026-10-06, YTMA permutation nulls). The weights depend on the design
-# only, never on expression, so the weighted tests stay exact under the linear
-# model.
+# abundances carries the slope, and the t statistics get heavier tails than
+# the moderated t expects (2026-10-06, YTMA permutation nulls). The weights
+# depend on the design only, never on expression, so the estimates stay
+# unbiased and no gene picks its own weights; the variance is then slightly
+# misstated for a down-weighted sample, which the permutation nulls measure.
 .capLeverage <- function(X, max.leverage) {
   n <- nrow(X); avg <- ncol(X) / n
   h <- stats::hat(X, intercept = FALSE)

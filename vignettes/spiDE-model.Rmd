@@ -516,8 +516,8 @@ abundance can carry a whole between-patient slope; if a gene is also unusual
 in that patient, the slope looks far more certain than it is. So patients
 whose leverage in the regression exceeds `max.leverage` times the average are
 down-weighted until none does. The weights come from the patients' niche
-densities and conditions only, never from expression, so the tests stay
-exact. Each row reports the largest leverage before this cap and how many
+densities and conditions only, never from expression, so no gene's own values
+decide how much a patient counts. Each row reports the largest leverage before this cap and how many
 patients were down-weighted.
 
 A result from this test says "patients with more of this niche differ". A

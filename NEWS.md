@@ -16,7 +16,7 @@
     unusual in that patient then got a p-value far smaller than the moderated
     t allows. Patients whose leverage in the design exceeds `max.leverage`
     times the average are now down-weighted until none does. The weights come
-    from the design only, so the tests stay exact. New columns: `leverage` and
+    from the design only, never from expression. New columns: `leverage` and
     `downweighted`.
   - **Covariates.** A covariate constant over an index type's patients is
     dropped from that design, where it stopped the fit before.
