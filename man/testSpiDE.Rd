@@ -26,7 +26,7 @@ With the sandwich engine it must be the condition the model was fitted
 with. The contrast is second level minus first (factor levels, else
 sorted values).}
 
-\item{...}{unused.}
+\item{...}{internal (\code{.arm}: a research arm of the test stage); not for general use.}
 
 \item{procedure}{\code{"filtered"} or \code{"all"}, see Details.}
 

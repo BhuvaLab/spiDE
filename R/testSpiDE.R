@@ -27,7 +27,7 @@
 #'   confounded with it).
 #' @param BPPARAM a BiocParallelParam; the slopes engine's condition-specific
 #'   test is run in parallel over genes.
-#' @param ... unused.
+#' @param ... internal (\code{.arm}: a research arm of the test stage); not for general use.
 #' @return a [SpiDEResults-class]; read it with [results()].
 #' @examples
 #' data(toySpiDE)
@@ -55,6 +55,10 @@ setMethod(
     pt <- object@patients
     trt_of <- if (!is.null(condition)) .conditionCoding(pt, condition) else NULL
     contrast <- if (!is.null(trt_of)) paste(rev(attr(trt_of, "levels")), collapse = " - ") else character()
+    # `.arm` (internal; exact name): a test-stage arm of feature/shared-tau2 (.armSpec()); the
+    # sandwich engine has none
+    arm <- list(...)[[".arm", exact = TRUE]]
+    if (is.null(arm)) arm <- .armSpec()
     tabs <- list()
     for (k in names(object@index)) {
       x <- object@index[[k]]
@@ -63,7 +67,7 @@ setMethod(
         st <- if (!is.null(trt) && !is.null(strata)) {
           stats::setNames(as.character(pt[[strata]]), pt$patient)[x$patients]
         } else NULL
-        tk <- .slopesTests(x, trt = trt, strata = st, BPPARAM = BPPARAM)
+        tk <- .slopesTests(x, trt = trt, strata = st, BPPARAM = BPPARAM, arm = arm)
       } else {
         tk <- x$coef
         if (is.null(condition)) tk <- tk[tk$test == "pooled", , drop = FALSE]

@@ -1,3 +1,14 @@
+# spiDE 0.99.37 (branch feature/shared-tau2; research arms, not a release)
+
+* **Research arms for the slopes engine's test stage** (`research/sharedtau/README.md`). Internal only:
+  `testSpiDE(..., .arm = spiDE:::.armSpec(...))`. The default arm is the shipped test, bit for bit.
+  - `heterogeneity = "floor"`: each gene's between-patient variance is the larger of its own DerSimonian-Laird
+    estimate and its family's (`.heterogeneityFloor()`: a weighted loess of the untruncated DL moments on log mean
+    expression), so the weights stop concentrating on a few patients. `"equal"`: every patient weighs 1.
+  - `pooled_df = "uncapped"`: the pooled test is referred to limma's `df.total` instead of the Kish cap.
+  - `condition_variance = "moderated"`: the condition test's HC2 variance is squeezed across the column's genes
+    (`limma::squeezeVar()` on V / A22, robust, trended on expression) and gains the prior df.
+
 # spiDE 0.99.36
 
 * **Gene sets for the between-patient test.**
