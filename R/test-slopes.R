@@ -56,8 +56,14 @@
 # The pooled test of one (index, niche) column: G x S slopes b and variances v,
 # with tau2 (G): moderated limma on an intercept, the trended prior over the
 # column's gene family (trend = FALSE: a flat prior, for spiGSEA's few sets),
-# the df capped by the Kish effective patients.
-.pooledColumnTest <- function(b, v, tau2, mean_expr, min.pooled = 6L, trend = TRUE) {
+# the df capped by the Kish effective patients. Research arms of
+# feature/small-sample-df (research/smalldf/README.md) refer the same t to other
+# df (df_rule): "proportional" = limma's df.total x n_eff / m (m usable
+# patients); "kish_plus_prior" = min(df.total, n_eff - 1 + d0), the Kish
+# residual df plus eBayes' prior df; "limma" = df.total (reference only).
+.pooledColumnTest <- function(b, v, tau2, mean_expr, min.pooled = 6L, trend = TRUE,
+                              df_rule = c("capped", "proportional", "kish_plus_prior", "limma")) {
+  df_rule <- match.arg(df_rule)
   G <- nrow(b)
   wts <- 1 / (v + tau2)
   wts[!is.finite(wts) | wts <= 0 | !is.finite(b)] <- NA
@@ -79,7 +85,16 @@
     if (!is.null(fit)) {
       est[fitted] <- fit$coefficients[, 1]
       tt[fitted] <- fit$t[, 1]
-      df[fitted] <- pmin(fit$df.total, .kishDf(w, b[fitted, , drop = FALSE], 1L))
+      bf <- b[fitted, , drop = FALSE]
+      df[fitted] <- switch(df_rule,
+        capped = pmin(fit$df.total, .kishDf(w, bf, 1L)),
+        proportional = {
+          ww <- w; ww[!is.finite(ww) | !is.finite(bf)] <- NA
+          neff <- rowSums(ww, na.rm = TRUE)^2 / rowSums(ww^2, na.rm = TRUE)
+          fit$df.total * neff / rowSums(is.finite(ww))
+        },
+        kish_plus_prior = pmin(fit$df.total, .kishDf(w, bf, 1L) + fit$df.prior),
+        limma = fit$df.total)
     }
   }
   tt[n_ok < min.pooled | !is.finite(tt)] <- NA
@@ -155,15 +170,23 @@
              n_patients = rowSums(is.finite(b)), stringsAsFactors = FALSE)
 }
 
+# The test-stage arm of feature/small-sample-df: the pooled test's df rule
+# (.pooledColumnTest()). The default is the shipped test.
+.armSpec <- function(pooled_df = c("capped", "proportional", "kish_plus_prior", "limma")) {
+  list(pooled_df = match.arg(pooled_df))
+}
+
 # The slopes engine's tests for one index type's stored slopes.
-.slopesTests <- function(x, trt = NULL, strata = NULL, BPPARAM = BiocParallel::SerialParam()) {
+.slopesTests <- function(x, trt = NULL, strata = NULL, BPPARAM = BiocParallel::SerialParam(),
+                         arm = .armSpec()) {
+  stopifnot(is.list(arm), "pooled_df" %in% names(arm))
   out <- list()
   vpool <- sweep(x$v_model, c(2, 3), x$factor, "*")
   tau_pool <- .dlTau2(x$beta, vpool)
   for (j in seq_along(x$niches)) {
     b <- matrix(x$beta[, , j], nrow = length(x$genes))
     vj <- matrix(vpool[, , j], nrow = length(x$genes))
-    p <- .pooledColumnTest(b, vj, tau_pool[, j], x$mean_expr)
+    p <- .pooledColumnTest(b, vj, tau_pool[, j], x$mean_expr, df_rule = arm$pooled_df)
     out[[length(out) + 1L]] <- data.frame(gene = x$genes, niche = x$niches[j], test = "pooled", p,
                                           stringsAsFactors = FALSE)
     if (!is.null(trt)) {

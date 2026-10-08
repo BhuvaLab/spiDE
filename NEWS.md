@@ -1,3 +1,10 @@
+# spiDE 0.99.37 (branch feature/small-sample-df; research arms, not a release)
+
+* **Research arms for the pooled test's df** (`research/smalldf/README.md`). Internal only:
+  `testSpiDE(..., .arm = spiDE:::.armSpec(pooled_df = ))`. The default is the shipped test, bit for bit.
+  - `"proportional"`: limma's `df.total x n_eff / m`; `"kish_plus_prior"`: `min(df.total, n_eff - 1 + d0)`;
+    `"limma"`: `df.total` (reference). The t statistic and the condition test are unchanged.
+
 # spiDE 0.99.36
 
 * **Gene sets for the between-patient test.**
