@@ -1,3 +1,37 @@
+# spiDE 0.99.37
+
+* **Two new defaults for small designs (5-7 patients per condition).** Both
+  were chosen in pre-registered studies and confirmed on untouched real-data
+  nulls; the calibration vignette has the numbers.
+  - **The condition test's family: the heterogeneity filter**
+    (`testSpiDE(procedure = "heterogeneity")`, the slopes engine's default).
+    The condition test now runs on the triplets whose slopes vary between
+    patients more than their sampling variances allow: Cochran's Q across
+    patients (the statistic behind the between-patient variance), with
+    Benjamini-Hochberg over every triplet at `fdr`. Like the pooled filter it
+    never looks at the condition. A condition effect is between-patient
+    variation, so this filter keeps effects whose two conditions cancel in the
+    pooled slope. The pooled filter missed them and, with few patients, passed
+    almost nothing for the condition test to see
+    (`research/condtest/README.md`).
+  - **The pooled test's df: proportional** (`testSpiDE(pooled.df =
+    "proportional")`). The moderated t is referred to limma's df scaled by the
+    Kish effective share of the patients. The previous rule took the smaller of
+    limma's df and the Kish effective patients less one. That always bound,
+    dropped the prior's df and left the pooled test conservative with few
+    patients (`research/smalldf/README.md`).
+  - **The previous behaviour** is `procedure = "filtered", pooled.df =
+    "capped"`. The sandwich engine keeps `procedure = "filtered"`, its only
+    label-free filter besides `"all"`; it refuses `"heterogeneity"`, which
+    needs per-patient slopes. Its tests do not use `pooled.df`.
+* The results table has a new column, `p.heterogeneity` (the slopes engine's
+  label-free heterogeneity test; `NA` for the sandwich engine).
+  `SpiDEResults` has a new slot, `pooled.df`. Results saved by earlier versions
+  lack the slot and are read as `"capped"`, the rule they were tested with.
+* `spiGSEA(pooled.df = NULL)` follows the results it is given. Its condition
+  test has no filter and is unchanged.
+* `spiDE()` passes `procedure` and `pooled.df` through to `testSpiDE()`.
+
 # spiDE 0.99.36
 
 * **Gene sets for the between-patient test.**

@@ -65,16 +65,27 @@ setClass("SpiDEFit", representation(
 #' @slot table a data.frame, one row per (gene, index, niche, test).
 #' @slot condition a character (length 0 or 1), the condition tested.
 #' @slot contrast a character, e.g. \code{"Responder - Non-responder"}.
-#' @slot procedure a character, \code{"filtered"} or \code{"all"}.
+#' @slot procedure a character, the condition test's family:
+#'   \code{"heterogeneity"}, \code{"filtered"} or \code{"all"}.
 #' @slot fdr a numeric, the FDR level of the filter.
+#' @slot pooled.df a character, the slopes engine's pooled-test degrees of
+#'   freedom (\code{"proportional"} or \code{"capped"}; empty for the
+#'   sandwich engine). Results saved by spiDE <= 0.99.36 lack the slot; they
+#'   were tested with \code{"capped"}.
 #' @slot fit the [SpiDEFit-class] tested.
 #' @return An object of class \code{SpiDEResults}, created by [testSpiDE()];
 #'   its \code{$} accessor returns a slot, and \code{show()} prints a summary.
 #' @exportClass SpiDEResults
 setClass("SpiDEResults", representation(
   table = "data.frame", condition = "character", contrast = "character",
-  procedure = "character", fdr = "numeric", fit = "SpiDEFit"
+  procedure = "character", fdr = "numeric", pooled.df = "character", fit = "SpiDEFit"
 ))
+
+# The pooled-test df rule of a results object; results saved by spiDE <= 0.99.36
+# have no slot for it and were tested with the capped df.
+.pooledDfOf <- function(object) {
+  if (methods::.hasSlot(object, "pooled.df") && length(object@pooled.df)) object@pooled.df else "capped"
+}
 
 # A spiDE <= 0.99.22 mixed-model object read with readRDS(): it carries the
 # old legacy slots (covtype, W, alpha, fits, ...) and none of the new ones.
@@ -139,6 +150,8 @@ setMethod("show", "SpiDEResults", function(object) {
     x <- tb[tb$test == tt & !is.na(tb$q), , drop = FALSE]
     lab <- if (tt == "condition") {
       sprintf("condition-specific (%s; %s family)", object@contrast, object@procedure)
+    } else if (object@fit@engine == "slopes") {
+      sprintf("pooled across patients (%s df)", .pooledDfOf(object))
     } else "pooled across patients"
     cat(sprintf("  %s: %d tests, %d at FDR %s\n", lab, nrow(x),
                 sum(x$q <= object@fdr), format(object@fdr)))

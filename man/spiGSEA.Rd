@@ -14,6 +14,7 @@ spiGSEA(object, genesets, ...)
   type = c("competitive", "self-contained"),
   min.size = 5L,
   max.size = 500L,
+  pooled.df = NULL,
   BPPARAM = BiocParallel::SerialParam(),
   ...
 )
@@ -32,6 +33,9 @@ test the results hold).}
 
 \item{min.size, max.size}{set size limits after intersecting with the genes
 tested in each index type.}
+
+\item{pooled.df}{\code{NULL} (the degrees of freedom \code{object}'s pooled
+test used), \code{"proportional"} or \code{"capped"}; see \code{\link[=testSpiDE]{testSpiDE()}}.}
 
 \item{BPPARAM}{a BiocParallelParam; the condition-specific test is run in
 parallel over sets.}

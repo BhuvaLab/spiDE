@@ -10,7 +10,8 @@
 #'   patient-level condition.
 #' @param sigma the niche bandwidth.
 #' @param engine \code{"slopes"} or \code{"sandwich"}, see [fitSpiDE()].
-#' @param procedure,fdr passed to [testSpiDE()].
+#' @param procedure,fdr,pooled.df passed to [testSpiDE()]; \code{procedure}
+#'   defaults to the engine's default there.
 #' @param cell_type,sample_id the colData columns of cell type and patient.
 #' @param BPPARAM a BiocParallelParam.
 #' @param verbose report progress.
@@ -26,10 +27,12 @@
 setMethod(
   "spiDE", "SpatialExperiment",
   function(spe, condition = NULL, sigma, engine = c("slopes", "sandwich"),
-           procedure = c("filtered", "all"), fdr = 0.05, cell_type = "cell_type",
+           procedure = c("heterogeneity", "filtered", "all"), fdr = 0.05,
+           pooled.df = c("proportional", "capped"), cell_type = "cell_type",
            sample_id = "sample_id", BPPARAM = BiocParallel::SerialParam(), verbose = TRUE, ...) {
     engine <- match.arg(engine)
-    procedure <- match.arg(procedure)
+    procedure <- if (missing(procedure)) NULL else match.arg(procedure)
+    pooled.df <- match.arg(pooled.df)
     if (missing(sigma) || length(sigma) != 1L) stop("'sigma' must be a single bandwidth", call. = FALSE)
     if (!paste0("Niche", sigma) %in% SingleCellExperiment::reducedDimNames(spe)) {
       spe <- buildNiches(spe, sigma = sigma, cell_type = cell_type, sample_id = sample_id,
@@ -38,6 +41,7 @@ setMethod(
     fit <- fitSpiDE(spe, condition = condition, engine = engine, sigma = sigma,
                     cell_type = cell_type, sample_id = sample_id, BPPARAM = BPPARAM,
                     verbose = verbose, ...)
-    testSpiDE(fit, condition = condition, procedure = procedure, fdr = fdr, BPPARAM = BPPARAM)
+    testSpiDE(fit, condition = condition, procedure = procedure, fdr = fdr, pooled.df = pooled.df,
+              BPPARAM = BPPARAM)
   }
 )

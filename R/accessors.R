@@ -10,8 +10,10 @@
 #'   p-value: \code{estimate} (the pooled slope, or the difference in slope
 #'   between conditions, on the log scale per unit log1p niche density),
 #'   \code{se}, \code{t}, \code{df}, \code{p}, \code{q} (BH within the test's
-#'   family) and \code{in_family}. Condition-specific rows outside the filtered
-#'   family have \code{q = NA}.
+#'   family), \code{in_family} and, for the slopes engine,
+#'   \code{p.heterogeneity} (the label-free test that the triplet's slopes
+#'   vary between patients, the filter of \code{procedure = "heterogeneity"}).
+#'   Condition-specific rows outside the family have \code{q = NA}.
 #' @examples
 #' data(toySpiDE)
 #' res <- spiDE(toySpiDE, condition = "condition", sigma = 30, index = "A",
