@@ -1,3 +1,45 @@
+# spiDE 0.99.37
+
+* **Two new defaults for small designs (5-7 patients per condition).** Each
+  was confirmed on untouched real-data nulls, against criteria written before
+  those nulls were scored; the calibration vignette has the numbers and how
+  each was chosen.
+  - **The condition test's family: pooled or heterogeneity**
+    (`testSpiDE(procedure = "pooled_or_heterogeneity")`, the slopes engine's
+    default). The condition test now runs on the triplets that pass the pooled
+    test or the new heterogeneity filter (`procedure = "heterogeneity"` on its
+    own).
+    - The heterogeneity filter keeps the triplets whose slopes vary between
+      patients more than their sampling variances allow: Cochran's Q across
+      patients (the statistic behind the between-patient variance), with
+      Benjamini-Hochberg over every triplet at `fdr`.
+    - Like the pooled filter it never looks at the condition.
+    - A condition effect is between-patient variation, so this filter keeps
+      effects whose two conditions cancel in the pooled slope.
+    - The pooled filter alone missed them. With few patients it passed almost
+      nothing for the condition test to see.
+    - Keeping the pooled filter's triplets as well means that every triplet the
+      previous default tested is still tested (`research/condtest/README.md`).
+  - **The pooled test's df: proportional** (`testSpiDE(pooled.df =
+    "proportional")`). The moderated t is referred to limma's df scaled by the
+    Kish effective share of the patients. The previous rule took the smaller of
+    limma's df and the Kish effective patients less one. That always bound,
+    dropped the prior's df and left the pooled test conservative with few
+    patients (`research/smalldf/README.md`).
+  - **The previous behaviour** is `procedure = "filtered", pooled.df =
+    "capped"`. The sandwich engine keeps `procedure = "filtered"`; it refuses
+    the heterogeneity filter, which needs per-patient slopes. Its tests do not
+    use `pooled.df`.
+* The results table has a new column, `p.heterogeneity` (the slopes engine's
+  label-free heterogeneity test; `NA` for the sandwich engine). One input check
+  for the procedure and the engine, shared by `testSpiDE()` and `spiDE()`
+  (`checkProcedure()`); `spiDE()` makes it before fitting.
+  `SpiDEResults` has a new slot, `pooled.df`. Results saved by earlier versions
+  lack the slot and are read as `"capped"`, the rule they were tested with.
+* `spiGSEA(pooled.df = NULL)` follows the results it is given. Its condition
+  test has no filter and is unchanged.
+* `spiDE()` passes `procedure` and `pooled.df` through to `testSpiDE()`.
+
 # spiDE 0.99.36
 
 * **Gene sets for the between-patient test.**

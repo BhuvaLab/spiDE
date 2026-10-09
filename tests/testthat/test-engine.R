@@ -121,18 +121,24 @@ test_that("the pooled test equals a direct limma fit with the effective df", {
   vp <- sweep(x$v_model, c(2, 3), x$factor, "*")
   v <- matrix(vp[, , j], nrow = length(x$genes))
   tau <- spiDE:::.dlTau2(x$beta, vp)[, j]
-  got <- spiDE:::.pooledColumnTest(b, v, tau, x$mean_expr)
   w <- 1 / (v + tau); w[!is.finite(w) | !is.finite(b)] <- NA
   w <- w / rowMeans(w, na.rm = TRUE)
   f <- limma::lmFit(b, matrix(1, ncol(b), 1), weights = w)
   f$Amean <- log(x$mean_expr + 1e-3)
   f <- limma::eBayes(f, robust = TRUE, trend = TRUE)
   neff <- rowSums(w, na.rm = TRUE)^2 / rowSums(w^2, na.rm = TRUE)
-  df <- pmin(f$df.total, pmax(neff - 1, 1))
-  expect_equal(got$estimate, unname(f$coefficients[, 1]), tolerance = 1e-10)
-  expect_equal(got$df, unname(df), tolerance = 1e-10)
-  ok <- is.finite(got$t)
-  expect_equal(got$p[ok], unname(2 * pt(-abs(f$t[ok, 1]), df[ok])), tolerance = 1e-10)
+  m <- rowSums(is.finite(w))
+  # the default (0.99.37): limma's df scaled by the Kish effective share; to 0.99.36: capped
+  for (rule in c("proportional", "capped")) {
+    got <- spiDE:::.pooledColumnTest(b, v, tau, x$mean_expr, df.rule = rule)
+    df <- if (rule == "capped") pmin(f$df.total, pmax(neff - 1, 1)) else f$df.total * neff / m
+    expect_equal(got$estimate, unname(f$coefficients[, 1]), tolerance = 1e-10)
+    expect_equal(got$df, unname(df), tolerance = 1e-10)
+    ok <- is.finite(got$t)
+    expect_equal(got$p[ok], unname(2 * pt(-abs(f$t[ok, 1]), df[ok])), tolerance = 1e-10)
+  }
+  expect_identical(spiDE:::.pooledColumnTest(b, v, tau, x$mean_expr),
+                   spiDE:::.pooledColumnTest(b, v, tau, x$mean_expr, df.rule = "proportional"))
 })
 
 test_that("the condition test is weighted least squares with an HC2 SE and Bell-McCaffrey df", {
@@ -189,7 +195,15 @@ test_that("the pooled test and its filter never look at the condition", {
   r2 <- testSpiDE(fit_perm, condition = "perm")
   p1 <- r1@table[r1@table$test == "pooled", ]
   p2 <- r2@table[r2@table$test == "pooled", ]
-  expect_identical(p1[, c("gene", "niche", "p", "q")], p2[, c("gene", "niche", "p", "q")])
+  expect_identical(p1[, c("gene", "niche", "p", "q", "p.heterogeneity")],
+                   p2[, c("gene", "niche", "p", "q", "p.heterogeneity")])
+  # so is either filter's condition family
+  for (proc in c("pooled_or_heterogeneity", "heterogeneity", "filtered")) {
+    f1 <- testSpiDE(fit16, condition = "condition", procedure = proc)@table
+    f2 <- testSpiDE(fit_perm, condition = "perm", procedure = proc)@table
+    fam <- function(tb) sort(paste(tb$gene, tb$niche)[tb$test == "condition" & tb$in_family])
+    expect_identical(fam(f1), fam(f2))
+  }
 })
 
 test_that("results are identical serially and in parallel", {

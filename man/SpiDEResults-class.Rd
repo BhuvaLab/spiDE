@@ -29,9 +29,16 @@ Returned by \code{\link[=testSpiDE]{testSpiDE()}} and \code{\link[=spiDE]{spiDE(
 
 \item{\code{contrast}}{a character, e.g. \code{"Responder - Non-responder"}.}
 
-\item{\code{procedure}}{a character, \code{"filtered"} or \code{"all"}.}
+\item{\code{procedure}}{a character, the condition test's family:
+\code{"pooled_or_heterogeneity"}, \code{"heterogeneity"},
+\code{"filtered"} or \code{"all"}.}
 
 \item{\code{fdr}}{a numeric, the FDR level of the filter.}
+
+\item{\code{pooled.df}}{a character, the slopes engine's pooled-test degrees of
+freedom (\code{"proportional"} or \code{"capped"}; empty for the
+sandwich engine). Results saved by spiDE <= 0.99.36 lack the slot; they
+were tested with \code{"capped"}.}
 
 \item{\code{fit}}{the \link[=SpiDEFit-class]{SpiDEFit} tested.}
 }}

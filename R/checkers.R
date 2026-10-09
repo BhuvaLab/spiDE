@@ -162,6 +162,16 @@ checkFdr <- function(fdr) {
   invisible(TRUE)
 }
 
+# The heterogeneity filter (alone or with the pooled filter) needs each
+# patient's slopes, which only the slopes engine keeps.
+checkProcedure <- function(procedure, engine) {
+  if (procedure %in% c("heterogeneity", "pooled_or_heterogeneity") && engine != "slopes") {
+    stop(sprintf("procedure = \"%s\" needs the slopes engine's per-patient slopes; ", procedure),
+         "use procedure = \"filtered\" or \"all\" with the sandwich engine", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 # The requested niche reducedDim must have been built.
 checkNiche <- function(spe, sigma, name = "Niche") {
   nms <- SingleCellExperiment::reducedDimNames(spe)

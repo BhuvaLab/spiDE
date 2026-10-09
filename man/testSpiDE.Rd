@@ -10,9 +10,10 @@ testSpiDE(object, condition = NULL, ...)
 \S4method{testSpiDE}{SpiDEFit}(
   object,
   condition = NULL,
-  procedure = c("filtered", "all"),
+  procedure = c("pooled_or_heterogeneity", "heterogeneity", "filtered", "all"),
   fdr = 0.05,
   strata = NULL,
+  pooled.df = c("proportional", "capped"),
   BPPARAM = BiocParallel::SerialParam(),
   ...
 )
@@ -28,13 +29,20 @@ sorted values).}
 
 \item{...}{unused.}
 
-\item{procedure}{\code{"filtered"} or \code{"all"}, see Details.}
+\item{procedure}{\code{"pooled_or_heterogeneity"},
+\code{"heterogeneity"}, \code{"filtered"} or \code{"all"}, see Details.
+The default is \code{"pooled_or_heterogeneity"} for the slopes engine and
+\code{"filtered"} for the sandwich engine.}
 
 \item{fdr}{the FDR level of the filter.}
 
 \item{strata}{\code{NULL} (the fit's) or a patient-level column adjusted for
 in the slopes engine's condition test (e.g. slide, where the condition is
 confounded with it).}
+
+\item{pooled.df}{\code{"proportional"} or \code{"capped"}: the degrees of
+freedom of the slopes engine's pooled test, see Details. The sandwich
+engine's tests have Bell-McCaffrey degrees of freedom and ignore it.}
 
 \item{BPPARAM}{a BiocParallelParam; the slopes engine's condition-specific
 test is run in parallel over genes.}
@@ -52,11 +60,38 @@ between the two conditions -- a between-patient contrast of within-patient
 slopes.
 }
 \details{
-By default (\code{procedure = "filtered"}) the condition-specific test is
-carried out only among triplets whose pooled test passes at \code{fdr}: the
-filter never looks at the condition, so it is exact under any relabelling of
-patients, and it spends the multiplicity budget on triplets with a niche
-effect to modify. \code{procedure = "all"} tests every triplet.
+The condition-specific test is carried out within a family of triplets
+chosen without looking at the condition, so the choice is exact under any
+relabelling of patients and the multiplicity budget is spent on triplets
+with something for the condition to explain:
+\itemize{
+\item \code{procedure = "pooled_or_heterogeneity"} (the slopes engine's
+default): the triplets that pass either filter below.
+\item \code{procedure = "heterogeneity"}: the triplets whose slopes vary
+between patients more than their sampling variances allow (Cochran's Q
+across patients, the statistic behind the between-patient variance;
+Benjamini-Hochberg over every triplet at \code{fdr}). A condition effect
+is such variation, including one whose two conditions' slopes cancel in
+the pooled slope. With few patients the pooled test passes little, and
+this filter carries the condition test.
+\item \code{procedure = "filtered"} (the sandwich engine's default, and
+the slopes engine's to spiDE 0.99.36): the triplets whose pooled test
+passes at \code{fdr}. It keeps a modest condition difference on a strong
+pooled slope, which the heterogeneity test, spread over every patient,
+can miss.
+\item \code{procedure = "all"}: every triplet.
+}
+The heterogeneity filter needs each patient's slopes, so it is the slopes
+engine's only. The calibration vignette has the measurements behind the
+default.
+
+The slopes engine's pooled test refers its moderated t statistic to
+\code{pooled.df}: \code{"proportional"} (the default) scales limma's
+degrees of freedom by the Kish effective share of the patients, so a
+column whose weights rest on a few patients is not credited with the
+others; \code{"capped"} (to spiDE 0.99.36) takes the smaller of limma's df
+and the Kish effective number of patients less one, which is conservative
+with few patients.
 }
 \examples{
 data(toySpiDE)
