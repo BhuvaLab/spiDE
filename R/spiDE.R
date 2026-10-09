@@ -33,6 +33,11 @@ setMethod(
     engine <- match.arg(engine)
     procedure <- if (missing(procedure)) NULL else match.arg(procedure)
     pooled.df <- match.arg(pooled.df)
+    # refuse before the fit, not after it
+    if (identical(procedure, "heterogeneity") && engine != "slopes") {
+      stop("procedure = \"heterogeneity\" needs the slopes engine's per-patient slopes; ",
+           "use procedure = \"filtered\" or \"all\" with the sandwich engine", call. = FALSE)
+    }
     if (missing(sigma) || length(sigma) != 1L) stop("'sigma' must be a single bandwidth", call. = FALSE)
     if (!paste0("Niche", sigma) %in% SingleCellExperiment::reducedDimNames(spe)) {
       spe <- buildNiches(spe, sigma = sigma, cell_type = cell_type, sample_id = sample_id,

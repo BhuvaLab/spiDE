@@ -55,6 +55,9 @@ test_that("the heterogeneity p is Cochran's Q across patients, the statistic beh
   # one patient is not enough
   b1 <- x$beta; b1[1, -1, 1] <- NA
   expect_true(is.na(spiDE:::.heterogeneityP(b1, vp)[1, 1]))
+  # two patients with variances near zero overflow Q (finite weights, infinite sum): NA, not p = 0
+  bo <- array(c(0, 3, 1), c(1, 3, 1)); vo <- array(c(2e-308, 2e-308, 1), c(1, 3, 1))
+  expect_true(is.na(spiDE:::.heterogeneityP(bo, vo)[1, 1]))
 })
 
 test_that("the slopes engine's defaults are the heterogeneity family and the proportional df", {
@@ -97,6 +100,11 @@ test_that("the sandwich engine keeps the pooled filter and refuses the heterogen
   expect_identical(r@pooled.df, character())
   expect_true(all(is.na(r@table$p.heterogeneity)))
   expect_error(testSpiDE(fs, procedure = "heterogeneity"), "slopes engine")
+  # spiDE() refuses the combination before it fits anything
+  t0 <- proc.time()[["elapsed"]]
+  expect_error(spiDE(spe16h, condition = "condition", sigma = 30, index = "A", engine = "sandwich",
+                     procedure = "heterogeneity", verbose = FALSE), "slopes engine")
+  expect_lt(proc.time()[["elapsed"]] - t0, 2)
   expect_identical(testSpiDE(fs, pooled.df = "capped")@table, r@table)
 })
 

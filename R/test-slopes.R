@@ -67,7 +67,8 @@
   m <- apply(ok, c(1, 3), sum)
   Q <- apply(w * sweep(b, c(1, 3), bbar)^2, c(1, 3), sum)
   p <- stats::pchisq(Q, pmax(m - 1, 1), lower.tail = FALSE)
-  p[m < 2 | !is.finite(p)] <- NA
+  # an overflowing Q (a variance near zero) would read as p = 0: NA instead
+  p[m < 2 | !is.finite(Q) | !is.finite(p)] <- NA
   p
 }
 
