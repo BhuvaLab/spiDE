@@ -1,8 +1,9 @@
 # spiDE 0.99.37
 
-* **Two new defaults for small designs (5-7 patients per condition).** Both
-  were chosen in pre-registered studies and confirmed on untouched real-data
-  nulls; the calibration vignette has the numbers.
+* **Two new defaults for small designs (5-7 patients per condition).** Each
+  was confirmed on untouched real-data nulls, against criteria written before
+  those nulls were scored; the calibration vignette has the numbers and how
+  each was chosen.
   - **The condition test's family: pooled or heterogeneity**
     (`testSpiDE(procedure = "pooled_or_heterogeneity")`, the slopes engine's
     default). The condition test now runs on the triplets that pass the pooled

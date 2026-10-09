@@ -122,14 +122,21 @@ bandwidth per fit. `testNicheAbundance()` and `spiGSEA()` sit beside it.
      slope the first stratum's, fixed in 0.99.31).
 3. **Test** (`R/testSpiDE.R`, `R/test-slopes.R`): slopes engine: per (index, niche) column, the
    patients' slopes weighted by `1 / (v_model * factor + tau2_DL)` in both tests. Pooled test:
-   limma, `eBayes(trend = TRUE, robust = TRUE)` on log mean expression, df = `min(df.total, Kish
-   n_eff - 1)` (`.pooledColumnTest()`). Condition test (0.99.32): the same weighted least squares
+   limma, `eBayes(trend = TRUE, robust = TRUE)` on log mean expression, df = `df.total * n_eff / m`
+   (Kish n_eff over the m usable patients; `pooled.df = "proportional"`, 0.99.37; to 0.99.36
+   `min(df.total, n_eff - 1)`, `"capped"`, which always bound and dropped the prior df)
+   (`.pooledColumnTest()`). Condition test (0.99.32): the same weighted least squares
    on `[1, condition, strata]` with an HC2 SE across patients and Bell-McCaffrey df
    (`.robustConditionTest()`; to 0.99.31 limma weighted by the gene's own `v_tile`, which
    attenuated the contrast: `research/bench2/diag/FINDINGS.md`, `research/release/`).
-   `.bhFamilies()`: pooled BH over every
-   triplet; condition BH over the triplets whose pooled q < `fdr` (`procedure = "filtered"`,
-   default) or all. `results(test = )` reads one table; `patientSlopes()` the per-patient slopes.
+   `.bhFamilies()`: pooled BH over every triplet; condition BH within a label-free family:
+   `"pooled_or_heterogeneity"` (slopes default, 0.99.37: pooled q < `fdr` OR BH of
+   `p.heterogeneity` < `fdr`), `"heterogeneity"`, `"filtered"` (pooled q < `fdr`; the default to
+   0.99.36 and the sandwich engine's) or `"all"`. `p.heterogeneity` (`.heterogeneityP()`) is
+   Cochran's Q behind tau2_DL on chi-square m - 1, label-free; `checkProcedure()` refuses the
+   heterogeneity families for the sandwich engine. `SpiDEResults@pooled.df` records the df rule
+   (absent in saved older objects: `.pooledDfOf()` reads them as `"capped"`); `spiGSEA()` follows
+   it. `results(test = )` reads one table; `patientSlopes()` the per-patient slopes.
 
 **Classes** (`R/AllClasses.R`): `SpiDEFit` (engine, sigma, condition, patients, index, params) and
 `SpiDEResults` (table, condition, contrast, procedure, fdr, fit). Generics in `R/AllGenerics.R`,
@@ -192,6 +199,31 @@ numbers.** Before changing a default, read:
   >= 3 Kish-effective patients per group) was chosen on spent nulls and confirmed on untouched
   ones (`research/release/README.md`, log 2026-10-01). bench2's block null scores the condition
   test only from run `robustse` on.
+- **Small designs (0.99.37).** The user's target design is 5-7 patients per condition (2026-10-09); two
+  pre-registered studies, each confirmed on untouched nulls, set the defaults.
+  - `research/smalldf/` chose the proportional pooled df. The capped df was conservative (null RMS
+    0.76-0.95 at 6-16 subsampled patients); the proportional df is 0.88-0.98. Its pre-registered
+    rule had rejected the df on the power benchmark's pooled FDP (+0.059). The user then chose a
+    follow-up, whose criteria F1-F3 it passed on untouched nulls.
+  - `research/condtest/` chose the condition family. The pooled filter passed almost nothing for
+    the condition test at 12-16 patients and could not pass effects that reverse between
+    conditions. The heterogeneity filter won the first confirmation. On the toy data it missed a
+    modest difference on a strong pooled slope (Q spreads it over m - 1 df). The union won a
+    second confirmation on fresh nulls (grids 141-160, seeds 20261022 and 20261023).
+  - `research/release/` (`tables_0.99.37*`) is the gate on the shipped package.
+    `research/power/tables_0.99.37/` (run `main36_v0.99.37`, a retest of main36's kept slopes) is
+    the power benchmark.
+  - **Costs, measured:**
+    - The pooled FDP in the power benchmark rises: 0.08 at 32 patients on the 1,000-gene
+      templates, 0.09-0.19 on GSE250346. It is attributed to compositional shifts but not
+      isolated; F3 on real slopes does not show it.
+    - At full size on GSE250346 the union family loses tested-only condition recall in the
+      real-slope plasmode (0.23 against 0.55). Almost half of the triplets pass the pooled filter
+      there, so the larger family likely costs more correction than it adds; no arm isolates
+      this.
+    - STAGE's own-family block tail is 0.20 on grids 51-60 and 0 on grids 121-130 and 141-150.
+  - Decisions on further small-n arms: the variance-borrowing (`archive/shared-tau2`) and
+    effect-sharing (`archive/effect-sharing`) studies failed; they are research tags.
 - **Gene sets (0.99.32).** `spiGSEA()` tests a set's per-patient slope with the gene tests;
   `research/release/R/15_gsea_null.R` and `R/17_gsea_score.R` are its null (GO BP sets, 20 block
   grids, 200 permutations per cohort).
@@ -271,6 +303,8 @@ before an array and size from `sstat`/`seff` (`hpc-job-sizing`). Commit, never p
 - `vignettes/spiDE-model.Rmd` (the model), `vignettes/spiDE-calibration.Rmd` (the numbers).
 - `research/simplify/` (the engines), `research/bench2/` (the depth benchmark and the condition
   test's attenuation, `diag/`), `research/release/` (the shipped package on the real cohorts),
+  `research/smalldf/` and `research/condtest/` (the small-design defaults of 0.99.37),
+  `research/power/` (the power benchmark; `tables_0.99.37/` for the current defaults),
   `research/public/` (the three public cohorts: builders, nulls, `FINDINGS.md`).
 - `research/mixed/` (the archived mixed model and its whole evidence trail, including
   `CLAUDE-spiDE-0.99.22.md`), `research/reports/benchmarks/` and `research/docs/` (its six reports,
