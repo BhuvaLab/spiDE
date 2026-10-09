@@ -12,7 +12,7 @@ spiDE(spe, condition = NULL, ...)
   condition = NULL,
   sigma,
   engine = c("slopes", "sandwich"),
-  procedure = c("heterogeneity", "filtered", "all"),
+  procedure = c("pooled_or_heterogeneity", "heterogeneity", "filtered", "all"),
   fdr = 0.05,
   pooled.df = c("proportional", "capped"),
   cell_type = "cell_type",

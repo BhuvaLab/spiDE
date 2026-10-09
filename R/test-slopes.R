@@ -31,12 +31,14 @@
 #     conservative at 6-16 patients (research/smalldf/README.md).
 # Both are computed over the whole gene family of a column (the eBayes prior
 # and trend are shared across genes), never within a gene block.
-# The condition test runs, by default (0.99.37), on the triplets whose slopes
-# vary between patients more than their sampling variances allow: Cochran's Q
-# behind tau2_g (.heterogeneityP(), label-free), BH over every triplet at the
-# fdr (research/condtest/README.md). A condition effect is such variation, so
-# the filter keeps effects that cancel in the pooled slope, which the pooled
-# filter (procedure = "filtered", to 0.99.36) cannot.
+# The condition test runs, by default (0.99.37), on the triplets that pass the
+# pooled test or whose slopes vary between patients more than their sampling
+# variances allow: Cochran's Q behind tau2_g (.heterogeneityP(), label-free), BH
+# over every triplet at the fdr (research/condtest/README.md). A condition effect
+# is such variation, so the heterogeneity filter keeps effects that cancel in
+# the pooled slope, which the pooled filter (procedure = "filtered", to 0.99.36)
+# cannot; the pooled filter keeps a modest difference on a strong pooled slope,
+# which Q, spread over m - 1 df, can miss.
 
 # Label-free DerSimonian-Laird between-patient variance per (gene, niche).
 .dlTau2 <- function(b, v) {
@@ -193,8 +195,7 @@
 }
 
 # The slopes engine's tests for one index type's stored slopes. Every row
-# carries its triplet's label-free heterogeneity p (the filter of procedure =
-# "heterogeneity").
+# carries its triplet's label-free heterogeneity p (the heterogeneity filter).
 .slopesTests <- function(x, trt = NULL, strata = NULL, BPPARAM = BiocParallel::SerialParam(),
                          pooled.df = "proportional") {
   out <- list()
@@ -217,14 +218,16 @@
 }
 
 # Benjamini-Hochberg families. The pooled test: every (gene, index, niche).
-# The condition test: the triplets whose label-free heterogeneity passes BH at
-# `fdr` over every triplet ("heterogeneity", the slopes engine's default from
-# 0.99.37), the triplets whose pooled test passes at `fdr` ("filtered", the
-# default to 0.99.36 and the sandwich engine's), or every triplet ("all"). Both
-# filters are label-free -- they never look at the condition -- so they are
-# exact under any relabelling of patients and spend the multiplicity budget on
-# triplets with something for the condition to explain.
-.bhFamilies <- function(tab, procedure = c("heterogeneity", "filtered", "all"), fdr = 0.05) {
+# The condition test: the triplets that pass either the pooled test or the
+# label-free heterogeneity test at `fdr` ("pooled_or_heterogeneity", the slopes
+# engine's default from 0.99.37), those whose heterogeneity passes BH at `fdr`
+# over every triplet ("heterogeneity"), those whose pooled test passes at `fdr`
+# ("filtered", the default to 0.99.36 and the sandwich engine's), or every
+# triplet ("all"). Every filter is label-free -- it never looks at the
+# condition -- so it is exact under any relabelling of patients and spends the
+# multiplicity budget on triplets with something for the condition to explain.
+.bhFamilies <- function(tab, procedure = c("pooled_or_heterogeneity", "heterogeneity", "filtered", "all"),
+                        fdr = 0.05) {
   procedure <- match.arg(procedure)
   tab$q <- NA_real_
   tab$in_family <- FALSE
@@ -234,12 +237,13 @@
   cl <- which(tab$test == "condition" & is.finite(tab$p))
   if (length(cl) && procedure != "all") {
     key <- paste(tab$gene, tab$index, tab$niche, sep = "\r")
-    pass <- if (procedure == "filtered") {
-      key[pl][tab$q[pl] < fdr]
-    } else {
+    pooled_pass <- key[pl][tab$q[pl] < fdr]
+    het_pass <- if (procedure != "filtered") {
       hl <- which(tab$test == "pooled" & is.finite(tab$p.heterogeneity))
       key[hl][stats::p.adjust(tab$p.heterogeneity[hl], "BH") < fdr]
     }
+    pass <- switch(procedure, filtered = pooled_pass, heterogeneity = het_pass,
+                   pooled_or_heterogeneity = union(pooled_pass, het_pass))
     cl <- cl[key[cl] %in% pass]
   }
   if (length(cl)) {

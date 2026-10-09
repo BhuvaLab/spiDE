@@ -10,7 +10,7 @@ testSpiDE(object, condition = NULL, ...)
 \S4method{testSpiDE}{SpiDEFit}(
   object,
   condition = NULL,
-  procedure = c("heterogeneity", "filtered", "all"),
+  procedure = c("pooled_or_heterogeneity", "heterogeneity", "filtered", "all"),
   fdr = 0.05,
   strata = NULL,
   pooled.df = c("proportional", "capped"),
@@ -29,9 +29,10 @@ sorted values).}
 
 \item{...}{unused.}
 
-\item{procedure}{\code{"heterogeneity"}, \code{"filtered"} or
-\code{"all"}, see Details. The default is \code{"heterogeneity"} for
-the slopes engine and \code{"filtered"} for the sandwich engine.}
+\item{procedure}{\code{"pooled_or_heterogeneity"},
+\code{"heterogeneity"}, \code{"filtered"} or \code{"all"}, see Details.
+The default is \code{"pooled_or_heterogeneity"} for the slopes engine and
+\code{"filtered"} for the sandwich engine.}
 
 \item{fdr}{the FDR level of the filter.}
 
@@ -64,15 +65,20 @@ chosen without looking at the condition, so the choice is exact under any
 relabelling of patients and the multiplicity budget is spent on triplets
 with something for the condition to explain:
 \itemize{
-\item \code{procedure = "heterogeneity"} (the slopes engine's default):
-the triplets whose slopes vary between patients more than their
-sampling variances allow (Cochran's Q across patients, the statistic
-behind the between-patient variance; Benjamini-Hochberg over every
-triplet at \code{fdr}). A condition effect is such variation, including
-one whose two conditions' slopes cancel in the pooled slope.
+\item \code{procedure = "pooled_or_heterogeneity"} (the slopes engine's
+default): the triplets that pass either filter below.
+\item \code{procedure = "heterogeneity"}: the triplets whose slopes vary
+between patients more than their sampling variances allow (Cochran's Q
+across patients, the statistic behind the between-patient variance;
+Benjamini-Hochberg over every triplet at \code{fdr}). A condition effect
+is such variation, including one whose two conditions' slopes cancel in
+the pooled slope. With few patients the pooled test passes little, and
+this filter carries the condition test.
 \item \code{procedure = "filtered"} (the sandwich engine's default, and
 the slopes engine's to spiDE 0.99.36): the triplets whose pooled test
-passes at \code{fdr}.
+passes at \code{fdr}. It keeps a modest condition difference on a strong
+pooled slope, which the heterogeneity test, spread over every patient,
+can miss.
 \item \code{procedure = "all"}: every triplet.
 }
 The heterogeneity filter needs each patient's slopes, so it is the slopes

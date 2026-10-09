@@ -60,20 +60,30 @@ test_that("the heterogeneity p is Cochran's Q across patients, the statistic beh
   expect_true(is.na(spiDE:::.heterogeneityP(bo, vo)[1, 1]))
 })
 
-test_that("the slopes engine's defaults are the heterogeneity family and the proportional df", {
+test_that("the slopes engine's defaults are the pooled-or-heterogeneity family and the proportional df", {
   r <- testSpiDE(fit16h, condition = "condition")
-  expect_identical(r@procedure, "heterogeneity")
+  expect_identical(r@procedure, "pooled_or_heterogeneity")
   expect_identical(r@pooled.df, "proportional")
-  expect_identical(r@table, testSpiDE(fit16h, condition = "condition", procedure = "heterogeneity",
+  expect_identical(r@table, testSpiDE(fit16h, condition = "condition", procedure = "pooled_or_heterogeneity",
                                       pooled.df = "proportional")@table)
   tb <- r@table
   pl <- tb[tb$test == "pooled" & is.finite(tb$p.heterogeneity), ]
-  pass <- paste(pl$gene, pl$index, pl$niche)[stats::p.adjust(pl$p.heterogeneity, "BH") < r@fdr]
+  het <- paste(pl$gene, pl$index, pl$niche)[stats::p.adjust(pl$p.heterogeneity, "BH") < r@fdr]
+  pp <- tb[tb$test == "pooled" & is.finite(tb$p), ]
+  pooled <- paste(pp$gene, pp$index, pp$niche)[pp$q < r@fdr]
   cond <- tb[tb$test == "condition", ]
   key <- paste(cond$gene, cond$index, cond$niche)
-  expect_identical(cond$in_family, is.finite(cond$p) & key %in% pass)
-  expect_equal(cond$q[cond$in_family], stats::p.adjust(cond$p[cond$in_family], "BH"))
-  expect_true(all(is.na(cond$q[!cond$in_family])))
+  fam <- function(proc) testSpiDE(fit16h, condition = "condition", procedure = proc)@table
+  for (proc in c("pooled_or_heterogeneity", "heterogeneity", "filtered")) {
+    pass <- switch(proc, pooled_or_heterogeneity = union(pooled, het), heterogeneity = het, filtered = pooled)
+    cf <- fam(proc); cf <- cf[cf$test == "condition", ]
+    expect_identical(cf$in_family, is.finite(cf$p) & key %in% pass)
+    expect_equal(cf$q[cf$in_family], stats::p.adjust(cf$p[cf$in_family], "BH"))
+    expect_true(all(is.na(cf$q[!cf$in_family])))
+  }
+  # the default family contains every triplet the previous default tested
+  old <- fam("filtered"); new <- tb
+  expect_true(all(new$in_family[new$test == "condition"][old$in_family[old$test == "condition"]]))
   # each condition row carries its triplet's heterogeneity p
   pk <- paste(tb$gene, tb$index, tb$niche)[tb$test == "pooled"]
   expect_identical(cond$p.heterogeneity, tb$p.heterogeneity[tb$test == "pooled"][match(key, pk)])
@@ -100,6 +110,7 @@ test_that("the sandwich engine keeps the pooled filter and refuses the heterogen
   expect_identical(r@pooled.df, character())
   expect_true(all(is.na(r@table$p.heterogeneity)))
   expect_error(testSpiDE(fs, procedure = "heterogeneity"), "slopes engine")
+  expect_error(testSpiDE(fs, procedure = "pooled_or_heterogeneity"), "slopes engine")
   # spiDE() refuses the combination before it fits anything
   t0 <- proc.time()[["elapsed"]]
   expect_error(spiDE(spe16h, condition = "condition", sigma = 30, index = "A", engine = "sandwich",

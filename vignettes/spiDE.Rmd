@@ -169,12 +169,15 @@ cond <- results(res, test = "condition")
 cond[cond$in_family, ]
 ```
 
-By default (`procedure = "filtered"`) the condition-specific test is carried
-out only among the triplets whose pooled test passes at `fdr`: the pooled
-test never looks at the condition, so the filter is exact under any
-relabelling of patients, and the multiplicity correction is spent on
-triplets that have a niche dependence to modify. Rows outside that family
-have `q = NA`. `procedure = "all"` tests every triplet.
+By default (`procedure = "pooled_or_heterogeneity"`) the condition-specific
+test is carried out only among the triplets that pass the pooled test or whose
+slopes vary between patients more than their sampling noise allows
+(`p.heterogeneity`, Benjamini-Hochberg at `fdr`). Neither filter looks at the
+condition, so the family is exact under any relabelling of patients, and the
+multiplicity correction is spent on triplets with something for the condition
+to explain. Rows outside the family have `q = NA`. `procedure =
+"heterogeneity"` and `procedure = "filtered"` (the default to spiDE 0.99.36)
+use one filter each, and `procedure = "all"` tests every triplet.
 
 The planted triplet, G1 in A against B, is the strongest pooled association
 (`t` = `r round(results(res, test = "pooled")$t[1], 2)`), and in the

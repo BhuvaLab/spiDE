@@ -198,7 +198,7 @@ test_that("the pooled test and its filter never look at the condition", {
   expect_identical(p1[, c("gene", "niche", "p", "q", "p.heterogeneity")],
                    p2[, c("gene", "niche", "p", "q", "p.heterogeneity")])
   # so is either filter's condition family
-  for (proc in c("heterogeneity", "filtered")) {
+  for (proc in c("pooled_or_heterogeneity", "heterogeneity", "filtered")) {
     f1 <- testSpiDE(fit16, condition = "condition", procedure = proc)@table
     f2 <- testSpiDE(fit_perm, condition = "perm", procedure = proc)@table
     fam <- function(tb) sort(paste(tb$gene, tb$niche)[tb$test == "condition" & tb$in_family])

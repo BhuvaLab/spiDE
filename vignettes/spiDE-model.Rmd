@@ -157,11 +157,15 @@ ggplot(cells, aes(density, expr, colour = condition)) +
   index cells' response to each extra unit of niche density differs between
   the groups.
 
-By default (`procedure = "filtered"`) the condition-specific test is run only
-among triplets whose pooled test passes. A slope present in one group only
-still has a non-zero average over all patients and can pass that filter. A
-slope that reverses between the groups averages out close to zero and is
-unlikely to pass; use `procedure = "all"` when such effects matter.
+By default the condition-specific test is run only among triplets that pass
+one of two filters (see "Multiple testing"): the pooled test, or a test that
+the slopes vary between patients more than their sampling noise allows. A
+slope present in one group only, or stronger in one group, has a non-zero
+average and can pass the first. All three patterns make the slopes vary
+between patients and can pass the second, including a slope that reverses
+between the groups and averages out close to zero. To spiDE 0.99.36 only the
+first filter was used (`procedure = "filtered"`), so a reversing slope was
+unlikely to reach the condition-specific test.
 
 A within-patient slope is not always a response of the index cells.
 Transcripts of neighbouring niche cells can be assigned to index cells when
@@ -407,9 +411,15 @@ patients are few. Two refinements keep it honest:
   patients carry most of the weight, the test should not behave as if every
   patient contributed equally. The Kish effective number of patients,
   $n_{\text{eff}} = (\sum_s w_s)^2 / \sum_s w_s^2$, equals the number of
-  patients when the weights are equal and falls towards one as they
-  concentrate. The $t$ statistic is referred to $\min(\nu_{\text{limma}},
-  n_{\text{eff}} - 1)$ degrees of freedom.
+  patients $m$ when the weights are equal and falls towards one as they
+  concentrate. The $t$ statistic is referred to $\nu_{\text{limma}}
+  \, n_{\text{eff}} / m$ degrees of freedom (`pooled.df = "proportional"`):
+  limma's degrees of freedom, which include those borrowed from the other
+  genes, scaled by the effective share of the patients. To spiDE 0.99.36 they
+  were $\min(\nu_{\text{limma}}, n_{\text{eff}} - 1)$ (`pooled.df =
+  "capped"`). Since $n_{\text{eff}} \le m$, that cap always applied and
+  discarded the borrowed degrees of freedom, which made the test conservative
+  with few patients.
 
 ## The condition-specific test
 
@@ -450,12 +460,27 @@ expected share of false calls among the calls) with the Benjamini-Hochberg
 procedure. `testSpiDE()` reports a $q$-value per row:
 
 - **pooled**: over every tested triplet;
-- **condition-specific**: by default (`procedure = "filtered"`) over the
-  triplets whose pooled test passes at `fdr`. Rows outside that family have
-  `q = NA`. The pooled test ignores the condition, so this family is the same
-  under any relabelling of patients and the false discovery rate is preserved.
-  The correction is then spent where there is a niche effect to modify.
-  `procedure = "all"` uses every triplet instead.
+- **condition-specific**: over a family of triplets chosen without looking at
+  the condition, so that the family is the same under any relabelling of
+  patients and the false discovery rate is preserved. Rows outside the family
+  have `q = NA`.
+  - **`procedure = "pooled_or_heterogeneity"`** (the default for the slopes
+    engine): the triplets that pass either of the next two filters.
+  - **`procedure = "heterogeneity"`**: the triplets whose slopes vary between
+    patients more than their sampling variances allow. The statistic is
+    Cochran's $Q_g = \sum_s (\hat\beta_{gs} - \bar\beta_g)^2 / v_{gs}$, the
+    same one behind $\tau^2_g$, referred to $\chi^2_{m-1}$. Its $p$-value is
+    reported as `p.heterogeneity` and filtered by Benjamini-Hochberg over every
+    triplet at `fdr`. A difference between the conditions is such variation,
+    so the correction is spent where there is something for the condition to
+    explain, including a slope that reverses between the groups. With few
+    patients this filter carries the condition test.
+  - **`procedure = "filtered"`** (the default to spiDE 0.99.36, and the
+    sandwich engine's): the triplets whose pooled test passes at `fdr`. With
+    few patients the pooled test passes few triplets, and a reversing slope
+    rarely passes it. It keeps a modest difference on a strong pooled slope,
+    which $Q_g$, spread over $m - 1$ degrees of freedom, can miss.
+  - **`procedure = "all"`**: every triplet.
 
 The estimate is on the natural-log scale per unit $\log(1 + d)$. A pooled slope
 of 0.2 means expression rises by about 22% ($e^{0.2}$) for each unit increase

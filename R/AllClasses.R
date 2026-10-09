@@ -66,7 +66,8 @@ setClass("SpiDEFit", representation(
 #' @slot condition a character (length 0 or 1), the condition tested.
 #' @slot contrast a character, e.g. \code{"Responder - Non-responder"}.
 #' @slot procedure a character, the condition test's family:
-#'   \code{"heterogeneity"}, \code{"filtered"} or \code{"all"}.
+#'   \code{"pooled_or_heterogeneity"}, \code{"heterogeneity"},
+#'   \code{"filtered"} or \code{"all"}.
 #' @slot fdr a numeric, the FDR level of the filter.
 #' @slot pooled.df a character, the slopes engine's pooled-test degrees of
 #'   freedom (\code{"proportional"} or \code{"capped"}; empty for the

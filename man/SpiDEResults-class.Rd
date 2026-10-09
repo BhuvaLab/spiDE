@@ -30,7 +30,8 @@ Returned by \code{\link[=testSpiDE]{testSpiDE()}} and \code{\link[=spiDE]{spiDE(
 \item{\code{contrast}}{a character, e.g. \code{"Responder - Non-responder"}.}
 
 \item{\code{procedure}}{a character, the condition test's family:
-\code{"heterogeneity"}, \code{"filtered"} or \code{"all"}.}
+\code{"pooled_or_heterogeneity"}, \code{"heterogeneity"},
+\code{"filtered"} or \code{"all"}.}
 
 \item{\code{fdr}}{a numeric, the FDR level of the filter.}
 

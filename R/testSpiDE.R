@@ -13,15 +13,20 @@
 #' relabelling of patients and the multiplicity budget is spent on triplets
 #' with something for the condition to explain:
 #' \itemize{
-#'   \item \code{procedure = "heterogeneity"} (the slopes engine's default):
-#'     the triplets whose slopes vary between patients more than their
-#'     sampling variances allow (Cochran's Q across patients, the statistic
-#'     behind the between-patient variance; Benjamini-Hochberg over every
-#'     triplet at \code{fdr}). A condition effect is such variation, including
-#'     one whose two conditions' slopes cancel in the pooled slope.
+#'   \item \code{procedure = "pooled_or_heterogeneity"} (the slopes engine's
+#'     default): the triplets that pass either filter below.
+#'   \item \code{procedure = "heterogeneity"}: the triplets whose slopes vary
+#'     between patients more than their sampling variances allow (Cochran's Q
+#'     across patients, the statistic behind the between-patient variance;
+#'     Benjamini-Hochberg over every triplet at \code{fdr}). A condition effect
+#'     is such variation, including one whose two conditions' slopes cancel in
+#'     the pooled slope. With few patients the pooled test passes little, and
+#'     this filter carries the condition test.
 #'   \item \code{procedure = "filtered"} (the sandwich engine's default, and
 #'     the slopes engine's to spiDE 0.99.36): the triplets whose pooled test
-#'     passes at \code{fdr}.
+#'     passes at \code{fdr}. It keeps a modest condition difference on a strong
+#'     pooled slope, which the heterogeneity test, spread over every patient,
+#'     can miss.
 #'   \item \code{procedure = "all"}: every triplet.
 #' }
 #' The heterogeneity filter needs each patient's slopes, so it is the slopes
@@ -42,9 +47,10 @@
 #'   With the sandwich engine it must be the condition the model was fitted
 #'   with. The contrast is second level minus first (factor levels, else
 #'   sorted values).
-#' @param procedure \code{"heterogeneity"}, \code{"filtered"} or
-#'   \code{"all"}, see Details. The default is \code{"heterogeneity"} for
-#'   the slopes engine and \code{"filtered"} for the sandwich engine.
+#' @param procedure \code{"pooled_or_heterogeneity"},
+#'   \code{"heterogeneity"}, \code{"filtered"} or \code{"all"}, see Details.
+#'   The default is \code{"pooled_or_heterogeneity"} for the slopes engine and
+#'   \code{"filtered"} for the sandwich engine.
 #' @param fdr the FDR level of the filter.
 #' @param pooled.df \code{"proportional"} or \code{"capped"}: the degrees of
 #'   freedom of the slopes engine's pooled test, see Details. The sandwich
@@ -67,16 +73,14 @@
 #' @export
 setMethod(
   "testSpiDE", "SpiDEFit",
-  function(object, condition = NULL, procedure = c("heterogeneity", "filtered", "all"), fdr = 0.05,
+  function(object, condition = NULL, procedure = c("pooled_or_heterogeneity", "heterogeneity", "filtered", "all"),
+           fdr = 0.05,
            strata = NULL, pooled.df = c("proportional", "capped"), BPPARAM = BiocParallel::SerialParam(), ...) {
     .assertCurrent(object)
     procedure <- if (missing(procedure) || is.null(procedure)) {
-      if (object@engine == "slopes") "heterogeneity" else "filtered"
+      if (object@engine == "slopes") "pooled_or_heterogeneity" else "filtered"
     } else match.arg(procedure)
-    if (procedure == "heterogeneity" && object@engine != "slopes") {
-      stop("procedure = \"heterogeneity\" needs the slopes engine's per-patient slopes; ",
-           "use procedure = \"filtered\" or \"all\" with the sandwich engine", call. = FALSE)
-    }
+    checkProcedure(procedure, object@engine)
     pooled.df <- match.arg(pooled.df)
     checkFdr(fdr)
     if (is.null(condition) && length(object@condition)) condition <- object@condition
