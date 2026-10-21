@@ -113,8 +113,11 @@ setMethod("spiGSEA", "SpiDEResults", function(object, genesets, test = NULL,
   d$q[ok] <- stats::ave(d$p[ok], col[ok], FUN = function(p) stats::p.adjust(p, "BH"))
   d$q.global[ok] <- stats::ave(d$p[ok], d$test[ok], FUN = function(p) stats::p.adjust(p, "BH"))
   d$direction <- ifelse(is.finite(d$t), ifelse(d$t > 0, "up", "down"), NA_character_)
-  d <- d[order(d$test != "pooled", d$p), c("set", "index", "niche", "test", "size", "estimate", "se", "t", "df",
-                                          "p", "q", "q.global", "n_patients", "direction")]
+  # ties in p (complementary sets give exactly opposite t) are broken by name, so the order does not depend on
+  # floating-point noise and is the same on every platform
+  d <- d[order(d$test != "pooled", round(d$p, 12), d$index, d$niche, d$set),
+         c("set", "index", "niche", "test", "size", "estimate", "se", "t", "df",
+           "p", "q", "q.global", "n_patients", "direction")]
   rownames(d) <- NULL
   d
 })

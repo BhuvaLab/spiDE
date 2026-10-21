@@ -1,5 +1,9 @@
 # spiDE 0.99.37
 
+* `spiGSEA()` orders its rows by p, breaking ties (to 12 digits) by index, niche and set name. Complementary gene
+  sets have exactly opposite statistics and a tied p, and their order had depended on floating-point noise, so it
+  differed between platforms (the 0.99.37 test of the pooled df failed on macOS and R-devel for this reason).
+
 * **Two new defaults for small designs (5-7 patients per condition).** Each
   was confirmed on untouched real-data nulls, against criteria written before
   those nulls were scored; the calibration vignette has the numbers and how
