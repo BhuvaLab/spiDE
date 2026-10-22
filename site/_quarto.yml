@@ -26,9 +26,7 @@ website:
       - text: Home
         href: index.qmd
       - text: Get started
-        href: get-started.Rmd
-      - text: Python tutorial
-        href: python-tutorial.qmd
+        href: get-started.qmd
       # The article list lives in two places: this menu and articles/index.qmd.
       # The files themselves are copied by scripts/copy-assets.sh (ARTICLES).
       - text: Articles

@@ -5,8 +5,9 @@
 # (no deploy).
 #
 # The site covers the R package and the Python package spidepy (BhuvaLab/spidepy). spidepy is
-# installed from GitHub, and its checkout (docs/r-to-python.md, docs/r-discrepancies.md and
-# docs/tutorial.ipynb) feeds the R vs Python and tutorial pages (SPIDEPY_DIR). Every example
+# installed from GitHub, and its checkout (docs/r-to-python.md and docs/r-discrepancies.md)
+# feeds the R vs Python page (SPIDEPY_DIR). The Get started page runs R and Python chunks in one
+# knitr session through reticulate, with QUARTO_PYTHON as its interpreter. Every example
 # of both references executes here on the toy data, so a full run takes several minutes.
 #
 # ORDERING: spidepy is checked out at ref main below; main must carry the docs (and the sync
@@ -54,7 +55,7 @@ jobs:
           r-version: release
           use-public-rspm: true
 
-      # spiDE's hard dependencies plus what the vignettes load: patchwork (quick start),
+      # spiDE's hard dependencies plus what the vignettes load: patchwork (Get started),
       # knitr/rmarkdown/BiocStyle (rendering). local::. installs spiDE from this checkout.
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
@@ -63,6 +64,7 @@ jobs:
             any::knitr
             any::rmarkdown
             any::patchwork
+            any::reticulate
             any::remotes
             bioc::BiocStyle
             local::.

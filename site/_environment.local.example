@@ -2,7 +2,7 @@
 # reads it alongside _environment.
 # Python with spidepy, quartodoc, jupyter installed (executes the Python examples):
 QUARTO_PYTHON=/path/to/envs/spidepy/bin/python
-# A spidepy checkout (docs/r-to-python.md, docs/r-discrepancies.md, docs/tutorial.ipynb):
+# A spidepy checkout (docs/r-to-python.mdand docs/r-discrepancies.md):
 SPIDEPY_DIR=/path/to/spidepy
 # Library holding SpaNorm >= 1.7.15 and the other dependencies, if not in your default R library:
 # R_LIBS=/path/to/site/_rlib:/path/to/lib   (R CMD INSTALL -l _rlib .. puts the checkout's spiDE first)
