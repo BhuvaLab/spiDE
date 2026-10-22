@@ -1,7 +1,7 @@
 # Niche covariate construction. For each biological sample and each bandwidth,
 # a Gaussian kernel density estimate of every cell type is evaluated at each
 # cell's location, giving a cells x cellTypes matrix of "effective niche"
-# densities. Reimplements effective_niche()/speapply()/fill_missing_dims() from
+# densities. Reimplements effective_niche()/fill_missing_dims() from
 # the original spiDE analysis scripts, standardised on BiocParallel.
 
 #' Compute the effective niche of a single sample
@@ -9,17 +9,14 @@
 #' Gaussian kernel density of each cell type evaluated at every cell, scaled by
 #' \code{pi * sigma^2} so values are on the scale of expected neighbour counts.
 #'
-#' @param x a SpatialExperiment for a single sample.
+#' @param coords a cells x 2 coordinate matrix of one sample.
+#' @param cts a character vector, the cell type of each cell of the sample.
 #' @param sigma a numeric, the kernel bandwidth (standard deviation).
-#' @param cell_type a character, the colData column holding cell type labels.
 #' @param edge,diggle logicals passed to \code{spatstat.explore::densityfun}.
-#' @return a cells x cellTypes matrix of niche densities.
-#' @importFrom SpatialExperiment spatialCoords
+#' @return a cells x cellTypes matrix of niche densities (columns in order of
+#'   first appearance in \code{cts}).
 #' @noRd
-.effectiveNiche <- function(x, sigma, cell_type = "cell_type", edge = TRUE, diggle = TRUE) {
-  coords <- SpatialExperiment::spatialCoords(x)
-  cts <- as.character(SummarizedExperiment::colData(x)[[cell_type]])
-
+.effectiveNiche <- function(coords, cts, sigma, edge = TRUE, diggle = TRUE) {
   xrange <- range(coords[, 1])
   yrange <- range(coords[, 2])
   window <- spatstat.geom::owin(xrange = xrange, yrange = yrange)
@@ -38,7 +35,6 @@
   })
   res <- do.call(cbind, res)
   colnames(res) <- uct
-  rownames(res) <- colnames(x)
   return(res)
 }
 
@@ -77,23 +73,6 @@
     mat <- mat[ref_names, , drop = FALSE]
   }
   return(mat)
-}
-
-#' Split a SpatialExperiment by sample and apply a function per sample
-#'
-#' @param spe a SpatialExperiment.
-#' @param FUN a function applied to each single-sample subset.
-#' @param ... further arguments to FUN.
-#' @param sample_id a character, the colData column identifying samples.
-#' @param BPPARAM a BiocParallelParam.
-#' @return a named list of per-sample results.
-#' @importFrom BiocParallel bplapply SerialParam
-#' @noRd
-.speApply <- function(spe, FUN, ..., sample_id = "sample_id", BPPARAM = BiocParallel::SerialParam()) {
-  sids <- unique(as.character(SummarizedExperiment::colData(spe)[[sample_id]]))
-  spl <- lapply(sids, function(s) spe[, as.character(SummarizedExperiment::colData(spe)[[sample_id]]) == s])
-  names(spl) <- sids
-  BiocParallel::bplapply(spl, FUN, ..., BPPARAM = BPPARAM)
 }
 
 #' Build niche covariate matrices
@@ -137,36 +116,32 @@ setMethod(
                         name = "Niche", BPPARAM = BiocParallel::SerialParam(), ...) {
     checkSPE(spe, cell_type = cell_type, sample_id = sample_id)
 
-    all_cell_types <- sort(unique(as.character(SummarizedExperiment::colData(spe)[[cell_type]])))
+    cts <- as.character(SummarizedExperiment::colData(spe)[[cell_type]])
+    all_cell_types <- sort(unique(cts))
+    coords <- SpatialExperiment::spatialCoords(spe)
+    sids <- as.character(SummarizedExperiment::colData(spe)[[sample_id]])
+    # cell indices per sample; only coordinates and cell types go to the workers
+    idx <- split(seq_len(ncol(spe)), factor(sids, levels = unique(sids)))
 
-    # per-sample list, each element a list of per-sigma matrices
-    per_sample <- .speApply(
-      spe,
-      function(x) {
+    per_sample <- BiocParallel::bplapply(
+      idx,
+      function(i, coords, cts, sigma, edge, diggle, all_cell_types) {
         lapply(sigma, function(sg) {
-          m <- .effectiveNiche(x, sigma = sg, cell_type = cell_type, edge = edge, diggle = diggle)
+          m <- .effectiveNiche(coords[i, , drop = FALSE], cts[i], sigma = sg, edge = edge, diggle = diggle)
           m <- .fillMissingDims(m, all_cell_types, "column")
           m[is.na(m)] <- 0
           m
         })
       },
-      sample_id = sample_id, BPPARAM = BPPARAM
+      coords = coords, cts = cts, sigma = sigma, edge = edge, diggle = diggle,
+      all_cell_types = all_cell_types, BPPARAM = BPPARAM
     )
 
-    # .speApply splits by unique(sample_id) in first-appearance order and each
-    # subset preserves cell order, so rbind lands cells in `perm` order. Invert
-    # that permutation to restore the original cell order without relying on
-    # colnames(spe) (SPEs frequently have none).
-    sids <- as.character(SummarizedExperiment::colData(spe)[[sample_id]])
-    perm <- order(match(sids, unique(sids)))
-    inv <- integer(length(perm))
-    inv[perm] <- seq_along(perm)
-
-    for (i in seq_along(sigma)) {
-      mat <- do.call(rbind, lapply(per_sample, function(s) s[[i]]))
-      mat <- mat[inv, , drop = FALSE]
-      rownames(mat) <- colnames(spe)
-      SingleCellExperiment::reducedDim(spe, paste0(name, sigma[i])) <- mat
+    for (j in seq_along(sigma)) {
+      mat <- matrix(0, ncol(spe), length(all_cell_types),
+                    dimnames = list(colnames(spe), all_cell_types))
+      for (s in names(idx)) mat[idx[[s]], ] <- per_sample[[s]][[j]]
+      SingleCellExperiment::reducedDim(spe, paste0(name, sigma[j])) <- mat
     }
 
     return(spe)
