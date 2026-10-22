@@ -259,3 +259,9 @@ Some questions remain open.
   never exceeds the patient count and equals it only when the weights are
   equal, so 3 patients in a group pass only if their weights are equal; in
   practice a group needs more than 3 patients. Genes that fail return `NA`.
+
+# Session information
+
+```{r session, eval = TRUE}
+sessionInfo()
+```

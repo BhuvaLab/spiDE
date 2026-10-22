@@ -479,6 +479,6 @@ names the archive that reads them.
 
 # Session information
 
-```{r session}
+```{r session, eval = TRUE}
 sessionInfo()
 ```

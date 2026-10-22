@@ -573,3 +573,9 @@ as genes. This set version has not yet been checked against permutation nulls.
   with weights that favour precise patients. When cell-rich patients have
   systematically different slopes from sparse ones, this average differs from
   a simple average over patients.
+
+# Session information
+
+```{r session, eval = TRUE}
+sessionInfo()
+```

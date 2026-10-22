@@ -226,3 +226,9 @@ We can draw some advice from these numbers.
 
 The full results of spiDE 0.99.33 and the design of the simulations are
 described in (Bhuva et al., in preparation).
+
+# Session information
+
+```{r session, eval = TRUE}
+sessionInfo()
+```
