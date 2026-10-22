@@ -299,3 +299,18 @@ test_that("the condition test is identical serially and in parallel", {
                   BPPARAM = BiocParallel::MulticoreParam(2))@table
   expect_identical(r2$p, r1$p)
 })
+
+test_that("both engines store the same per-patient base, then their own pieces", {
+  base <- c("genes", "niches", "adjusted", "patients", "mean_expr", "status", "depth_r2",
+            "intercept", "niche_mean", "loglib_mean", "ncells")
+  fs <- fitSpiDE(spe16, condition = "condition", index = "A", sigma = 30, verbose = FALSE)
+  fw <- fitSpiDE(spe16, condition = "condition", index = "A", sigma = 30, engine = "sandwich",
+                 verbose = FALSE)
+  expect_setequal(names(fs@index$A), c(base, "beta", "v_tile", "v_model", "pooled", "factor", "psi"))
+  expect_setequal(names(fw@index$A), c(base, "coef"))
+  n <- table(spe16$sample_id[spe16$cell_type == "A"])
+  for (f in list(fs, fw)) {
+    x <- f@index$A
+    expect_identical(x$ncells, stats::setNames(as.integer(n[x$patients]), x$patients))
+  }
+})
