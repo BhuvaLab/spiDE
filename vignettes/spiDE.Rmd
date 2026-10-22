@@ -1,12 +1,12 @@
 ---
-title: "Neighbourhood-dependent differential expression with spiDE"
+title: "Getting started with spiDE"
 author: "Dharmesh D. Bhuva"
 package: spiDE
 output:
   BiocStyle::html_document:
     toc_float: true
 vignette: >
-  %\VignetteIndexEntry{Neighbourhood-dependent differential expression with spiDE}
+  %\VignetteIndexEntry{Getting started with spiDE}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -15,67 +15,68 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 ```
 
-# Introduction
+# spiDE
 
-`spiDE` finds **neighbourhood-dependent differential expression** in spatial
-transcriptomics. Within an *index* cell type, it asks whether a gene's
-expression changes with the local density (the *niche*) of another cell type.
-One hypothesis is one (gene, index type, niche type) *triplet*, and spiDE asks
-two questions of it:
+spiDE finds **neighbourhood-dependent differential expression** in spatial
+transcriptomics. Cells of one type do not behave the same everywhere in a
+tissue. A tumour cell sitting among fibroblasts may express a different set of
+genes from a tumour cell surrounded by other tumour cells, and the way it
+responds may differ between patients who respond to a treatment and patients
+who do not. spiDE asks, for a chosen *index* cell type, whether the expression
+of a gene changes with the local density of another cell type, which we call
+the *niche*, and whether that change differs between two conditions.
 
-- **the pooled test**: within patients, does the gene's expression in the
-  index type change with the density of the niche type, consistently across
-  patients?
-- **the condition-specific test**: does that dependence differ between two
-  conditions (responders and non-responders, early and late stage)?
+Doing this well is harder than it sounds. The cells of one patient share their
+genetics, their treatment and the way their sample was handled, and neighbouring
+cells share their local tissue environment. If every cell is treated as an
+independent observation, the more cells are measured the more certain a result
+looks, even when the patients disagree with each other. A condition such as
+response to treatment is a property of a patient, not of a cell, so the patient
+is the right unit of replication. spiDE builds this into every test: the
+evidence for a result is how consistently the niche slope behaves *between*
+patients, never how many cells were measured.
 
-Both are questions about patients. The condition is a property of a patient,
-not of a cell, so spiDE takes the patient as its unit of replication: a
-triplet's evidence is the variation of its niche slope *between* patients,
-never the number of cells.
+One hypothesis in spiDE is one (gene, index type, niche type) combination, which
+we call a *triplet*. Each triplet gets up to two tests:
 
-Both tests look at slopes *within* patients. Patients whose tissue holds more
-of a niche type may also differ as a whole; `testNicheAbundance()` tests that
-between-patient association separately. A condition that only shifts a gene's
-overall level, or only changes how much of a cell type patients have, is not
-tested by spiDE at all: those are questions for pseudobulk differential
-expression and for composition analysis. The model vignette's section *What
-kinds of effects can spiDE find?* draws each kind of effect on mock data and
-names the test that detects it.
+1. **The pooled test** asks whether, within patients, the gene's expression in
+   the index type changes with the density of the niche type, consistently
+   across patients.
+2. **The condition-specific test** asks whether that dependence differs between
+   two conditions, such as responders and non-responders.
 
-Three steps:
+The analysis runs in three steps, and each has its own function:
 
-1. **Niches**: `buildNiches()` evaluates, per sample, a Gaussian kernel
-   density of every cell type at every cell.
-2. **Fit**: `fitSpiDE()` fits, for every index cell type, one negative
-   binomial GLM per gene of its expression on the niche densities, with an
-   intercept per patient, so each niche coefficient is a *within-patient*
-   slope.
-3. **Test**: `testSpiDE()` tests those slopes across patients. It always runs
-   the pooled test, and runs the condition-specific test when it is given a
-   condition.
+1. `buildNiches()` measures the density of every cell type around every cell.
+2. `fitSpiDE()` fits a negative binomial regression for every gene in every
+   index type, with a separate baseline for every patient, so that the niche
+   coefficients are slopes *within* patients.
+3. `testSpiDE()` tests those slopes across patients.
 
-`spiDE()` runs all three. The model is stated in full in the *model*
-vignette (`vignette("spiDE-model")`), and what its calibration rests on in
-the *calibration* vignette (`vignette("spiDE-calibration")`).
+`spiDE()` runs all three in one call. This article walks through the whole
+pipeline on a small example, and then through the gene-set test, the
+between-patient test of niche abundance, the plots and a few practical points.
+The statistics are explained in `vignette("spiDE-model")`, how well the tests
+hold up in `vignette("spiDE-calibration")`, and how many patients and cells a
+study needs in `vignette("spiDE-design")`.
 
-# Data
+The package can be installed as follows:
 
-spiDE needs a `SpatialExperiment` with
+```{r install, eval = FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
 
-- **raw integer counts** (the `counts` assay), not normalised or
-  back-transformed values;
-- a **cell type** per cell (`cell_type`);
-- a **patient** per cell (`sample_id`). One sample per patient: if a patient
-  has several sections, give the patient in `sample_id` and the section in
-  `section`, so the spatial variance is estimated per section;
-- for the condition-specific test, a **two-level condition that is constant
-  within a patient**.
+BiocManager::install("BhuvaLab/spiDE")
+```
 
-The shipped example has 16 patients (eight responders, eight
-non-responders), three cell types and 20 genes. It plants one effect: gene
-`G1` is up-regulated in index type `A`, in responders only, in proportion to
-the local density of niche type `B`.
+# Load the data
+
+We begin by loading a small simulated data set that ships with the package. It
+holds 16 patients, eight responders and eight non-responders, with 150 cells
+each, three cell types (`A`, `B` and `C`) and 20 genes. We planted exactly one
+effect in it: gene `G1` is up-regulated in index type `A`, in responders only,
+in proportion to the local density of niche type `B`. Because we know the
+answer, we can check that spiDE finds it.
 
 ```{r data, message = FALSE}
 library(spiDE)
@@ -87,81 +88,122 @@ table(patients$condition)
 table(toySpiDE$cell_type)
 ```
 
-# Niches
+spiDE needs a `SpatialExperiment` with the following:
 
-`buildNiches()` computes the niche covariates at one or more bandwidths
-`sigma` (in the units of the spatial coordinates) and stores each as a
-`reducedDim` named `Niche<sigma>`:
+- **Raw integer counts** in the `counts` assay. Normalised or back-transformed
+  values are refused, because the model needs the counting noise of real
+  counts.
+- A **cell type** for every cell, in `cell_type`.
+- A **patient** for every cell, in `sample_id`. There should be one sample per
+  patient. If a patient has several sections, put the patient in `sample_id`
+  and the section in `section`, so that spatial variation is estimated for each
+  section separately.
+- For the condition-specific test, a **two-level condition that is constant
+  within each patient**, here the `condition` column. If the condition is
+  partly confounded with slide or batch, a patient-level column of slides can
+  be given as `strata`.
+
+# Build the niches
+
+For each cell, `buildNiches()` places a smooth bump, a Gaussian kernel, on every
+cell of a given type and adds the bumps up. The result is a density of each cell
+type at every cell, which says how much of that type there is nearby. The width
+of the bump, `sigma`, is the *bandwidth* and is in the units of the spatial
+coordinates. Each density is stored as a column of a `reducedDim` named after
+the bandwidth.
 
 ```{r niches}
 spe <- buildNiches(toySpiDE, sigma = 30, verbose = FALSE)
 head(reducedDim(spe, "Niche30"), 3)
 ```
 
-The bandwidth sets the scale of a neighbourhood. Fit one bandwidth at a time;
-comparing results across bandwidths is a sensitivity analysis, not a
-multiplicity-free search. `mergeNiches()` pools niche columns into groups
-(e.g. all lymphocytes) before fitting, and spiDE never tests an index type
+## Choose a bandwidth
+
+The bandwidth sets what we mean by a neighbourhood. A small bandwidth looks at
+the immediate neighbours of a cell, and a large one at the tissue around it. A
+good bandwidth gives a niche map that is neither speckled nor flat. We can look
+at the density of niche type `B` in one sample at two bandwidths and judge by
+eye:
+
+```{r bandwidth, fig.width = 7, fig.height = 3.5}
+spe2 <- buildNiches(spe, sigma = 10, verbose = FALSE)
+plotNicheMap(spe2, niche = "B", sample = "S1", index = "A", sigma = 10)
+plotNicheMap(spe2, niche = "B", sample = "S1", index = "A", sigma = 30)
+```
+
+At the smaller bandwidth most cells have no niche cell of type `B` within reach
+and the density is zero, so the map is speckled by the position of single cells.
+At the larger one the density varies smoothly across the section, and we can see
+where `B` cells are concentrated. We use 30 for the rest of this article. For
+real data, choose the bandwidth from what you know about the
+biology, such as the distance over which cells signal to one another, and from
+maps like these. `mergeNiches()` can pool several cell types into one niche
+group (all lymphocytes, say) before fitting. spiDE never tests an index type
 against its own niche, merged or not.
 
-# Fit
+# Fit the model
+
+`fitSpiDE()` takes the object with its niches, the bandwidth to use and, if we
+want to test a condition, the name of the condition column.
 
 ```{r fit}
 fit <- fitSpiDE(spe, condition = "condition", sigma = 30, verbose = FALSE)
 fit
 ```
 
-`fitSpiDE()` fits every index type with at least `min.cells` cells in at
-least `min.patients` patients (`index` restricts it), and tests every other
-cell type as a niche (`niche` restricts it; the others stay in the model as
-adjustments). Genes detected in fewer than `min.detect` of an index type's
-cells are not tested in it. Sequencing depth enters as the centred log
-library size of each cell (`depth = "loglib"`); cell-level covariates are
-added with `covariates`.
+By default every cell type with at least `min.cells` cells in at least
+`min.patients` patients is an index type, and every other cell type is tested
+as its niche. The `index` and `niche` arguments restrict this; niche types that
+are not tested stay in the model as adjustments. Genes detected in fewer than
+`min.detect` of an index type's cells are not tested in it. The model adjusts
+for sequencing depth with the centred log library size of each cell, and
+further cell-level measurements such as cell area can be added with
+`covariates`.
 
-## The two engines
+The `engine` argument chooses how the error between patients is estimated. The
+default, `"slopes"`, fits the model once without the condition and then
+estimates every patient's own slope for every niche. Because the fit never sees
+the condition, any patient-level condition can be tested afterwards, and
+permuting the condition reruns only the test. The alternative, `"sandwich"`,
+fits the condition-specific model directly and needs the condition at fit time.
+The slopes engine is the more powerful of the two when effects vary between
+patients, and it is needed for `spiGSEA()`. `vignette("spiDE-model")` explains
+both engines.
 
-`engine` chooses how the between-patient error is estimated:
+# Test the slopes
 
-- **`"slopes"`** (the default) fits the model once, without the condition,
-  then estimates every patient's own niche slopes, each with a variance that
-  allows for spatially correlated cells. `testSpiDE()` combines them across
-  patients, allowing the slope to vary between patients. Because the fit
-  never sees the condition, any patient-level condition can be tested
-  afterwards, and a permutation of the condition reruns only the test.
-- **`"sandwich"`** fits the condition-specific model directly and tests its
-  coefficients with a patient-clustered sandwich standard error. It needs the
-  condition at fit time.
-
-The slopes engine is the more powerful, most of all when effects vary between
-patients, and it is needed for `spiGSEA()`. The model vignette explains both
-engines, and the calibration vignette shows how they hold up on real data.
-
-## Each patient's slopes
-
-The slopes engine keeps every patient's slope, which is the evidence the
-tests weigh. `plotPatientSlopes()` draws them, one column per gene: each
-point is a patient's slope with its interval, sized by the patient's weight
-in the tests; the grey band is the pooled estimate, and each condition's
-weighted mean is a coloured line.
-
-```{r slopes, fig.width = 7, fig.height = 5}
-ps <- patientSlopes(fit, gene = "G1", index = "A", niche = "B")
-head(ps[, c("patient", "condition", "slope", "var_spatial", "ncells")])
-res <- testSpiDE(fit)
-plotPatientSlopes(res, gene = c("G1", "G2"), index = "A", niche = "B")
-```
-
-# Test
+`testSpiDE()` combines the patients' slopes. It always runs the pooled test, and
+it runs the condition-specific test when a condition is available, here the one
+recorded by `fitSpiDE()`. A condition can also be given to `testSpiDE()`
+directly.
 
 ```{r test}
+res <- testSpiDE(fit)
 res
+```
+
+## The pooled test
+
+The pooled results are a table with one row per triplet. `estimate` is the
+average within-patient slope on the natural-log scale per unit of the log1p
+niche density, `t` and `p` are the test statistic and its p-value, and `q` is
+the q-value after a Benjamini-Hochberg correction over every triplet.
+
+```{r pooled}
 head(results(res, test = "pooled"))
 ```
 
-With a condition (here recorded by `fitSpiDE()`; it can also be given to
-`testSpiDE()`), the condition-specific test runs as well. The contrast is the
-second level minus the first:
+The planted triplet, `G1` in `A` against `B`, comes out as the strongest pooled
+association, with a `t` of `r round(results(res, test = "pooled")$t[1], 2)`.
+Remember that a pooled call says that, within a patient, index cells with more
+of the niche type around them express more (or less) of the gene, consistently
+across patients.
+
+## The condition-specific test
+
+The condition-specific table has the same layout. Its `estimate` is the
+difference between the conditions in the average slope, the second level minus
+the first, and `res$contrast` says which two levels were compared.
 
 ```{r condition}
 res$contrast
@@ -169,37 +211,93 @@ cond <- results(res, test = "condition")
 cond[cond$in_family, ]
 ```
 
-By default (`procedure = "pooled_or_heterogeneity"`) the condition-specific
-test is carried out only among the triplets that pass the pooled test or whose
-slopes vary between patients more than their sampling noise allows
-(`p.heterogeneity`, Benjamini-Hochberg at `fdr`). Neither filter looks at the
-condition, so the family is exact under any relabelling of patients, and the
-multiplicity correction is spent on triplets with something for the condition
-to explain. Rows outside the family have `q = NA`. `procedure =
-"heterogeneity"` and `procedure = "filtered"` (the default to spiDE 0.99.36)
-use one filter each, and `procedure = "all"` tests every triplet.
+By default the condition-specific test is carried out only among the triplets
+that pass the pooled test, or whose slopes vary between patients more than their
+sampling noise allows (`p.heterogeneity`, corrected at the same `fdr`). Neither
+filter looks at the condition, so the correction for multiple testing is spent
+on triplets that have something for the condition to explain, and the result is
+valid under any relabelling of the patients. Rows outside this family have
+`q = NA`. Other families are available through the `procedure` argument:
+`"heterogeneity"` and `"filtered"` use one filter each, and `"all"` tests every
+triplet.
 
-The planted triplet, G1 in A against B, is the strongest pooled association
-(`t` = `r round(results(res, test = "pooled")$t[1], 2)`), and in the
-condition-specific test its slope is larger in responders by
-`r round(cond$estimate[cond$gene == "G1" & cond$index == "A" & cond$niche == "B"], 2)` log units
-per unit `log1p` density (`q` =
-`r signif(cond$q[cond$gene == "G1" & cond$index == "A" & cond$niche == "B"], 2)`). `spiDE()` runs the three steps in one call:
+In the table, the planted slope is larger in responders than in
+non-responders by
+`r round(cond$estimate[cond$gene == "G1" & cond$index == "A" & cond$niche == "B"], 2)`
+log units per unit of log1p density (`q` =
+`r signif(cond$q[cond$gene == "G1" & cond$index == "A" & cond$niche == "B"], 2)`),
+which is the effect we planted. The whole pipeline can also be run in one call:
 
 ```{r spiDE, eval = FALSE}
 res <- spiDE(toySpiDE, condition = "condition", sigma = 30)
 ```
 
-# Gene sets
+# Look at the patients behind a result
 
-`spiGSEA()` tests gene sets the way `testSpiDE()` tests genes. Each patient
-gets a slope for the set: the average of its genes' slopes, each gene put on a
-common scale. By default the average over all other tested genes is
-subtracted, so a set is called when it moves *more than the typical gene*
-(`type = "competitive"`). The set slopes then go through the pooled and the
-condition-specific test, so the correlation between genes of a set is
-accounted for without being estimated. Any named list of gene symbols works,
-for example MSigDB collections from the `msigdb` package:
+A call is only as good as the patients behind it. With the slopes engine, every
+patient has its own slope for every triplet, and these slopes are the evidence
+that the tests weigh. `patientSlopes()` returns them as a table, with the
+slope's variance and the number of cells that went into it.
+
+```{r slopes}
+ps <- patientSlopes(fit, gene = "G1", index = "A", niche = "B")
+head(ps[, c("patient", "condition", "slope", "var_spatial", "ncells")])
+```
+
+`plotPatientSlopes()` draws them. Each point is a patient's slope with its
+interval, sized by the weight the patient carries in the tests. The weighted
+average of each condition is marked, and the pooled estimate is shown as a
+band.
+
+```{r slopes-plot, fig.width = 7, fig.height = 5}
+plotPatientSlopes(res, gene = c("G1", "G2"), index = "A", niche = "B")
+```
+
+For `G1`, the slopes of the patients lie mostly above zero in both conditions,
+which gives the pooled call, and the slopes of the responders sit further to
+the right than those of the non-responders, which is what the
+condition-specific test picks up. The panel title reports its difference and
+q-value. For `G2`, which has no planted effect, the slopes are spread widely
+on both sides of zero, their intervals are wide, and the two conditions overlap.
+
+The model also gives each patient a baseline level of every gene, its
+intercept. These baselines absorb everything that differs between patients as a
+whole, so they are not tested, but they are worth a look.
+`patientIntercepts()` returns them with the patient-level covariates, and
+`plotPatientEffects()` summarises them by principal components of the
+intercepts, showing how much of each component each covariate explains.
+
+```{r intercepts}
+intercepts <- patientIntercepts(fit, gene = "G1", index = "A")
+head(intercepts)
+```
+
+```{r plots-effects, fig.width = 7, fig.height = 4}
+plotPatientEffects(res, index = "A")
+```
+
+In this example the first component of the intercepts lines up almost entirely
+with the condition, which is what we expect: the baselines absorb the
+difference in level between responders and non-responders, so that this
+difference cannot be mistaken for a difference in slope. Other covariates, such
+as the number of cells and the depth of a patient, explain smaller parts of the
+other components. If a slide or batch column lined up with a component of the
+*slopes* instead, the condition would be partly confounded with it, and that
+column should go into `strata`. Setting `niche` in `plotPatientEffects()` draws
+the same plot for the slopes, which is the check to make before trusting a
+condition-specific call.
+
+# Test gene sets
+
+Genes do not act alone, and a set of genes with a shared function often shows
+an effect that no single gene shows clearly. `spiGSEA()` tests gene sets in the
+way `testSpiDE()` tests genes. It takes the results and any named list of gene
+symbols, such as the collections of the `msigdb` package. Each patient gets a
+slope for the set, which averages its genes' slopes after putting them on a
+common scale, and these set slopes go through the same pooled and
+condition-specific tests. By default (`type = "competitive"`) the average over
+the other tested genes is subtracted, so a set is called when it moves *more
+than the typical gene*. `spiGSEA()` needs the slopes engine.
 
 ```{r gsea}
 sets <- list(planted = c("G1", "G2", "G3"), other = paste0("G", 4:8),
@@ -208,25 +306,29 @@ gs <- spiGSEA(res, sets, min.size = 3)
 head(gs[, c("set", "index", "niche", "test", "size", "estimate", "p", "q", "q.global")])
 ```
 
-`q` adjusts within each (index, niche, test) column and `q.global` over every
-set, index and niche of a test. With many sets and many columns, `q.global`
-is the one to read. `plotTripletHeatmap()` shows the sets' t across every
-(index, niche) column, a dot where `q.global` passes:
+There are two q-values. `q` adjusts within each (index, niche, test) column,
+and `q.global` over every set, index and niche of a test. When there are many
+sets and many columns, `q.global` is the one to read. `plotTripletHeatmap()`
+shows the t statistic of every set in every (index, niche) column, with a dot
+where `q.global` passes.
 
 ```{r gsea-plot, fig.width = 6, fig.height = 3}
 plotTripletHeatmap(gs, test = "pooled")
 ```
 
+The set holding the planted gene stands out in the column of `A` against `B`,
+where it is called, and no other set is called.
+
 # A different question: niche abundance
 
-spiDE's slopes are within-patient. A patient whose index cells sit among many
-niche cells may also express a gene differently, as a whole, from a patient
-whose index cells do not; that between-patient association is absorbed by
-the patient intercepts and is invisible to `testSpiDE()`. It is real, and it
-is a different claim: that patients with more of a niche type differ, not
-that a cell responds to its neighbours. `testNicheAbundance()` asks it on
-pseudobulk profiles, one per patient and index type, against the patient's
-mean niche density:
+The tests above use only the slopes within patients. A patient whose index cells
+sit among many niche cells may also express a gene differently as a whole from a
+patient whose index cells do not. This is a real association, but it is a
+different claim. It says that patients with more of a niche type differ, not
+that a cell responds to its neighbours, and the patient intercepts absorb it so
+that `testSpiDE()` never sees it. `testNicheAbundance()` asks it directly. For
+each patient and index type it forms a pseudobulk profile and compares it with
+the patient's average niche density, across patients.
 
 ```{r abundance}
 ab <- testNicheAbundance(spe, condition = "condition", sigma = 30, verbose = FALSE)
@@ -234,64 +336,91 @@ head(ab)
 ```
 
 With a condition, the rows with `term` `"niche"` give the association averaged
-over the two conditions, and those with `"condition:niche"` test whether it
-differs between them (second level minus first). Each term is its own
-multiple-testing family (`q.global`), and a patient who alone carries most of
-a niche type's spread is down-weighted (`max.leverage`), so that one patient
-cannot make a call on its own. Gene sets go through the same test with
-`testNicheAbundance(genesets = )`, as they go through the within-patient tests
-with `spiGSEA()`.
+over the two conditions, and the rows with `"condition:niche"` test whether it
+differs between them, again the second level minus the first. Each term is its
+own family for multiple testing, with its own `q.global`. A patient who alone
+carries most of a niche type's spread is down-weighted (`max.leverage`), so that
+one patient cannot make a call on its own. Gene sets go through the same test
+with `testNicheAbundance(genesets = )`.
 
-Never report a result of one as a result of the other.
+The two kinds of result must not be mixed up. A result of `testSpiDE()` says
+that, within a patient, cells with more of this niche differ, and a result of
+`testNicheAbundance()` says that patients with more of this niche differ.
+`plotNicheResponse()` shows both on one gene. With `adjust = FALSE` it draws the
+raw data: each segment is one patient's slope, the quantity spiDE tests, and the
+dashed line through the patients' means is the between-patient association that
+`testNicheAbundance()` tests.
+
+```{r abundance-plot, fig.width = 6, fig.height = 3.5}
+plotNicheResponse(spe, res, gene = "G1", index = "A", niche = "B", adjust = FALSE)
+```
 
 # Plots
 
-Every plot is a ggplot2 object in one house style (`theme_spiDE()`) and one
-colour-blind-safe palette (`spiDEColours()`): amber and violet for a slope that
-rises or falls with the niche's density, teal and rufous for the first and
-second level of the condition. Each returns its data in `p$data`, so a plot is
-changed by adding layers or a theme, and any two combine with patchwork.
+All the plots are ggplot2 objects in one house style (`theme_spiDE()`), with
+one colour-blind-safe palette (`spiDEColours()`) that uses one pair of colours
+for slopes that rise or fall with the niche and another pair for the two
+levels of the condition. Each plot returns its data in `p$data`, so a plot is
+changed by adding layers or a theme, and any two plots can be combined with
+patchwork.
 
-Where the calls are, and the strongest of them. With `spe`, a triangle marks a
-gene several-fold higher in the niche type than in the index type:
+## Where the calls are
+
+`plotCallMap()` counts, for each (index, niche) column, how many triplets pass,
+separately for slopes that rise and slopes that fall with the niche's density,
+and `plotTopTriplets()` shows the strongest ones. When we give it the
+`SpatialExperiment`, a triangle marks a gene that is several-fold higher in the
+niche type than in the index type, which we come back to below.
 
 ```{r plots-results, fig.width = 7, fig.height = 3.5}
 plotCallMap(res, test = "pooled")
 plotTopTriplets(res, test = "pooled", n = 12, spe = spe)
 ```
 
-The cells behind a slope. By default each patient's fitted intercept is
-divided out, so the patients share one level and the slopes the tests compare
-are visible; `adjust = FALSE` shows the raw data, where the trend through the
-patients' means is the between-patient association of the previous section:
+## The cells behind a slope
+
+`plotNicheResponse()` shows the cells themselves. By default, each patient's
+fitted intercept is divided out, so the patients share one level and the slopes
+that the tests compare are easy to see.
 
 ```{r plots-response, fig.width = 7, fig.height = 3.5}
 plotNicheResponse(spe, res, gene = c("G1", "G2"), index = "A", niche = "B")
-plotNicheResponse(spe, res, gene = "G1", index = "A", niche = "B", adjust = FALSE)
 ```
 
-The niche covariate in one sample (the bandwidth is right when the field is
-neither speckled nor flat), and whether the calls are the niche type's own
-markers, as transcripts leaking across segmentation boundaries would make
-them:
+For `G1`, the expression of the responders' cells rises with the density of `B`
+while that of the non-responders is nearly flat. For `G2`, there is no clear
+trend in either group.
 
-```{r plots-niche, fig.width = 7, fig.height = 3.5}
-plotNicheMap(spe, niche = "B", sample = "S1", index = "A")
+## Check for spillover
+
+Cell segmentation is never perfect, and transcripts of a neighbouring niche cell
+can be assigned to an index cell. These transcripts rise with the niche's
+density and look like a response of the index cell. `plotSpillover()` plots every
+triplet by its signed z statistic against how much higher the gene is in the
+niche type than in the index type, and marks the region of genes that are
+several-fold higher in the niche type. If the calls fell mostly in that region,
+they would be the niche type's own markers and spillover the likely explanation.
+
+```{r plots-spillover, fig.width = 7, fig.height = 3.5}
 plotSpillover(res, spe)
 ```
 
-Diagnostics: the p-values by expression band (a sanity check; the calibration
-vignette has the real one), and what the patients' intercepts capture. The
-intercepts absorb every difference between patients by design; with `niche`,
-the same plot on the slopes shows whether a batch or slide structures them, in
-which case it belongs in `strata`:
+In this example the plot reports that none of the two calls lies in that region,
+so spillover does not explain them. In real data, report the niche type's fold
+change together with every call.
+
+## Diagnostics
+
+`plotPValues()` shows the distribution of the p-values by expression band. It is
+a sanity check on the data at hand and is not a replacement for the calibration
+checks of `vignette("spiDE-calibration")`.
 
 ```{r plots-diagnostics, fig.width = 7, fig.height = 4}
 plotPValues(res)
-plotPatientEffects(res, index = "A")
 ```
 
-Figures combine with patchwork:
+Figures combine with patchwork, for example to put a patient-level and a
+cell-level view of the same triplet side by side:
 
 ```{r plots-patchwork, fig.width = 9, fig.height = 4, eval = requireNamespace("patchwork", quietly = TRUE)}
 library(patchwork)
@@ -302,15 +431,51 @@ plotPatientSlopes(res, gene = "G1", index = "A", niche = "B") +
 
 # Practicalities
 
-- **Parallelism.** Genes are fitted independently given an index type, so
-  `BPPARAM` parallelises over genes. Forked workers run one BLAS thread each
-  when `RhpcBLASctl` is installed; set `OMP_NUM_THREADS=1` in the job
-  otherwise.
-- **Counts must be integers.** A back-transformed normalised assay is not a
-  count and is refused.
-- **Objects from spiDE 0.99.22 and earlier** came from a different model and
-  are refused by this version, with a message naming the archive that reads
-  them.
+**Runtime.** The fit is the expensive step. Every gene is fitted separately in
+every index type, so the time grows with the number of index types, the number
+of genes and the number of cells, but it hardly depends on the number of
+patients, because the patient baselines are handled algebraically. The example
+above takes a few seconds. Testing is fast, and a permutation of the condition
+under the slopes engine reruns only the test.
+
+**Parallelism.** Genes are fitted independently within an index type, so the
+`BPPARAM` argument spreads the genes over workers:
+
+```{r parallel, eval = FALSE}
+library(BiocParallel)
+fit <- fitSpiDE(spe, condition = "condition", sigma = 30,
+                BPPARAM = MulticoreParam(4))
+```
+
+Forked workers run one BLAS thread each when the `RhpcBLASctl` package is
+installed. Otherwise, set `OMP_NUM_THREADS=1` in the job, because workers that
+each use many threads compete with one another and run much slower.
+
+**Several bandwidths.** One fit uses one bandwidth. We can build the niches at
+several bandwidths and fit each one, but the results are a sensitivity analysis
+and not a search: each bandwidth is its own set of tests, and picking the best
+of them after looking would not be valid. Calls that hold at both bandwidths
+are the more convincing.
+
+Below we refit index type `A` at the smaller bandwidth and count the pooled
+calls at each bandwidth.
+
+```{r bandwidths}
+fit10 <- fitSpiDE(spe2, condition = "condition", sigma = 10, index = "A",
+                  verbose = FALSE)
+res10 <- testSpiDE(fit10)
+r10 <- results(res10, test = "pooled")
+r30 <- results(res, test = "pooled")
+r30 <- r30[r30$index == "A", ]
+c(sigma10 = sum(r10$q < 0.05, na.rm = TRUE), sigma30 = sum(r30$q < 0.05, na.rm = TRUE))
+```
+
+Both bandwidths call a handful of triplets in `A`, including the planted one,
+so the conclusion does not hinge on the choice here.
+
+**Objects from older versions.** Objects saved by spiDE 0.99.22 and earlier came
+from a different model and are refused by this version, with a message that
+names the archive that reads them.
 
 # Session information
 

@@ -159,9 +159,9 @@ input checks in `R/checkers.R` (extend them; do not duplicate validation).
 
 ## Evidence and decisions
 
-Most defaults were chosen on measurement. **The calibration vignette
-(`vignettes/spiDE-calibration.Rmd`) is the only place in the package that quotes benchmark
-numbers.** Before changing a default, read:
+Most defaults were chosen on measurement. **Two vignettes are the only places in the package that quote benchmark numbers: the validation
+article (`vignettes/spiDE-calibration.Rmd`, calibration and accuracy) and the design article
+(`vignettes/spiDE-design.Rmd`, power, minimum detectable effects and the small-design defaults).** Before changing a default, read:
 
 - `research/simplify/` — the simplification study (2026-09-28/29) that chose the engines:
   `README.md` (pre-registered gates and rules), `FINDINGS.md`, the report
@@ -300,7 +300,7 @@ before an array and size from `sstat`/`seff` (`hpc-job-sizing`). Commit, never p
 
 ## Where the evidence lives
 
-- `vignettes/spiDE-model.Rmd` (the model), `vignettes/spiDE-calibration.Rmd` (the numbers).
+- `vignettes/spiDE.Rmd` (getting started), `vignettes/spiDE-model.Rmd` (the model), `vignettes/spiDE-calibration.Rmd` (validation numbers), `vignettes/spiDE-design.Rmd` (design and power numbers).
 - `research/simplify/` (the engines), `research/bench2/` (the depth benchmark and the condition
   test's attenuation, `diag/`), `research/release/` (the shipped package on the real cohorts),
   `research/smalldf/` and `research/condtest/` (the small-design defaults of 0.99.37),

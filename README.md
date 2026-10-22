@@ -48,7 +48,8 @@ results(res, test = "condition")   # its difference between the conditions
 ```
 
 The vignettes cover the walk-through (`vignette("spiDE")`), the model
-(`vignette("spiDE-model")`) and what its calibration rests on
+(`vignette("spiDE-model")`), how to design a study
+(`vignette("spiDE-design")`) and how the tests were validated
 (`vignette("spiDE-calibration")`).
 
 ## Earlier versions
