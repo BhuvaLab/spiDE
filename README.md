@@ -29,7 +29,7 @@ genes differently.
 
 ## Installation
 
-spiDE needs SpaNorm (>= 1.7.14).
+spiDE needs SpaNorm (>= 1.7.15).
 
 ```r
 # install.packages("BiocManager")
