@@ -14,7 +14,7 @@ cp ../NEWS.md _includes/NEWS.md
 # and vignette-engine keys, meaningless to Quarto) is dropped from the copy.
 # To change the article list edit ARTICLES here, the Articles menu in _quarto.yml and
 # articles/index.qmd.
-ARTICLES="spiDE:get-started spiDE-model:articles/spiDE-model spiDE-calibration:articles/spiDE-calibration"
+ARTICLES="spiDE:get-started spiDE-model:articles/spiDE-model spiDE-design:articles/spiDE-design spiDE-calibration:articles/spiDE-calibration"
 for a in $ARTICLES; do
   src="../vignettes/${a%%:*}.Rmd"
   dst="${a##*:}.Rmd"

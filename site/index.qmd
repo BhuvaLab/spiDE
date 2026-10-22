@@ -41,12 +41,12 @@ A walk-through on the bundled toy data: build niches, fit, test and plot the poo
 What spiDE computes and why, one step at a time, in plain language and then in formulas.
 :::
 ::: {.card-sn}
-### [Calibration](articles/spiDE-calibration.Rmd)
-How the tests were checked against real-data nulls, and what the error rates are.
+### [Designing a study](articles/spiDE-design.Rmd)
+How many patients and cells to plan for, and what to expect at small sizes.
 :::
 ::: {.card-sn}
-### [Reference](reference/r/index.html)
-Every exported function and class, with arguments, values and examples.
+### [Validation](articles/spiDE-calibration.Rmd)
+How the tests were checked against real-data nulls, and what the error rates are.
 :::
 :::
 

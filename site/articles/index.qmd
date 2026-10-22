@@ -8,4 +8,5 @@ Long-form documentation. The quick start is [Get started](../get-started.Rmd).
 | Article | What it covers |
 | --- | --- |
 | [The spiDE model](spiDE-model.Rmd) | What spiDE computes and why, step by step. |
-| [Calibration](spiDE-calibration.Rmd) | How the tests were checked against real-data nulls. |
+| [Designing a study](spiDE-design.Rmd) | How many patients and cells to plan for, and what to expect at small sizes. |
+| [Validation: calibration and accuracy](spiDE-calibration.Rmd) | How the tests were checked against real-data nulls, and how accurate they are. |

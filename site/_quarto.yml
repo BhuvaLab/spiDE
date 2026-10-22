@@ -33,7 +33,9 @@ website:
         menu:
           - text: The spiDE model
             href: articles/spiDE-model.Rmd
-          - text: Calibration
+          - text: Designing a study
+            href: articles/spiDE-design.Rmd
+          - text: "Validation: calibration and accuracy"
             href: articles/spiDE-calibration.Rmd
       - text: Reference
         href: reference/r/index.html
