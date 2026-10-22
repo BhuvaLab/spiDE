@@ -252,5 +252,10 @@ Some questions remain open.
 - **Very small cohorts on real data.** The smallest real group checked whole had
   9 patients. Smaller designs were checked by subsampling the real cohorts'
   patients and simulated down to 6 patients (3 per condition), as described in
-  `vignette("spiDE-design")`. At 6 patients the condition-specific test cannot
-  run, because it needs at least 3 effective patients per condition.
+  `vignette("spiDE-design")`. At 6 patients (3 per condition) the
+  condition-specific test is mostly unavailable. For each gene it needs a Kish
+  effective number of patients, $(\sum w)^2 / \sum w^2$ over that gene's usable
+  patients' weights, of at least 3 in each condition. The effective number
+  never exceeds the patient count and equals it only when the weights are
+  equal, so 3 patients in a group pass only if their weights are equal; in
+  practice a group needs more than 3 patients. Genes that fail return `NA`.
