@@ -1,6 +1,6 @@
 # Convert the package's Rd files to Quarto pages under reference/r/ with altdoc's Rd converter
 # (altdoc is installed in the git-ignored _rlib), plus an index grouped by topic.
-# Examples are shown, and run only for the plotting pages (run_pages below).
+# Examples are shown and run on every page except skip_pages (below).
 .libPaths(c(normalizePath("_rlib"), .libPaths()))
 suppressPackageStartupMessages(library(altdoc))
 
@@ -34,33 +34,34 @@ for (f in rd_files) {
   }
 }
 
-# Pages whose examples are RUN at build time, so the figures appear under the code. Every
-# other page shows its examples unexecuted (spiDE(), fitSpiDE() and the rest are slow). The
-# examples are self-contained (toy data), so no setup chunk is needed.
-run_pages <- c("plotNicheMap", "plotPatientSlopes", "plotNicheResponse", "plotCallMap",
+# Every page's examples are RUN at build time, so the output appears under the code, except the
+# pages in skip_pages (examples too slow to run on every build). The examples are
+# self-contained (toy data, a second or two each: about half a minute for the whole
+# reference), so no shared fit is needed. Figure pages get a wider device.
+skip_pages <- character()   # none: nothing is too slow on the toy data
+fig_pages <- c("plotNicheMap", "plotPatientSlopes", "plotNicheResponse", "plotCallMap",
                "plotTopTriplets", "plotSpillover", "plotTripletHeatmap", "plotPValues",
                "plotPatientEffects", "theme_spiDE", "spiDEColours")
-missing_run <- setdiff(run_pages, sub("\\.Rd$", "", basename(rd_files)))
-if (length(missing_run)) stop("run_pages without an Rd file: ", paste(missing_run, collapse = ", "), call. = FALSE)
+missing_skip <- setdiff(c(skip_pages, fig_pages), sub("\\.Rd$", "", basename(rd_files)))
+if (length(missing_skip)) stop("page lists name an absent Rd file: ", paste(missing_skip, collapse = ", "), call. = FALSE)
 
 # front matter (page title = Rd name); examples executed only for run_pages
 for (f in rd_files) {
   nm <- sub("\\.Rd$", "", basename(f))
   qmd <- file.path(out_dir, paste0(nm, ".qmd"))
   x <- readLines(qmd)
-  run <- nm %in% run_pages
+  run <- !(nm %in% skip_pages)
   x <- gsub("eval\\s*=\\s*(TRUE|FALSE)", if (run) "eval=TRUE" else "eval=FALSE", x)
-  if (run) x <- gsub("(```\\{r, warning=FALSE, message=FALSE, eval=TRUE)\\}", "\\1, fig.width=7, fig.height=4.5}", x)
+  if (nm %in% fig_pages) x <- gsub("(```\\{r, warning=FALSE, message=FALSE, eval=TRUE)\\}", "\\1, fig.width=7, fig.height=4.5}", x)
   writeLines(c("---", sprintf("title: \"%s\"", nm), "toc: false",
                "execute:", sprintf("  eval: %s", tolower(run)), "---", "", x), qmd)
 }
 
-# explicit allow-list: only run_pages may carry an executable chunk, so a slow example
-# is never run by accident
-for (f in list.files(out_dir, pattern = "\\.qmd$", full.names = TRUE)) {
-  nm <- sub("\\.qmd$", "", basename(f))
-  if (!(nm %in% run_pages) && any(grepl("eval\\s*[=:]\\s*(TRUE|true)", readLines(f)))) {
-    stop("executable chunk left in ", f, " (not in run_pages)", call. = FALSE)
+# explicit exclusion list: a page in skip_pages may not carry an executable chunk
+for (nm in skip_pages) {
+  f <- file.path(out_dir, paste0(nm, ".qmd"))
+  if (any(grepl("eval\\s*[=:]\\s*(TRUE|true)", readLines(f)))) {
+    stop("executable chunk left in ", f, " (listed in skip_pages)", call. = FALSE)
   }
 }
 

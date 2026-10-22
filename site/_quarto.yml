@@ -17,8 +17,8 @@ website:
     center:
       - text: "spiDE (R)"
         href: https://github.com/BhuvaLab/spiDE
-      - text: "SpaNorm (R)"
-        href: https://github.com/BhuvaLab/SpaNorm
+      - text: "spidepy (Python)"
+        href: https://github.com/BhuvaLab/spidepy
     right: "Neighbourhood-dependent differential expression"
   navbar:
     logo: logo.png
@@ -27,6 +27,8 @@ website:
         href: index.qmd
       - text: Get started
         href: get-started.Rmd
+      - text: Python tutorial
+        href: python-tutorial.qmd
       # The article list lives in two places: this menu and articles/index.qmd.
       # The files themselves are copied by scripts/copy-assets.sh (ARTICLES).
       - text: Articles
@@ -38,13 +40,23 @@ website:
           - text: "Validation: calibration and accuracy"
             href: articles/spiDE-calibration.Rmd
       - text: Reference
-        href: reference/r/index.html
+        menu:
+          - text: R
+            href: reference/r/index.html
+          - text: Python
+            href: reference/python/index.html
+      - text: R vs Python
+        href: r-vs-python.qmd
       - text: News
         href: news.qmd
     right:
       - icon: github
         text: GitHub
-        href: https://github.com/BhuvaLab/spiDE
+        menu:
+          - text: spiDE (R)
+            href: https://github.com/BhuvaLab/spiDE
+          - text: spidepy (Python)
+            href: https://github.com/BhuvaLab/spidepy
 
 format:
   html:
@@ -57,3 +69,56 @@ format:
     code-copy: true
     code-tools: false
     df-print: paged
+
+# Python reference (generated into reference/python/ by scripts/build_reference.sh)
+quartodoc:
+  package: spidepy
+  dir: reference/python
+  parser: numpy
+  title: "Python reference"
+  sidebar: false
+  renderer:
+    style: markdown
+    display_name: name
+  sections:
+    - title: Pipeline
+      desc: Build niches, fit, test; `spide()` chains the three.
+      contents:
+        - build_niches
+        - merge_niches
+        - fit_spide
+        - test_spide
+        - spide
+    - title: Related tests
+      desc: Gene-set tests and between-patient niche abundance.
+      contents:
+        - spi_gsea
+        - test_niche_abundance
+    - title: Results and per-patient estimates
+      contents:
+        - results
+        - patient_slopes
+        - patient_intercepts
+        - SpiDEFit
+        - SpiDEResults
+    - title: Plotting
+      desc: matplotlib figures; each returns a `Figure`.
+      contents:
+        - pl.plot_niche_map
+        - pl.plot_niche_response
+        - pl.plot_patient_slopes
+        - pl.plot_patient_effects
+        - pl.plot_call_map
+        - pl.plot_top_triplets
+        - pl.plot_spillover
+        - pl.plot_triplet_heatmap
+        - pl.plot_p_values
+        - pl.spide_colours
+        - pl.style
+    - title: Data
+      desc: The shipped example and synthetic data generators.
+      contents:
+        - datasets.toy_spide
+        - datasets.simulate_toy
+        - datasets.simulate_niche
+        - datasets.simulate_clustered

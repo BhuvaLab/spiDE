@@ -42,3 +42,4 @@ spiDE_*.tar.gz
 /site/articles/spiDE-*.Rmd
 site/**/*.quarto_ipynb
 /site/_*.local
+/site/python-tutorial.qmd

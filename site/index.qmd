@@ -16,11 +16,12 @@ title-block-style: none
 ::: {}
 # spiDE {.unnumbered .unlisted}
 
-<p class="tagline">Neighbourhood-dependent differential expression for spatial transcriptomics, with patients as the replicates.</p>
+<p class="tagline">Neighbourhood-dependent differential expression for spatial transcriptomics, with patients as the replicates, in R and Python.</p>
 
 ::: {.cta}
 [Get started](get-started.Rmd){.primary}
-[Reference](reference/r/index.html)
+[R reference](reference/r/index.html)
+[Python reference](reference/python/index.html)
 [GitHub](https://github.com/BhuvaLab/spiDE)
 :::
 :::
@@ -29,12 +30,14 @@ title-block-style: none
 
 ::: {.intro}
 spiDE finds neighbourhood-dependent differential expression in spatial transcriptomics. Within an *index* cell type, it asks whether a gene's expression changes with the local density (the *niche*) of another cell type, within patients, and whether that dependence differs between two conditions. Patients are the unit of replication throughout: a triplet's evidence (gene, index type, niche type) is how its niche slope varies between patients, never the number of cells.
+
+This website covers both packages: the R package **spiDE** (Bioconductor) and the Python package **spidepy** (on `AnnData`). They share the method and the documentation, and [R vs Python](r-vs-python.qmd) lists how they correspond.
 :::
 
 ::: {.feature-row}
 ::: {.card-sn}
 ### [Get started](get-started.Rmd)
-A walk-through on the bundled toy data: build niches, fit, test and plot the pooled and condition-specific results.
+A walk-through on the bundled toy data in R: build niches, fit, test and plot the pooled and condition-specific results. The same walk-through in Python is the [Python tutorial](python-tutorial.qmd).
 :::
 ::: {.card-sn}
 ### [The model](articles/spiDE-model.Rmd)
@@ -54,6 +57,10 @@ How the tests were checked against real-data nulls, and what the error rates are
 
 ::: {.card-sn .install-card}
 
+::: {.panel-tabset group="language"}
+
+## R
+
 ```r
 if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
@@ -70,9 +77,31 @@ res <- spiDE(toySpiDE, condition = "condition", sigma = 30)
 results(res, test = "pooled")      # niche-dependent expression, across patients
 results(res, test = "condition")   # its difference between the conditions
 ```
+
+## Python
+
+spidepy is not on PyPI yet. The extra index gives a CPU-only build of PyTorch, which it needs through spanormpy:
+
+```bash
+pip install --extra-index-url https://download.pytorch.org/whl/cpu "spidepy @ git+https://github.com/BhuvaLab/spidepy.git"
+```
+
+```python
+import spidepy as sp
+
+adata = sp.datasets.toy_spide()
+res = sp.spide(adata, condition="condition", sigma=30)
+sp.results(res, test="pooled")      # niche-dependent expression, across patients
+sp.results(res, test="condition")   # its difference between the conditions
+```
+
+:::
+
 :::
 
 ## How it works {.section-title}
+
+Function names are given for R; spidepy uses the same steps as `build_niches()`, `fit_spide()` and `test_spide()`.
 
 1. **Niches** (`buildNiches()`): per sample, a Gaussian kernel density of every cell type at every cell.
 2. **Fit** (`fitSpiDE()`): for every index cell type, one negative binomial GLM per gene on the niche densities with an intercept per patient, fitted with [SpaNorm](https://github.com/BhuvaLab/SpaNorm)'s Newton solver. Each niche coefficient is a within-patient slope.
@@ -111,9 +140,9 @@ for (p in ppl) {
 ::: {.card-sn}
 ### Links and licence
 
-- Source: [BhuvaLab/spiDE](https://github.com/BhuvaLab/spiDE)
-- Report a bug: [issues](https://github.com/BhuvaLab/spiDE/issues)
-- Cite: `citation("spiDE")` in R
+- Source: [BhuvaLab/spiDE](https://github.com/BhuvaLab/spiDE) (R), [BhuvaLab/spidepy](https://github.com/BhuvaLab/spidepy) (Python)
+- Report a bug: [spiDE issues](https://github.com/BhuvaLab/spiDE/issues), [spidepy issues](https://github.com/BhuvaLab/spidepy/issues)
+- Cite: `citation("spiDE")` in R; spidepy asks to cite the R package, which defines the method
 - Licence: GPL (>= 3)
 :::
 

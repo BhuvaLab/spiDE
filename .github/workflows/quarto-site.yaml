@@ -4,6 +4,14 @@
 # a few minutes. Pull requests touching the site, the vignettes or the Rd files render only
 # (no deploy).
 #
+# The site covers the R package and the Python package spidepy (BhuvaLab/spidepy). spidepy is
+# installed from GitHub, and its checkout (docs/r-to-python.md, docs/r-discrepancies.md and
+# docs/tutorial.ipynb) feeds the R vs Python and tutorial pages (SPIDEPY_DIR). Every example
+# of both references executes here on the toy data, so a full run takes several minutes.
+#
+# ORDERING: spidepy is checked out at ref main below; main must carry the docs (and the sync
+# with spiDE 0.99.37) before this workflow can pass.
+#
 # Quarto: the runner's preinstalled copy is used when present (the setup action is skipped,
 # since apt refuses to downgrade); a later step fails if it is older than 1.8.
 name: quarto-site
@@ -30,6 +38,7 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_BIOC_VERSION: '3.24'
+      SPIDEPY_DIR: ${{ github.workspace }}/spidepy
     steps:
       - uses: actions/checkout@v4
 
@@ -57,6 +66,28 @@ jobs:
             any::remotes
             bioc::BiocStyle
             local::.
+
+      - uses: actions/checkout@v4
+        with:
+          repository: BhuvaLab/spidepy
+          ref: main
+          path: spidepy
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            spidepy/pyproject.toml
+            site/requirements.txt
+
+      # CPU torch first (through the extra index), so CUDA wheels are not pulled in
+      - name: Install Python packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu "./spidepy"
+          pip install -r site/requirements.txt
+          echo "QUARTO_PYTHON=$(which python)" >> "$GITHUB_ENV"
 
       # The runner image may already ship Quarto (newer than any pin; apt refuses to downgrade),
       # so install only when it is absent, then require >= 1.8.
@@ -89,7 +120,7 @@ jobs:
         run: quarto render site
 
       - name: Check links
-        run: python3 site/scripts/check_links.py
+        run: python site/scripts/check_links.py
 
       - name: Deploy to GitHub Pages
         if: github.event_name != 'pull_request'
