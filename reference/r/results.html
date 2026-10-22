@@ -81,7 +81,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../../site_libs/quarto-html/quarto-syntax-highlighting-7ef3a5617493e07f253f88e7bef5c60f.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap-2ad0c9cee5de03d6504be9ac3131b32b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-0e8b588de7367b1ec620c9d64b30b97a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -161,6 +161,10 @@ background: #2A0E52;
     <a class="nav-link" href="../../get-started.html"> 
 <span class="menu-text">Get started</span></a>
   </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../python-tutorial.html"> 
+<span class="menu-text">Python tutorial</span></a>
+  </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-articles" role="link" data-bs-toggle="dropdown" aria-expanded="false">
  <span class="menu-text">Articles</span>
@@ -180,9 +184,24 @@ background: #2A0E52;
   </li>  
     </ul>
   </li>
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-reference" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Reference</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-reference">    
+        <li>
+    <a class="dropdown-item" href="../../reference/r/index.html">
+ <span class="dropdown-text">R</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../reference/python/index.html">
+ <span class="dropdown-text">Python</span></a>
+  </li>  
+    </ul>
+  </li>
   <li class="nav-item">
-    <a class="nav-link" href="../../reference/r/index.html"> 
-<span class="menu-text">Reference</span></a>
+    <a class="nav-link" href="../../r-vs-python.html"> 
+<span class="menu-text">R vs Python</span></a>
   </li>  
   <li class="nav-item">
     <a class="nav-link" href="../../news.html"> 
@@ -190,11 +209,23 @@ background: #2A0E52;
   </li>  
 </ul>
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
-  <li class="nav-item">
-    <a class="nav-link" href="https://github.com/BhuvaLab/spiDE"> <i class="bi bi-github" role="img">
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-github" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+      <i class="bi bi-github" role="img">
 </i> 
-<span class="menu-text">GitHub</span></a>
+ <span class="menu-text">GitHub</span>
+    </a>
+    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-menu-github">    
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spiDE">
+ <span class="dropdown-text">spiDE (R)</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spidepy">
+ <span class="dropdown-text">spidepy (Python)</span></a>
+  </li>  
+    </ul>
+  </li>
 </ul>
           </div> <!-- /navcollapse -->
             <div class="quarto-navbar-tools">
@@ -294,6 +325,13 @@ unused.
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">spiDE</span>(toySpiDE, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>, <span class="at">index =</span> <span class="st">"A"</span>,</span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">procedure =</span> <span class="st">"all"</span>)</span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":["gene"],"name":[1],"type":["chr"],"align":["left"]},{"label":["index"],"name":[2],"type":["chr"],"align":["left"]},{"label":["niche"],"name":[3],"type":["chr"],"align":["left"]},{"label":["test"],"name":[4],"type":["chr"],"align":["left"]},{"label":["estimate"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["se"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["t"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["df"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["p"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["n_patients"],"name":[10],"type":["dbl"],"align":["right"]},{"label":["p.heterogeneity"],"name":[11],"type":["dbl"],"align":["right"]},{"label":["q"],"name":[12],"type":["dbl"],"align":["right"]},{"label":["in_family"],"name":[13],"type":["lgl"],"align":["right"]}],"data":[{"1":"G1","2":"A","3":"B","4":"pooled","5":"0.38813717","6":"0.05679598","7":"6.83388429","8":"238.2007","9":"6.861903e-11","10":"16","11":"0.55455737","12":"2.744761e-09","13":"TRUE"},{"1":"G9","2":"A","3":"B","4":"pooled","5":"-0.41080652","6":"0.09640727","7":"-4.26115698","8":"275.7518","9":"2.794132e-05","10":"16","11":"0.25402708","12":"5.588264e-04","13":"TRUE"},{"1":"G18","2":"A","3":"B","4":"pooled","5":"-0.45982851","6":"0.17245172","7":"-2.66641877","8":"260.5833","9":"8.145921e-03","10":"16","11":"0.88493377","12":"1.086123e-01","13":"TRUE"},{"1":"G2","2":"A","3":"B","4":"pooled","5":"-0.37469517","6":"0.15673331","7":"-2.39065438","8":"273.3147","9":"1.749550e-02","10":"16","11":"0.25963307","12":"1.749550e-01","13":"TRUE"},{"1":"G19","2":"A","3":"B","4":"pooled","5":"-0.50933676","6":"0.24083306","7":"-2.11489551","8":"252.9810","9":"3.541691e-02","10":"16","11":"0.51485968","12":"2.833353e-01","13":"TRUE"},{"1":"G12","2":"A","3":"B","4":"pooled","5":"-0.48744267","6":"0.24547365","7":"-1.98572298","8":"249.7420","9":"4.815762e-02","10":"16","11":"0.55107935","12":"3.210508e-01","13":"TRUE"},{"1":"G8","2":"A","3":"B","4":"pooled","5":"-0.47716547","6":"0.25821919","7":"-1.84790863","8":"273.8953","9":"6.569361e-02","10":"16","11":"0.16891166","12":"3.550764e-01","13":"TRUE"},{"1":"G7","2":"A","3":"B","4":"pooled","5":"-0.30099254","6":"0.16603623","7":"-1.81281239","8":"259.7081","9":"7.101528e-02","10":"16","11":"0.70326750","12":"3.550764e-01","13":"TRUE"},{"1":"G20","2":"A","3":"B","4":"pooled","5":"0.27934019","6":"0.16505404","7":"1.69241653","8":"291.9903","9":"9.163329e-02","10":"16","11":"0.02614152","12":"4.046622e-01","13":"TRUE"},{"1":"G12","2":"A","3":"C","4":"pooled","5":"-0.40717110","6":"0.24756548","7":"-1.64470064","8":"277.0828","9":"1.011655e-01","10":"16","11":"0.61620549","12":"4.046622e-01","13":"TRUE"},{"1":"G6","2":"A","3":"B","4":"pooled","5":"-0.30241031","6":"0.19671206","7":"-1.53732468","8":"288.1198","9":"1.253113e-01","10":"16","11":"0.06219736","12":"4.368393e-01","13":"TRUE"},{"1":"G9","2":"A","3":"C","4":"pooled","5":"-0.16175695","6":"0.10681432","7":"-1.51437507","8":"281.7322","9":"1.310518e-01","10":"16","11":"0.42967358","12":"4.368393e-01","13":"TRUE"},{"1":"G5","2":"A","3":"B","4":"pooled","5":"-0.32636991","6":"0.24427132","7":"-1.33609587","8":"280.6340","9":"1.826003e-01","10":"16","11":"0.05605679","12":"5.481391e-01","13":"TRUE"},{"1":"G11","2":"A","3":"C","4":"pooled","5":"0.27661626","6":"0.21142344","7":"1.30835190","8":"274.4303","9":"1.918487e-01","10":"16","11":"0.66443270","12":"5.481391e-01","13":"TRUE"},{"1":"G14","2":"A","3":"B","4":"pooled","5":"-0.19994267","6":"0.15938356","7":"-1.25447490","8":"276.2894","9":"2.107296e-01","10":"16","11":"0.17505958","12":"5.619457e-01","13":"TRUE"},{"1":"G16","2":"A","3":"C","4":"pooled","5":"0.21177915","6":"0.18420903","7":"1.14966757","8":"277.0468","9":"2.512723e-01","10":"16","11":"0.32579024","12":"6.281807e-01","13":"TRUE"},{"1":"G13","2":"A","3":"B","4":"pooled","5":"-0.12418164","6":"0.11376570","7":"-1.09155603","8":"281.7988","9":"2.759607e-01","10":"16","11":"0.13739795","12":"6.493192e-01","13":"TRUE"},{"1":"G3","2":"A","3":"C","4":"pooled","5":"0.26090848","6":"0.26370332","7":"0.98940159","8":"283.7498","9":"3.233096e-01","10":"16","11":"0.33178495","12":"7.184658e-01","13":"TRUE"},{"1":"G20","2":"A","3":"C","4":"pooled","5":"0.15906847","6":"0.19433060","7":"0.81854566","8":"288.5864","9":"4.137211e-01","10":"16","11":"0.21541454","12":"8.709917e-01","13":"TRUE"},{"1":"G17","2":"A","3":"C","4":"pooled","5":"-0.22488271","6":"0.30789525","7":"-0.73038707","8":"272.9130","9":"4.657801e-01","10":"16","11":"0.27851770","12":"8.849741e-01","13":"TRUE"},{"1":"G14","2":"A","3":"C","4":"pooled","5":"0.12878942","6":"0.17869806","7":"0.72070966","8":"286.7332","9":"4.716753e-01","10":"16","11":"0.19899582","12":"8.849741e-01","13":"TRUE"},{"1":"G4","2":"A","3":"C","4":"pooled","5":"0.10351052","6":"0.17026600","7":"0.60793420","8":"284.0468","9":"5.437169e-01","10":"16","11":"0.57472548","12":"8.849741e-01","13":"TRUE"},{"1":"G10","2":"A","3":"C","4":"pooled","5":"-0.10880924","6":"0.19089889","7":"-0.56998361","8":"275.3378","9":"5.691536e-01","10":"16","11":"0.61503407","12":"8.849741e-01","13":"TRUE"},{"1":"G15","2":"A","3":"C","4":"pooled","5":"-0.10518827","6":"0.19290537","7":"-0.54528432","8":"276.3609","9":"5.859978e-01","10":"16","11":"0.91060391","12":"8.849741e-01","13":"TRUE"},{"1":"G5","2":"A","3":"C","4":"pooled","5":"-0.11935201","6":"0.24085016","7":"-0.49554468","8":"248.0808","9":"6.206544e-01","10":"16","11":"0.03080867","12":"8.849741e-01","13":"TRUE"},{"1":"G8","2":"A","3":"C","4":"pooled","5":"0.14682501","6":"0.31702336","7":"0.46313625","8":"285.7922","9":"6.436192e-01","10":"16","11":"0.19425435","12":"8.849741e-01","13":"TRUE"},{"1":"G7","2":"A","3":"C","4":"pooled","5":"0.07903299","6":"0.19886488","7":"0.39742057","8":"144.2623","9":"6.916448e-01","10":"16","11":"0.01059938","12":"8.849741e-01","13":"TRUE"},{"1":"G1","2":"A","3":"C","4":"pooled","5":"0.02945520","6":"0.07831218","7":"0.37612539","8":"284.7863","9":"7.071037e-01","10":"16","11":"0.23085571","12":"8.849741e-01","13":"TRUE"},{"1":"G15","2":"A","3":"B","4":"pooled","5":"-0.06239823","6":"0.17144702","7":"-0.36395049","8":"265.5808","9":"7.161846e-01","10":"16","11":"0.70503391","12":"8.849741e-01","13":"TRUE"},{"1":"G10","2":"A","3":"B","4":"pooled","5":"0.06539042","6":"0.18112681","7":"0.36102011","8":"262.4654","9":"7.183748e-01","10":"16","11":"0.67244239","12":"8.849741e-01","13":"TRUE"},{"1":"G2","2":"A","3":"C","4":"pooled","5":"0.05737838","6":"0.16840699","7":"0.34071256","8":"278.5064","9":"7.335769e-01","10":"16","11":"0.54714331","12":"8.849741e-01","13":"TRUE"},{"1":"G3","2":"A","3":"B","4":"pooled","5":"-0.08215661","6":"0.24648642","7":"-0.33331089","8":"273.8342","9":"7.391547e-01","10":"16","11":"0.25936468","12":"8.849741e-01","13":"TRUE"},{"1":"G13","2":"A","3":"C","4":"pooled","5":"-0.03264570","6":"0.11968469","7":"-0.27276422","8":"287.6666","9":"7.852302e-01","10":"16","11":"0.19584449","12":"8.849741e-01","13":"TRUE"},{"1":"G6","2":"A","3":"C","4":"pooled","5":"-0.05248265","6":"0.19627010","7":"-0.26740013","8":"275.3164","9":"7.893613e-01","10":"16","11":"0.69624669","12":"8.849741e-01","13":"TRUE"},{"1":"G17","2":"A","3":"B","4":"pooled","5":"-0.06491028","6":"0.25656656","7":"-0.25299588","8":"263.4502","9":"8.004687e-01","10":"16","11":"0.92775191","12":"8.849741e-01","13":"TRUE"},{"1":"G11","2":"A","3":"B","4":"pooled","5":"-0.05827162","6":"0.23232823","7":"-0.25081594","8":"281.8464","9":"8.021392e-01","10":"16","11":"0.10307016","12":"8.849741e-01","13":"TRUE"},{"1":"G16","2":"A","3":"B","4":"pooled","5":"0.03719262","6":"0.16200124","7":"0.22958230","8":"254.1136","9":"8.186010e-01","10":"16","11":"0.53934050","12":"8.849741e-01","13":"TRUE"},{"1":"G19","2":"A","3":"C","4":"pooled","5":"0.03252586","6":"0.21794488","7":"0.14923894","8":"274.3577","9":"8.814747e-01","10":"16","11":"0.44202765","12":"9.278681e-01","13":"TRUE"},{"1":"G18","2":"A","3":"C","4":"pooled","5":"0.02203784","6":"0.19270824","7":"0.11435858","8":"286.4741","9":"9.090337e-01","10":"16","11":"0.29534900","12":"9.323422e-01","13":"TRUE"},{"1":"G4","2":"A","3":"B","4":"pooled","5":"-0.00742769","6":"0.15713569","7":"-0.04726928","8":"258.6250","9":"9.623351e-01","10":"16","11":"0.77000191","12":"9.623351e-01","13":"TRUE"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+</div>
 </div>
 
 
@@ -715,8 +753,8 @@ unused.
 </a>
   </li>  
     <li class="nav-item">
-    <a class="nav-link" href="https://github.com/BhuvaLab/SpaNorm">
-<p>SpaNorm (R)</p>
+    <a class="nav-link" href="https://github.com/BhuvaLab/spidepy">
+<p>spidepy (Python)</p>
 </a>
   </li>  
 </ul>

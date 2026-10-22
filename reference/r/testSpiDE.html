@@ -81,7 +81,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../../site_libs/quarto-html/quarto-syntax-highlighting-7ef3a5617493e07f253f88e7bef5c60f.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap-2ad0c9cee5de03d6504be9ac3131b32b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-0e8b588de7367b1ec620c9d64b30b97a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -161,6 +161,10 @@ background: #2A0E52;
     <a class="nav-link" href="../../get-started.html"> 
 <span class="menu-text">Get started</span></a>
   </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../python-tutorial.html"> 
+<span class="menu-text">Python tutorial</span></a>
+  </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-articles" role="link" data-bs-toggle="dropdown" aria-expanded="false">
  <span class="menu-text">Articles</span>
@@ -180,9 +184,24 @@ background: #2A0E52;
   </li>  
     </ul>
   </li>
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-reference" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Reference</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-reference">    
+        <li>
+    <a class="dropdown-item" href="../../reference/r/index.html">
+ <span class="dropdown-text">R</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../reference/python/index.html">
+ <span class="dropdown-text">Python</span></a>
+  </li>  
+    </ul>
+  </li>
   <li class="nav-item">
-    <a class="nav-link" href="../../reference/r/index.html"> 
-<span class="menu-text">Reference</span></a>
+    <a class="nav-link" href="../../r-vs-python.html"> 
+<span class="menu-text">R vs Python</span></a>
   </li>  
   <li class="nav-item">
     <a class="nav-link" href="../../news.html"> 
@@ -190,11 +209,23 @@ background: #2A0E52;
   </li>  
 </ul>
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
-  <li class="nav-item">
-    <a class="nav-link" href="https://github.com/BhuvaLab/spiDE"> <i class="bi bi-github" role="img">
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-github" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+      <i class="bi bi-github" role="img">
 </i> 
-<span class="menu-text">GitHub</span></a>
+ <span class="menu-text">GitHub</span>
+    </a>
+    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-menu-github">    
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spiDE">
+ <span class="dropdown-text">spiDE (R)</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spidepy">
+ <span class="dropdown-text">spidepy (Python)</span></a>
+  </li>  
+    </ul>
+  </li>
 </ul>
           </div> <!-- /navcollapse -->
             <div class="quarto-navbar-tools">
@@ -346,8 +377,20 @@ a BiocParallelParam; the slopes engine’s condition-specific test is run in par
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>spe <span class="ot">&lt;-</span> <span class="fu">buildNiches</span>(toySpiDE, <span class="at">sigma =</span> <span class="dv">30</span>)</span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">fitSpiDE</span>(spe, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">sigma =</span> <span class="dv">30</span>)</span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">testSpiDE</span>(fit, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">procedure =</span> <span class="st">"all"</span>)</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>res</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(<span class="fu">results</span>(res))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>res</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>SpiDEResults (slopes engine)
+  pooled across patients: 40 tests, 2 at FDR 0.05
+  condition-specific (Responder - Non-responder; all family): 40 tests, 0 at FDR 0.05</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(<span class="fu">results</span>(res))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["gene"],"name":[1],"type":["chr"],"align":["left"]},{"label":["index"],"name":[2],"type":["chr"],"align":["left"]},{"label":["niche"],"name":[3],"type":["chr"],"align":["left"]},{"label":["test"],"name":[4],"type":["chr"],"align":["left"]},{"label":["estimate"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["se"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["t"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["df"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["p"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["n_patients"],"name":[10],"type":["dbl"],"align":["right"]},{"label":["p.heterogeneity"],"name":[11],"type":["dbl"],"align":["right"]},{"label":["q"],"name":[12],"type":["dbl"],"align":["right"]},{"label":["in_family"],"name":[13],"type":["lgl"],"align":["right"]}],"data":[{"1":"G4","2":"A","3":"C","4":"condition","5":"0.7094668","6":"0.20499350","7":"3.460923","8":"13.08604","9":"0.004181235","10":"16","11":"0.57472548","12":"0.1672494","13":"TRUE","_rn_":"1"},{"1":"G1","2":"A","3":"B","4":"condition","5":"0.2731141","6":"0.08851382","7":"3.085553","8":"11.31285","9":"0.010055853","10":"16","11":"0.55455737","12":"0.1893292","13":"TRUE","_rn_":"2"},{"1":"G20","2":"A","3":"B","4":"condition","5":"-0.9210646","6":"0.33819046","7":"-2.723508","8":"13.58099","9":"0.016845087","10":"16","11":"0.02614152","12":"0.1893292","13":"TRUE","_rn_":"3"},{"1":"G11","2":"A","3":"C","4":"condition","5":"-0.8145790","6":"0.30736988","7":"-2.650159","8":"12.61362","9":"0.020432151","10":"16","11":"0.66443270","12":"0.1893292","13":"TRUE","_rn_":"4"},{"1":"G13","2":"A","3":"B","4":"condition","5":"-0.4930356","6":"0.19261020","7":"-2.559759","8":"13.07291","9":"0.023666147","10":"16","11":"0.13739795","12":"0.1893292","13":"TRUE","_rn_":"5"},{"1":"G9","2":"A","3":"C","4":"condition","5":"0.3712190","6":"0.16891000","7":"2.197733","8":"13.06303","9":"0.046596780","10":"16","11":"0.42967358","12":"0.3106452","13":"TRUE","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+</div>
 </div>
 
 
@@ -769,8 +812,8 @@ a BiocParallelParam; the slopes engine’s condition-specific test is run in par
 </a>
   </li>  
     <li class="nav-item">
-    <a class="nav-link" href="https://github.com/BhuvaLab/SpaNorm">
-<p>SpaNorm (R)</p>
+    <a class="nav-link" href="https://github.com/BhuvaLab/spidepy">
+<p>spidepy (Python)</p>
 </a>
   </li>  
 </ul>

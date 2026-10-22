@@ -81,7 +81,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="site_libs/quarto-html/quarto-syntax-highlighting-7ef3a5617493e07f253f88e7bef5c60f.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-f511340ca0d2997382382149d4b23820.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-63680fe4328598355910ae3cd8485295.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -144,6 +144,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <a class="nav-link" href="./get-started.html"> 
 <span class="menu-text">Get started</span></a>
   </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./python-tutorial.html"> 
+<span class="menu-text">Python tutorial</span></a>
+  </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-articles" role="link" data-bs-toggle="dropdown" aria-expanded="false">
  <span class="menu-text">Articles</span>
@@ -163,9 +167,24 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </li>  
     </ul>
   </li>
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-reference" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Reference</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-reference">    
+        <li>
+    <a class="dropdown-item" href="./reference/r/index.html">
+ <span class="dropdown-text">R</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./reference/python/index.html">
+ <span class="dropdown-text">Python</span></a>
+  </li>  
+    </ul>
+  </li>
   <li class="nav-item">
-    <a class="nav-link" href="./reference/r/index.html"> 
-<span class="menu-text">Reference</span></a>
+    <a class="nav-link" href="./r-vs-python.html"> 
+<span class="menu-text">R vs Python</span></a>
   </li>  
   <li class="nav-item">
     <a class="nav-link" href="./news.html"> 
@@ -173,11 +192,23 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </li>  
 </ul>
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
-  <li class="nav-item">
-    <a class="nav-link" href="https://github.com/BhuvaLab/spiDE"> <i class="bi bi-github" role="img">
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-github" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+      <i class="bi bi-github" role="img">
 </i> 
-<span class="menu-text">GitHub</span></a>
+ <span class="menu-text">GitHub</span>
+    </a>
+    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-menu-github">    
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spiDE">
+ <span class="dropdown-text">spiDE (R)</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spidepy">
+ <span class="dropdown-text">spidepy (Python)</span></a>
+  </li>  
+    </ul>
+  </li>
 </ul>
           </div> <!-- /navcollapse -->
             <div class="quarto-navbar-tools">
@@ -207,21 +238,22 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="spide" class="level1 unnumbered unlisted">
 <h1 class="unnumbered unlisted">spiDE</h1>
 <p class="tagline">
-Neighbourhood-dependent differential expression for spatial transcriptomics, with patients as the replicates.
+Neighbourhood-dependent differential expression for spatial transcriptomics, with patients as the replicates, in R and Python.
 </p>
 <div class="cta">
-<p><a href="./get-started.html" class="primary">Get started</a> <a href="reference/r/index.html">Reference</a> <a href="https://github.com/BhuvaLab/spiDE">GitHub</a></p>
+<p><a href="./get-started.html" class="primary">Get started</a> <a href="reference/r/index.html">R reference</a> <a href="reference/python/index.html">Python reference</a> <a href="https://github.com/BhuvaLab/spiDE">GitHub</a></p>
 </div>
 </section>
 </div>
 </div>
 <div class="intro">
 <p>spiDE finds neighbourhood-dependent differential expression in spatial transcriptomics. Within an <em>index</em> cell type, it asks whether a gene’s expression changes with the local density (the <em>niche</em>) of another cell type, within patients, and whether that dependence differs between two conditions. Patients are the unit of replication throughout: a triplet’s evidence (gene, index type, niche type) is how its niche slope varies between patients, never the number of cells.</p>
+<p>This website covers both packages: the R package <strong>spiDE</strong> (Bioconductor) and the Python package <strong>spidepy</strong> (on <code>AnnData</code>). They share the method and the documentation, and <a href="./r-vs-python.html">R vs Python</a> lists how they correspond.</p>
 </div>
 <div class="feature-row">
 <section id="get-started" class="level3 card-sn">
 <h3 class="anchored" data-anchor-id="get-started"><a href="./get-started.html">Get started</a></h3>
-<p>A walk-through on the bundled toy data: build niches, fit, test and plot the pooled and condition-specific results.</p>
+<p>A walk-through on the bundled toy data in R: build niches, fit, test and plot the pooled and condition-specific results. The same walk-through in Python is the <a href="./python-tutorial.html">Python tutorial</a>.</p>
 </section>
 <section id="the-model" class="level3 card-sn">
 <h3 class="anchored" data-anchor-id="the-model"><a href="./articles/spiDE-model.html">The model</a></h3>
@@ -239,6 +271,10 @@ Neighbourhood-dependent differential expression for spatial transcriptomics, wit
 <section id="install" class="level2 section-title">
 <h2 class="section-title anchored" data-anchor-id="install">Install</h2>
 <div class="card-sn install-card">
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-1-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-1" role="tab" aria-controls="tabset-1-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-1-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-2" role="tab" aria-controls="tabset-1-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-1-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-1-1-tab">
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">"BiocManager"</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>))</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">install.packages</span>(<span class="st">"BiocManager"</span>)</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -251,9 +287,23 @@ Neighbourhood-dependent differential expression for spatial transcriptomics, wit
 <span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>)      <span class="co"># niche-dependent expression, across patients</span></span>
 <span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"condition"</span>)   <span class="co"># its difference between the conditions</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
+<div id="tabset-1-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-1-2-tab">
+<p>spidepy is not on PyPI yet. The extra index gives a CPU-only build of PyTorch, which it needs through spanormpy:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">--extra-index-url</span> https://download.pytorch.org/whl/cpu <span class="st">"spidepy @ git+https://github.com/BhuvaLab/spidepy.git"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> spidepy <span class="im">as</span> sp</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>adata <span class="op">=</span> sp.datasets.toy_spide()</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>res <span class="op">=</span> sp.spide(adata, condition<span class="op">=</span><span class="st">"condition"</span>, sigma<span class="op">=</span><span class="dv">30</span>)</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>sp.results(res, test<span class="op">=</span><span class="st">"pooled"</span>)      <span class="co"># niche-dependent expression, across patients</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>sp.results(res, test<span class="op">=</span><span class="st">"condition"</span>)   <span class="co"># its difference between the conditions</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
+</div>
 </section>
 <section id="how-it-works" class="level2 section-title">
 <h2 class="section-title anchored" data-anchor-id="how-it-works">How it works</h2>
+<p>Function names are given for R; spidepy uses the same steps as <code>build_niches()</code>, <code>fit_spide()</code> and <code>test_spide()</code>.</p>
 <ol type="1">
 <li><strong>Niches</strong> (<code>buildNiches()</code>): per sample, a Gaussian kernel density of every cell type at every cell.</li>
 <li><strong>Fit</strong> (<code>fitSpiDE()</code>): for every index cell type, one negative binomial GLM per gene on the niche densities with an intercept per patient, fitted with <a href="https://github.com/BhuvaLab/SpaNorm">SpaNorm</a>’s Newton solver. Each niche coefficient is a within-patient slope.</li>
@@ -273,9 +323,9 @@ Neighbourhood-dependent differential expression for spatial transcriptomics, wit
 <section id="links-and-licence" class="level3 card-sn">
 <h3 class="anchored" data-anchor-id="links-and-licence">Links and licence</h3>
 <ul>
-<li>Source: <a href="https://github.com/BhuvaLab/spiDE">BhuvaLab/spiDE</a></li>
-<li>Report a bug: <a href="https://github.com/BhuvaLab/spiDE/issues">issues</a></li>
-<li>Cite: <code>citation("spiDE")</code> in R</li>
+<li>Source: <a href="https://github.com/BhuvaLab/spiDE">BhuvaLab/spiDE</a> (R), <a href="https://github.com/BhuvaLab/spidepy">BhuvaLab/spidepy</a> (Python)</li>
+<li>Report a bug: <a href="https://github.com/BhuvaLab/spiDE/issues">spiDE issues</a>, <a href="https://github.com/BhuvaLab/spidepy/issues">spidepy issues</a></li>
+<li>Cite: <code>citation("spiDE")</code> in R; spidepy asks to cite the R package, which defines the method</li>
 <li>Licence: GPL (&gt;= 3)</li>
 </ul>
 </section>
@@ -699,8 +749,8 @@ Neighbourhood-dependent differential expression for spatial transcriptomics, wit
 </a>
   </li>  
     <li class="nav-item">
-    <a class="nav-link" href="https://github.com/BhuvaLab/SpaNorm">
-<p>SpaNorm (R)</p>
+    <a class="nav-link" href="https://github.com/BhuvaLab/spidepy">
+<p>spidepy (Python)</p>
 </a>
   </li>  
 </ul>

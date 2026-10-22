@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>R vs Python – spiDE</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<link href="./logo.png" rel="icon" type="image/png">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-7ef3a5617493e07f253f88e7bef5c60f.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-0e8b588de7367b1ec620c9d64b30b97a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<style>
+
+      .quarto-title-block .quarto-title-banner h1,
+      .quarto-title-block .quarto-title-banner h2,
+      .quarto-title-block .quarto-title-banner h3,
+      .quarto-title-block .quarto-title-banner h4,
+      .quarto-title-block .quarto-title-banner h5,
+      .quarto-title-block .quarto-title-banner h6
+      {
+        color: #ffffff;
+      }
+
+      .quarto-title-block .quarto-title-banner {
+        color: #ffffff;
+background: #2A0E52;
+      }
+</style>
+
+
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top quarto-banner">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="./index.html" class="navbar-brand navbar-brand-logo">
+    <img src="./logo.png" alt="" class="navbar-logo light-content">
+    <img src="./logo.png" alt="" class="navbar-logo dark-content">
+    </a>
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">spiDE</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="./index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./get-started.html"> 
+<span class="menu-text">Get started</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./python-tutorial.html"> 
+<span class="menu-text">Python tutorial</span></a>
+  </li>  
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-articles" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Articles</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-articles">    
+        <li>
+    <a class="dropdown-item" href="./articles/spiDE-model.html">
+ <span class="dropdown-text">The spiDE model</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./articles/spiDE-design.html">
+ <span class="dropdown-text">Designing a study</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./articles/spiDE-calibration.html">
+ <span class="dropdown-text">Validation: calibration and accuracy</span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-reference" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Reference</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-reference">    
+        <li>
+    <a class="dropdown-item" href="./reference/r/index.html">
+ <span class="dropdown-text">R</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./reference/python/index.html">
+ <span class="dropdown-text">Python</span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link active" href="./r-vs-python.html" aria-current="page"> 
+<span class="menu-text">R vs Python</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./news.html"> 
+<span class="menu-text">News</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-github" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+      <i class="bi bi-github" role="img">
+</i> 
+ <span class="menu-text">GitHub</span>
+    </a>
+    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-menu-github">    
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spiDE">
+ <span class="dropdown-text">spiDE (R)</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spidepy">
+ <span class="dropdown-text">spidepy (Python)</span></a>
+  </li>  
+    </ul>
+  </li>
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<header id="title-block-header" class="quarto-title-block default page-columns page-full">
+  <div class="quarto-title-banner page-columns page-full">
+    <div class="quarto-title column-body">
+      <h1 class="title">R vs Python</h1>
+            <p class="subtitle lead">How spiDE (R) and spidepy (Python) correspond, and where they intentionally differ</p>
+                      </div>
+  </div>
+    
+  
+  <div class="quarto-title-meta">
+
+      
+    
+      
+    </div>
+    
+  
+  </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul class="collapse">
+  <li><a href="#r-to-python-mapping" id="toc-r-to-python-mapping" class="nav-link active" data-scroll-target="#r-to-python-mapping">R to Python mapping</a>
+  <ul class="collapse">
+  <li><a href="#argument-names" id="toc-argument-names" class="nav-link" data-scroll-target="#argument-names">Argument names</a></li>
+  <li><a href="#exports" id="toc-exports" class="nav-link" data-scroll-target="#exports">Exports</a></li>
+  </ul></li>
+  <li><a href="#differences-from-r-spide" id="toc-differences-from-r-spide" class="nav-link" data-scroll-target="#differences-from-r-spide">Differences from R spiDE</a>
+  <ul class="collapse">
+  <li><a href="#interface" id="toc-interface" class="nav-link" data-scroll-target="#interface">Interface</a></li>
+  <li><a href="#ordering-and-sorting" id="toc-ordering-and-sorting" class="nav-link" data-scroll-target="#ordering-and-sorting">Ordering and sorting</a></li>
+  <li><a href="#niches" id="toc-niches" class="nav-link" data-scroll-target="#niches">Niches</a></li>
+  <li><a href="#fit-design-and-slopes" id="toc-fit-design-and-slopes" class="nav-link" data-scroll-target="#fit-design-and-slopes">Fit: design and slopes</a></li>
+  <li><a href="#limma-and-empirical-bayes-moderation" id="toc-limma-and-empirical-bayes-moderation" class="nav-link" data-scroll-target="#limma-and-empirical-bayes-moderation">limma and empirical-Bayes moderation</a></li>
+  <li><a href="#toy-data" id="toc-toy-data" class="nav-link" data-scroll-target="#toy-data">Toy data</a></li>
+  <li><a href="#plots" id="toc-plots" class="nav-link" data-scroll-target="#plots">Plots</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content quarto-banner-title-block" id="quarto-document-content">
+
+
+
+
+
+<p>We begin with what stays the same. spidepy is a port of spiDE 0.99.37: it runs the same method, the slopes engine and the sandwich engine, the same pooled and condition-specific tests and the same gene-set and abundance tests. A test suite compares spidepy with reference values computed by the R package, and the numbers agree to numerical closeness. The method is defined by the R package, so that is the one to cite.</p>
+<p>What changes is the way you call it. Names are <code>snake_case</code> in Python with R’s defaults (<code>min.cells</code> is <code>min_cells</code>), and R’s <code>BPPARAM</code> is <code>n_jobs</code>. Inputs and outputs follow Python conventions:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>R (spiDE)</th>
+<th>Python (spidepy)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Container</td>
+<td><code>SpatialExperiment</code></td>
+<td><code>AnnData</code></td>
+</tr>
+<tr class="even">
+<td>Counts</td>
+<td>assay <code>counts</code></td>
+<td><code>layers["counts"]</code></td>
+</tr>
+<tr class="odd">
+<td>Coordinates</td>
+<td><code>spatialCoords()</code></td>
+<td><code>obsm["spatial"]</code></td>
+</tr>
+<tr class="even">
+<td>Niche matrices</td>
+<td><code>reducedDim(spe, "Niche30")</code></td>
+<td><code>obsm["Niche30"]</code></td>
+</tr>
+<tr class="odd">
+<td>Updates the object</td>
+<td>returns a modified copy</td>
+<td>in place (<code>copy=True</code> to return a copy)</td>
+</tr>
+<tr class="even">
+<td>Plots</td>
+<td><code>ggplot2</code> objects</td>
+<td><code>matplotlib</code> figures</td>
+</tr>
+<tr class="odd">
+<td>Parallelism</td>
+<td><code>BPPARAM</code> (<code>BiocParallel</code>)</td>
+<td><code>n_jobs</code></td>
+</tr>
+<tr class="even">
+<td>Result tables</td>
+<td><code>data.frame</code></td>
+<td><code>pandas.DataFrame</code>, with R’s column names</td>
+</tr>
+</tbody>
+</table>
+<p>The two pages below are the package’s own documentation of the correspondence. The first lists every exported R function with its Python counterpart; the second lists the places where the two behave differently, with the reason for each.</p>
+<section id="r-to-python-mapping" class="level1">
+<h1>R to Python mapping</h1>
+<p>Every export of R spiDE 0.99.37 (commit <code>c8db60a</code>, <code>NAMESPACE</code>) and its spidepy counterpart. The <code>NAMESPACE</code> also exports the <code>$</code> method of the result classes; in Python that is plain attribute access (<code>res.contrast</code>, <code>fit.engine</code>).</p>
+<p>Input is an <code>AnnData</code> instead of a <code>SpatialExperiment</code>: counts live in <code>layers["counts"]</code> (<code>assay=</code> names another layer, <code>"X"</code> uses <code>adata.X</code>), cell coordinates in <code>obsm["spatial"]</code>, and niche matrices in <code>obsm["Niche&lt;sigma&gt;"]</code> instead of <code>reducedDim</code>. The first argument <code>spe</code> is called <code>adata</code>. Functions that R runs on a copy (<code>buildNiches</code>, <code>mergeNiches</code>) work in place and return the object; pass <code>copy=True</code> to leave the input alone.</p>
+<section id="argument-names" class="level2">
+<h2 class="anchored" data-anchor-id="argument-names">Argument names</h2>
+<p>Arguments are snake_case with R’s defaults.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>R</th>
+<th>Python</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>spe</code></td>
+<td><code>adata</code></td>
+</tr>
+<tr class="even">
+<td><code>object</code></td>
+<td><code>res</code> or <code>fit</code> (the result or fit object)</td>
+</tr>
+<tr class="odd">
+<td><code>min.cells</code>, <code>min.patients</code>, <code>min.detect</code>, <code>min.tiles</code></td>
+<td><code>min_cells</code>, <code>min_patients</code>, <code>min_detect</code>, <code>min_tiles</code></td>
+</tr>
+<tr class="even">
+<td><code>min.size</code>, <code>max.size</code></td>
+<td><code>min_size</code>, <code>max_size</code></td>
+</tr>
+<tr class="odd">
+<td><code>prior.count</code>, <code>max.leverage</code></td>
+<td><code>prior_count</code>, <code>max_leverage</code></td>
+</tr>
+<tr class="even">
+<td><code>min.calls</code>, <code>colour.by</code>, <code>n.pcs</code>, <code>point.size</code>, <code>scale.bar</code></td>
+<td><code>min_calls</code>, <code>colour_by</code>, <code>n_pcs</code>, <code>point_size</code>, <code>scale_bar</code></td>
+</tr>
+<tr class="odd">
+<td><code>BPPARAM</code></td>
+<td><code>n_jobs</code> (an integer; results are identical for any value)</td>
+</tr>
+<tr class="even">
+<td><code>verbose</code></td>
+<td><code>verbose</code> (messages go to stderr, only when <code>True</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Column names of the result tables keep R’s spelling (<code>p.heterogeneity</code>, <code>q.global</code>), so a table from Python reads like one from R. The differences between the two packages, with reasons, are listed in <a href="#differences-from-r-spide">r-discrepancies</a> and summarised in the README.</p>
+</section>
+<section id="exports" class="level2">
+<h2 class="anchored" data-anchor-id="exports">Exports</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>R export</th>
+<th>Python</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>buildNiches</code></td>
+<td><code>spidepy.build_niches</code></td>
+<td>writes <code>obsm["Niche&lt;sigma&gt;"]</code>; in place unless <code>copy=True</code></td>
+</tr>
+<tr class="even">
+<td><code>fitSpiDE</code></td>
+<td><code>spidepy.fit_spide</code></td>
+<td>returns a <code>SpiDEFit</code>; <code>engine="slopes"</code> or <code>"sandwich"</code></td>
+</tr>
+<tr class="odd">
+<td><code>mergeNiches</code></td>
+<td><code>spidepy.merge_niches</code></td>
+<td><code>groups</code> is a dict of name to list of cell types; group map in <code>uns["spiDE_niche_groups"]</code></td>
+</tr>
+<tr class="even">
+<td><code>patientIntercepts</code></td>
+<td><code>spidepy.patient_intercepts</code></td>
+<td>returns a <code>DataFrame</code></td>
+</tr>
+<tr class="odd">
+<td><code>patientSlopes</code></td>
+<td><code>spidepy.patient_slopes</code></td>
+<td>returns a <code>DataFrame</code>; slopes engine only</td>
+</tr>
+<tr class="even">
+<td><code>plotCallMap</code></td>
+<td><code>spidepy.pl.plot_call_map</code></td>
+<td>matplotlib; returns a <code>Figure</code></td>
+</tr>
+<tr class="odd">
+<td><code>plotNicheMap</code></td>
+<td><code>spidepy.pl.plot_niche_map</code></td>
+<td>matplotlib; returns a <code>Figure</code></td>
+</tr>
+<tr class="even">
+<td><code>plotNicheResponse</code></td>
+<td><code>spidepy.pl.plot_niche_response</code></td>
+<td>matplotlib; returns a <code>Figure</code></td>
+</tr>
+<tr class="odd">
+<td><code>plotPValues</code></td>
+<td><code>spidepy.pl.plot_p_values</code></td>
+<td>matplotlib; returns a <code>Figure</code></td>
+</tr>
+<tr class="even">
+<td><code>plotPatientEffects</code></td>
+<td><code>spidepy.pl.plot_patient_effects</code></td>
+<td>matplotlib; returns a <code>Figure</code></td>
+</tr>
+<tr class="odd">
+<td><code>plotPatientSlopes</code></td>
+<td><code>spidepy.pl.plot_patient_slopes</code></td>
+<td>matplotlib; returns a <code>Figure</code></td>
+</tr>
+<tr class="even">
+<td><code>plotSpillover</code></td>
+<td><code>spidepy.pl.plot_spillover</code></td>
+<td>matplotlib; returns a <code>Figure</code></td>
+</tr>
+<tr class="odd">
+<td><code>plotTopTriplets</code></td>
+<td><code>spidepy.pl.plot_top_triplets</code></td>
+<td>matplotlib; returns a <code>Figure</code></td>
+</tr>
+<tr class="even">
+<td><code>plotTripletHeatmap</code></td>
+<td><code>spidepy.pl.plot_triplet_heatmap</code></td>
+<td>matplotlib; returns a <code>Figure</code></td>
+</tr>
+<tr class="odd">
+<td><code>results</code></td>
+<td><code>spidepy.results</code></td>
+<td>returns a <code>DataFrame</code></td>
+</tr>
+<tr class="even">
+<td><code>spiDE</code></td>
+<td><code>spidepy.spide</code></td>
+<td>extra fit options pass through <code>**fit_kwargs</code>; <code>name</code> is the niche key prefix; the niche matrix it builds is removed again</td>
+</tr>
+<tr class="odd">
+<td><code>spiDEColours</code></td>
+<td><code>spidepy.pl.spide_colours</code></td>
+<td>the same colour-blind-safe palettes (palette V, with the <code>"spatial"</code> role)</td>
+</tr>
+<tr class="even">
+<td><code>spiGSEA</code></td>
+<td><code>spidepy.spi_gsea</code></td>
+<td><code>genesets</code> is a dict of set name to gene list; exact argument values only</td>
+</tr>
+<tr class="odd">
+<td><code>testNicheAbundance</code></td>
+<td><code>spidepy.test_niche_abundance</code></td>
+<td>returns a <code>DataFrame</code></td>
+</tr>
+<tr class="even">
+<td><code>testSpiDE</code></td>
+<td><code>spidepy.test_spide</code></td>
+<td>returns a <code>SpiDEResults</code></td>
+</tr>
+<tr class="odd">
+<td><code>theme_spiDE</code></td>
+<td><code>spidepy.pl.style</code></td>
+<td>a context manager (<code>with spidepy.pl.style(): ...</code>) instead of a ggplot theme</td>
+</tr>
+<tr class="even">
+<td><code>SpiDEFit</code></td>
+<td><code>spidepy.SpiDEFit</code></td>
+<td>exported class (a dataclass); <code>$</code> is attribute access</td>
+</tr>
+<tr class="odd">
+<td><code>SpiDEResults</code></td>
+<td><code>spidepy.SpiDEResults</code></td>
+<td>exported class (a dataclass); <code>$</code> is attribute access</td>
+</tr>
+<tr class="even">
+<td><code>toySpiDE</code></td>
+<td><code>spidepy.toy_spide</code></td>
+<td>R’s own example data as an <code>AnnData</code>; <code>spidepy.datasets.simulate_toy</code>, <code>simulate_niche</code> and <code>simulate_clustered</code> are numpy-seeded simulators</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="differences-from-r-spide" class="level1">
+<h1>Differences from R spiDE</h1>
+<p>One bullet per item: what R does, what spidepy does, and why. Reference: spiDE 0.99.37 (<code>c8db60a</code>). Where R has a bug or an R-specific accident, spidepy matches R and logs it here. Items are grouped by area.</p>
+<section id="interface" class="level2">
+<h2 class="anchored" data-anchor-id="interface">Interface</h2>
+<ul>
+<li><strong>AnnData instead of SpatialExperiment.</strong> Counts are read from <code>layers[assay]</code> (or <code>X</code>), coordinates from <code>obsm["spatial"]</code>, niche matrices live in <code>obsm["Niche&lt;sigma&gt;"]</code> instead of <code>reducedDim</code>, and only <code>_io.py</code> transposes to R’s genes x cells. <code>build_niches</code> and <code>merge_niches</code> work in place unless <code>copy=True</code> (R returns a modified copy).</li>
+<li><strong><code>n_jobs</code> replaces <code>BPPARAM</code>.</strong> An integer; the result is identical for any value.</li>
+<li><strong>Result tables keep R’s column names.</strong> <code>p.heterogeneity</code> and <code>q.global</code> are not renamed to snake_case, so tables from the two packages line up column for column.</li>
+<li><strong><code>spide</code> does not keep the niches it builds.</strong> R’s <code>spiDE()</code> returns the results and leaves the caller’s object untouched; <code>spide</code> builds the niche matrix in place (to avoid copying the counts) and removes it from <code>adata.obsm</code> once the fit is done. A niche matrix already present is used and kept.</li>
+<li><strong><code>spiGSEA</code> argument matching.</strong> R’s <code>match.arg</code> accepts unambiguous prefixes (<code>type = "self"</code>, <code>test = "pool"</code>). <code>spi_gsea</code> takes exact values only, as <code>test_spide</code> does; an unknown value raises <code>ValueError</code>. Also <code>spi_gsea</code> refuses anything but a <code>SpiDEResults</code> with a <code>TypeError</code> (R dispatches and errors on the missing method).</li>
+<li><strong><code>spiGSEA</code> direction of a missing statistic.</strong> R writes <code>NA_character_</code>; <code>spi_gsea</code> uses <code>None</code> in the <code>direction</code> column (object dtype).</li>
+<li><strong>Result and fit objects.</strong> R stores <code>character(0)</code> where Python has <code>None</code>: <code>SpiDEFit.condition</code> when no condition was given; <code>SpiDEResults.condition</code> is <code>None</code> when no condition was tested, and <code>contrast</code> is <code>""</code> then.</li>
+<li><strong>Legacy-object guard.</strong> R’s <code>checkResults</code> also rejects pre-0.99.23 mixed-model objects (<code>.assertCurrent</code>). Not ported: spidepy has no such objects.</li>
+<li><strong>Strata that vary within a patient.</strong> R’s <code>fitSpiDE</code> reads <code>as.character(patients[[strata]])</code>; a strata column that is not constant within patients is absent from the patient table, so R fails with the obscure “‘names’ attribute [n] must be the same length as the vector [0]”. <code>fit_spide</code> raises <code>ValueError("strata column '...' is not a patient-level column")</code> (same for a condition, as R’s <code>.conditionCoding</code>). Same inputs fail in both; only the message differs.</li>
+</ul>
+</section>
+<section id="ordering-and-sorting" class="level2">
+<h2 class="anchored" data-anchor-id="ordering-and-sorting">Ordering and sorting</h2>
+<ul>
+<li><strong>Sorting of character labels.</strong> R sorts character labels (patients, cell types, conditions) in the session locale (<code>en_US.UTF-8</code>, which interleaves <code>a A b B</code> and ignores punctuation at first pass). <code>spidepy._rcompat.r_sort_str</code> (and Python <code>sorted</code>) uses code-point order (R’s <code>method = "radix"</code> / <code>LC_COLLATE=C</code>), so mixed-case or punctuated labels can order differently (for example <code>b, C</code> in R but <code>C, b</code> here). Labels that share case and punctuation style, such as <code>S1, S10, S2</code> or <code>Non-responder, Responder</code>, order identically. Code-point order is deterministic and independent of the user’s locale, and it matches the reference fixtures; it is the documented choice rather than emulating glibc collation. Likewise the rows of <code>patient_slopes</code> / <code>patient_intercepts</code>: R sorts rows with <code>order()</code> on character keys (locale collation); Python sorts in code-point order (see “Sorting of character labels”). Identical for labels such as <code>G1, G10, G2</code>, <code>S1, S10, S2</code>.</li>
+<li><strong>Niche bandwidth lookup.</strong> R finds niche reducedDims with the regex <code>^Niche[0-9.]+$</code>, which misses a bandwidth that <code>paste0</code> writes in exponent form (<code>Niche1e+05</code>). <code>_io.niche_keys</code> uses the same pattern, so such a niche is not found either. Matched to R because bandwidths of 1e5 or more are not meaningful in spatial units; <code>niche_key</code> still writes the R string.</li>
+</ul>
+</section>
+<section id="niches" class="level2">
+<h2 class="anchored" data-anchor-id="niches">Niches</h2>
+<ul>
+<li><strong>Niche kernel density.</strong> R <code>densityfun</code> returns the values of in-window queries only (<code>drop = TRUE</code>) and has <code>diggle = FALSE</code> as its own default. <code>_kde.density_at</code> keeps the query order, returns <code>nan</code> for a query outside the window and defaults to <code>diggle = True</code> (the value <code>buildNiches</code> passes). The numbers for in-window queries are identical: spatstat uses the exact <code>pnorm</code> edge weight for a rectangular window, not a pixel image.</li>
+<li><strong><code>merge_niches</code> group named like a leftover column.</strong> If a group name equals a column that is not in any group (for example <code>{"B": ["A", "C"]}</code> with a column <code>B</code>), R produces two columns named <code>B</code> and its <code>[[</code> lookup of the group map sees the first. We keep both columns and record the first in <code>uns["spiDE_niche_groups"]</code> (a dict cannot hold duplicate keys).</li>
+<li><strong><code>merge_niches</code> key prefix.</strong> With <code>sigma = None</code>, R greps <code>^Niche</code> over <code>reducedDimNames</code>, so any key beginning with <code>name</code> (for example <code>NicheFoo</code>) is merged and given a group map, not only <code>Niche&lt;number&gt;</code> keys. <code>merge_niches</code> does the same over <code>obsm</code> keys.</li>
+</ul>
+</section>
+<section id="fit-design-and-slopes" class="level2">
+<h2 class="anchored" data-anchor-id="fit-design-and-slopes">Fit: design and slopes</h2>
+<ul>
+<li><strong>Constant-column test in <code>_niche_columns</code>.</strong> R’s <code>var</code> accumulates in long double, so a niche column of identical values has variance exactly 0 and is dropped. <code>_design._colvar</code> does the same (long double, two-pass mean); a plain double mean can leave about 1e-33 and keep the column.</li>
+<li><strong><code>_partial_block</code> singularity.</strong> R’s <code>solve</code> fails when the reciprocal condition number of <code>Z'WZ</code> (LAPACK <code>dgecon</code> estimate) is below machine epsilon, and the block is then skipped (<code>NULL</code>). We compute the exact 1-norm reciprocal condition number from the inverse and apply the same threshold; the two can disagree only for blocks within a few percent of that threshold.</li>
+<li><strong><code>r2</code> of the depth blocks.</strong> R uses <code>lm.fit</code> (pivoted QR, tolerance 1e-7) for the R^2 of a niche column on a patient’s block; we use <code>numpy.linalg.lstsq</code>. They agree whenever the block has full column rank (it does for the sections whose df rule applies); a numerically rank-deficient block could drop different directions.</li>
+</ul>
+</section>
+<section id="limma-and-empirical-bayes-moderation" class="level2">
+<h2 class="anchored" data-anchor-id="limma-and-empirical-bayes-moderation">limma and empirical-Bayes moderation</h2>
+<ul>
+<li><strong><code>fitFDistUnequalDF1</code> with exactly two informative genes.</strong> R sets <code>prior.weights &lt;- NULL</code> after having set its <code>PriorWeights</code> flag, so when NA or tiny-df genes are also present the weighted branch runs on NULL weights: the prior scale is <code>0/0 = NaN</code> and the objective is identically 0, so <code>optimize</code> returns the value of a flat search. Matched (<code>scale = nan</code>, same <code>df2</code>); the posterior variances are then all <code>nan</code>, as in R.</li>
+<li><strong>limma <code>weightedLowess</code>.</strong> <code>_limma._weighted_lowess</code> is a port of <code>weighted_lowess.c</code> from limma 3.66.0 (Bioconductor RELEASE_3_22). The window search is vectorised (other points sorted by distance, right side first on ties, then a cumulative sum in the same order of additions) instead of growing the window point by point; results agree with R to rounding, including on tied x. <code>rsort_with_index</code> ties among equal residuals are broken stably (only affects the robustness-iteration median when residuals tie exactly). The equal-weights branch of <code>loessFit</code> (plain <code>lowess</code>) is not ported: it cannot occur from <code>fitFDistUnequalDF1</code>.</li>
+<li><strong><code>eBayes</code> outputs not computed.</strong> <code>var.prior</code>, <code>lods</code> and the <code>F</code> statistics (<code>tmixture.matrix</code>, <code>classifyTestsF</code>) are not read by spiDE and are not returned; <code>lmFit</code>’s <code>cat("Coefficients not estimable")</code> message is not printed (aliased coefficients are <code>nan</code>).</li>
+<li><strong>Unequal-df prior to ~1e-9.</strong> <code>fitFDistUnequalDF1</code> finds <code>df2</code> by Brent’s method (R <code>optimize</code>) on a sum that R accumulates in long double and numpy in double, so <code>df.prior</code> agrees with R to about 1e-9 relative, not to machine precision.</li>
+<li><strong>Robust <code>fitFDistUnequalDF1</code> drops <code>span</code> in its refit.</strong> R refits with prior weights through <code>Recall(x, df1, covariate, robust = FALSE, prior.weights = FDR)</code>, which omits <code>span</code>, so the refit trend always uses the default <code>chooseLowessSpan(n, small.n = 500)</code>. We do the same.</li>
+<li><strong>Robust fits with tied F statistics.</strong> <code>fitFDistRobustly</code> ranks the F statistics for <code>prob.outlier</code>. When a trend interpolates several genes exactly their statistics tie up to rounding noise (about 1e-16) and the ranks, hence <code>prob.outlier</code> and <code>df2.shrunk</code> of those genes, depend on the last bits (R and numpy can differ). Not matched beyond rounding.</li>
+<li><strong><code>qf</code> with <code>log.p</code>.</strong> <code>fitFDistRobustly</code> with unequal <code>df1</code> calls <code>qf(..., log.p = TRUE)</code>; scipy has no log-scale quantile, so we use <code>exp(logp)</code> first. Identical unless the tail probability underflows (about 1e-308).</li>
+<li><strong><code>fitFDistRobustly</code> with two variances</strong> returns <code>fitFDist</code>’s result without <code>df2.shrunk</code>, as R does; reaching that after set-aside genes fails in R (<code>replacement has length zero</code>) and raises <code>ValueError</code> here.</li>
+<li><strong><code>.pooledColumnTest</code> robust-to-non-robust fallback.</strong> R wraps <code>eBayes(robust = TRUE)</code> in <code>tryCatch</code> and, on failure, retries with <code>robust = FALSE</code>. The helper <code>eb()</code> reads the free variable <code>fit</code>, and <code>fit &lt;- eb(TRUE)</code> has just overwritten it with <code>NULL</code>, so the retry runs <code>eBayes(NULL)</code>, fails, and the whole column is NA. <code>_pooled_column_test</code> reproduces this: a failed robust prior leaves every row of the column NA (no retry). Unit-tested with a failing <code>e_bayes</code>; no reference fixture reaches it.</li>
+<li><strong>Tie noise in limma’s robust prior on small gene families.</strong> With a handful of genes whose residuals from the expression trend are exactly zero, their F statistics tie up to rounding (1e-16) and <code>fitFDistRobustly</code> ranks, hence the shrunk prior df, depend on that noise: a 1e-15 relative perturbation of the residual variances moves <code>df.prior</code> of the tied genes by up to 1e-2 in Python, and R’s own value is one such draw. On the end-to-end slopes fixture (<code>toyspe_s16_n150_g12_seed7</code>, index A, niche B, 12 genes) the pooled se/t/df/p differ from R by up to 1e-5 / 1e-3 / 6e-4 although every input to the test is identical to 1e-14. Not fixable (R’s draw depends on its BLAS rounding); tests compare those rows at 2e-2 (0.53% was seen between numpy / BLAS builds).</li>
+</ul>
+</section>
+<section id="toy-data" class="level2">
+<h2 class="anchored" data-anchor-id="toy-data">Toy data</h2>
+<ul>
+<li><strong>Toy-data simulators.</strong> R’s <code>.toySPE()</code>, <code>.toyNiche()</code> and <code>.toyClustered()</code> seed R’s Mersenne-Twister; <code>simulate_toy()</code>, <code>simulate_niche()</code> and <code>simulate_clustered()</code> use the same generative model with <code>numpy.random.default_rng(seed)</code>, so a given <code>seed</code> gives a different data set from R’s (R’s draws cannot be reproduced). The planted effect is the same but its statistical power is draw-dependent (R’s seed 7 is a favourable draw; here seed 4 is for the same design). Neither touches the global RNG. They return AnnData (the layout <code>load_spe</code> builds from R’s SpatialExperiment) with plain-string <code>sample_id</code>, <code>condition</code> and <code>cell_type</code> and float counts. <code>toy_spide()</code> is R’s own <code>toySpiDE</code> object, not a simulation; its text columns are returned as strings rather than the categories stored in the bundled file.</li>
+<li><strong><code>.toyNiche()</code> and <code>.toyClustered()</code> are gone from R.</strong> R dropped the originals of these two internal simulators in c8db60a (the simplification pass). spidepy keeps their ports, <code>simulate_niche()</code> and <code>simulate_clustered()</code>, as public toy-data helpers; they no longer have an R original to be compared with, and <code>simulate_toy()</code> (R’s <code>.toySPE()</code>) is still the one with a counterpart.</li>
+</ul>
+</section>
+<section id="plots" class="level2">
+<h2 class="anchored" data-anchor-id="plots">Plots</h2>
+<ul>
+<li><strong>Plots return matplotlib figures, not ggplot objects.</strong> <code>plot_niche_map</code> and <code>plot_niche_response</code> return a <code>Figure</code>; R’s <code>p$data</code> and layer data are available from the private builders <code>_niche_map_data</code> and <code>_niche_response_data</code> (a dict: <code>data</code>, and <code>summary</code> and <code>lines</code> or <code>centroids</code>), which keep R’s column names, row order and plotmath <code>gene_lab</code> strings. Panels are boxed titles (not full-width strips), legends are two stacked legends placed by hand, and <code>scale_y_log10</code> labels use a comma for thousands via a formatter; pixel identity is not a goal.</li>
+<li><strong>R’s <code>message()</code> in <code>plotNicheResponse</code>.</strong> “G2 not fitted in A, left out” is an unconditional <code>message()</code> in R; <code>plot_niche_response</code> emits it as a <code>UserWarning</code> so callers can catch it.</li>
+<li><strong><code>.fmtq</code> pads <code>q = 1</code>.</strong> <code>formatC(1, digits = 2, format = "g")</code> returns <code>"  1"</code> (padded to three characters); <code>_fmt_q</code> reproduces it.</li>
+<li><strong>Plotted counts are dense.</strong> <code>_index_cell_data</code> returns the plotted genes’ counts as a dense genes x cells array (R keeps a sparse subset); only the requested genes are ever extracted.</li>
+<li><strong>Italic gene labels.</strong> R plotmath (<code>italic("G1")</code>) becomes mathtext (<code>$\mathit{G1}$</code>) with each non-alphanumeric character set in <code>\text{}</code> (a bare <code>-</code> would render as a spaced minus sign), so names with <code>_ - " \ $ { } % # &amp; ^</code> print as written.</li>
+<li><strong><code>plotPValues</code> row order follows <code>merge()</code>’s unstable tie order.</strong> R’s <code>merge(tab, bands, by = c("gene", "index"))</code> sorts the matches of each key with an unstable shell sort (<code>isort_with_index</code>), so the rows of one (gene, index) are not in table order. <code>_isort_with_index</code> reproduces that sort, so <code>p$data</code> has R’s row order; the histograms do not depend on it.</li>
+<li><strong>Clustered heatmap rows.</strong> <code>hclust(dist(m))$order</code> is reproduced from scipy’s complete-linkage merges (singleton before cluster, lower-numbered cluster first, leaves read left to right); only exact distance ties could differ.</li>
+<li><strong>Spillover labels.</strong> R places them with <code>ggrepel</code> (<code>seed = 1</code>); matplotlib has no equivalent and <code>ggrepel</code> is optional in R. Labels are right-aligned at <code>log2(fold) - 0.4</code>, pushed apart vertically, with a segment to the point. Which markers are labelled (largest <code>|z|</code>) is R’s.</li>
+<li><strong><code>marker</code> with a missing fold.</strong> R’s <code>marker</code> is <code>NA</code> where the fold is <code>NA</code>; here it is <code>False</code> (the fold of a gene is only <code>NA</code> when the gene is missing from the object, which is an error).</li>
+<li><strong>Principal-component signs.</strong> <code>prcomp</code> and numpy’s SVD may flip a component; only magnitudes (and adjusted R^2, which is sign invariant) are compared with R.</li>
+<li><strong>The call graph’s edges.</strong> <code>geom_curve(curvature = 0.22)</code> becomes a matplotlib <code>arc3</code> arrow; the drawn curvature and arrow heads are approximate, the edge data are R’s.</li>
+<li><strong>Patient-slope x breaks.</strong> R’s <code>scales::breaks_extended(n = 3)</code> (Wilkinson’s extended algorithm) becomes matplotlib’s <code>MaxNLocator(nbins = 3)</code>; the tick positions can differ, the plotted values do not.</li>
+<li><strong>Spillover threshold label.</strong> R nudges it with <code>hjust = 1.05</code>; here it is plainly right-aligned at the fold threshold, so it sits a few points closer to the line.</li>
+</ul>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/bhuvalab\.github\.io\/spiDE");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+<p>GPL (&gt;= 3) licence. Built with <a href="https://quarto.org">Quarto</a>.</p>
+</div>   
+    <div class="nav-footer-center">
+      <ul class="footer-items list-unstyled">
+    <li class="nav-item">
+    <a class="nav-link" href="https://github.com/BhuvaLab/spiDE">
+<p>spiDE (R)</p>
+</a>
+  </li>  
+    <li class="nav-item">
+    <a class="nav-link" href="https://github.com/BhuvaLab/spidepy">
+<p>spidepy (Python)</p>
+</a>
+  </li>  
+</ul>
+    </div>
+    <div class="nav-footer-right">
+<p>Neighbourhood-dependent differential expression</p>
+</div>
+  </div>
+</footer>
+
+
+
+
+</body></html>

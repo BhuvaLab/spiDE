@@ -81,7 +81,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../../site_libs/quarto-html/quarto-syntax-highlighting-7ef3a5617493e07f253f88e7bef5c60f.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap-2ad0c9cee5de03d6504be9ac3131b32b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-0e8b588de7367b1ec620c9d64b30b97a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -190,6 +190,10 @@ window.Quarto = {
     <a class="nav-link" href="../../get-started.html"> 
 <span class="menu-text">Get started</span></a>
   </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../python-tutorial.html"> 
+<span class="menu-text">Python tutorial</span></a>
+  </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-articles" role="link" data-bs-toggle="dropdown" aria-expanded="false">
  <span class="menu-text">Articles</span>
@@ -209,9 +213,24 @@ window.Quarto = {
   </li>  
     </ul>
   </li>
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-reference" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Reference</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-reference">    
+        <li>
+    <a class="dropdown-item" href="../../reference/r/index.html">
+ <span class="dropdown-text">R</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../reference/python/index.html">
+ <span class="dropdown-text">Python</span></a>
+  </li>  
+    </ul>
+  </li>
   <li class="nav-item">
-    <a class="nav-link" href="../../reference/r/index.html"> 
-<span class="menu-text">Reference</span></a>
+    <a class="nav-link" href="../../r-vs-python.html"> 
+<span class="menu-text">R vs Python</span></a>
   </li>  
   <li class="nav-item">
     <a class="nav-link" href="../../news.html"> 
@@ -219,11 +238,23 @@ window.Quarto = {
   </li>  
 </ul>
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
-  <li class="nav-item">
-    <a class="nav-link" href="https://github.com/BhuvaLab/spiDE"> <i class="bi bi-github" role="img">
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-github" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+      <i class="bi bi-github" role="img">
 </i> 
-<span class="menu-text">GitHub</span></a>
+ <span class="menu-text">GitHub</span>
+    </a>
+    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-menu-github">    
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spiDE">
+ <span class="dropdown-text">spiDE (R)</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spidepy">
+ <span class="dropdown-text">spidepy (Python)</span></a>
+  </li>  
+    </ul>
+  </li>
 </ul>
           </div> <!-- /navcollapse -->
             <div class="quarto-navbar-tools">
@@ -445,11 +476,25 @@ report progress.
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">data</span>(toySpiDE)</span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>spe <span class="ot">&lt;-</span> <span class="fu">buildNiches</span>(toySpiDE, <span class="at">sigma =</span> <span class="dv">30</span>)</span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>na <span class="ot">&lt;-</span> <span class="fu">testNicheAbundance</span>(spe, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>)</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(na[<span class="fu">order</span>(na<span class="sc">$</span>p), ])</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>sets <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="at">first =</span> <span class="fu">paste0</span>(<span class="st">"G"</span>, <span class="dv">1</span><span class="sc">:</span><span class="dv">6</span>), <span class="at">second =</span> <span class="fu">paste0</span>(<span class="st">"G"</span>, <span class="dv">7</span><span class="sc">:</span><span class="dv">12</span>))</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>nas <span class="ot">&lt;-</span> <span class="fu">testNicheAbundance</span>(spe, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>,</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>                          <span class="at">genesets =</span> sets, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(nas)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(na[<span class="fu">order</span>(na<span class="sc">$</span>p), ])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["gene"],"name":[1],"type":["chr"],"align":["left"]},{"label":["index"],"name":[2],"type":["chr"],"align":["left"]},{"label":["niche"],"name":[3],"type":["chr"],"align":["left"]},{"label":["term"],"name":[4],"type":["chr"],"align":["left"]},{"label":["estimate"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["t"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["p"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["n_patients"],"name":[8],"type":["int"],"align":["right"]},{"label":["leverage"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["downweighted"],"name":[10],"type":["int"],"align":["right"]},{"label":["q"],"name":[11],"type":["dbl"],"align":["right"]},{"label":["q.global"],"name":[12],"type":["dbl"],"align":["right"]}],"data":[{"1":"G7","2":"C","3":"B","4":"niche","5":"-8.047519","6":"-2.829034","7":"0.01129863","8":"16","9":"2.424971","10":"0","11":"0.2259727","12":"0.6562447","_rn_":"207"},{"1":"G9","2":"B","3":"A","4":"niche","5":"-1.407181","6":"-2.642501","7":"0.01864949","8":"16","9":"2.769546","10":"0","11":"0.3729898","12":"0.6562447","_rn_":"89"},{"1":"G14","2":"C","3":"A","4":"niche","5":"-4.148308","6":"-2.504418","7":"0.02218219","8":"16","9":"3.253303","10":"1","11":"0.4436439","12":"0.6562447","_rn_":"174"},{"1":"G1","2":"A","3":"C","4":"niche","5":"-1.450265","6":"-2.492275","7":"0.02406672","8":"16","9":"1.824812","10":"0","11":"0.2187482","12":"0.6562447","_rn_":"41"},{"1":"G18","2":"A","3":"C","4":"niche","5":"3.312332","6":"2.382365","7":"0.03035094","8":"16","9":"1.824812","10":"0","11":"0.2187482","12":"0.6562447","_rn_":"58"},{"1":"G8","2":"A","3":"C","4":"niche","5":"3.460477","6":"2.342706","7":"0.03281223","8":"16","9":"1.824812","10":"0","11":"0.2187482","12":"0.6562447","_rn_":"48"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>sets <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="at">first =</span> <span class="fu">paste0</span>(<span class="st">"G"</span>, <span class="dv">1</span><span class="sc">:</span><span class="dv">6</span>), <span class="at">second =</span> <span class="fu">paste0</span>(<span class="st">"G"</span>, <span class="dv">7</span><span class="sc">:</span><span class="dv">12</span>))</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>nas <span class="ot">&lt;-</span> <span class="fu">testNicheAbundance</span>(spe, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>                          <span class="at">genesets =</span> sets, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(nas)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["set"],"name":[1],"type":["chr"],"align":["left"]},{"label":["size"],"name":[2],"type":["int"],"align":["right"]},{"label":["index"],"name":[3],"type":["chr"],"align":["left"]},{"label":["niche"],"name":[4],"type":["chr"],"align":["left"]},{"label":["term"],"name":[5],"type":["chr"],"align":["left"]},{"label":["estimate"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["t"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["p"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["n_patients"],"name":[9],"type":["int"],"align":["right"]},{"label":["leverage"],"name":[10],"type":["dbl"],"align":["right"]},{"label":["downweighted"],"name":[11],"type":["int"],"align":["right"]},{"label":["q"],"name":[12],"type":["dbl"],"align":["right"]},{"label":["q.global"],"name":[13],"type":["dbl"],"align":["right"]},{"label":["direction"],"name":[14],"type":["chr"],"align":["left"]}],"data":[{"1":"first","2":"6","3":"A","4":"B","5":"niche","6":"-2.80530064","7":"-0.85762420","8":"0.4079026","9":"16","10":"3.140745","11":"1","12":"0.4079026","13":"0.6498961","14":"down","_rn_":"1"},{"1":"second","2":"6","3":"A","4":"B","5":"niche","6":"2.69536887","7":"1.04543071","8":"0.3164263","9":"16","10":"3.140745","11":"1","12":"0.4079026","13":"0.6328526","14":"up","_rn_":"2"},{"1":"first","2":"6","3":"A","4":"B","5":"condition:niche","6":"0.70261140","7":"0.10739964","8":"0.9162467","9":"16","10":"3.140745","11":"1","12":"0.9919921","13":"0.9919921","14":"up","_rn_":"3"},{"1":"second","2":"6","3":"A","4":"B","5":"condition:niche","6":"0.05284169","7":"0.01024764","8":"0.9919921","9":"16","10":"3.140745","11":"1","12":"0.9919921","13":"0.9919921","14":"up","_rn_":"4"},{"1":"first","2":"6","3":"A","4":"C","5":"niche","6":"-2.33346959","7":"-1.09221589","8":"0.2961813","9":"16","10":"1.824812","11":"0","12":"0.2961813","13":"0.6328526","14":"down","_rn_":"5"},{"1":"second","2":"6","3":"A","4":"C","5":"niche","6":"2.46480539","7":"1.47418280","8":"0.1661773","9":"16","10":"1.824812","11":"0","12":"0.2961813","13":"0.6328526","14":"up","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+</div>
 </div>
 
 
@@ -871,8 +916,8 @@ report progress.
 </a>
   </li>  
     <li class="nav-item">
-    <a class="nav-link" href="https://github.com/BhuvaLab/SpaNorm">
-<p>SpaNorm (R)</p>
+    <a class="nav-link" href="https://github.com/BhuvaLab/spidepy">
+<p>spidepy (Python)</p>
 </a>
   </li>  
 </ul>

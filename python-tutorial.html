@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Neighbourhood-dependent differential expression with spidepy – spiDE</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<link href="./logo.png" rel="icon" type="image/png">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-7ef3a5617493e07f253f88e7bef5c60f.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-0e8b588de7367b1ec620c9d64b30b97a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<style>
+
+      .quarto-title-block .quarto-title-banner h1,
+      .quarto-title-block .quarto-title-banner h2,
+      .quarto-title-block .quarto-title-banner h3,
+      .quarto-title-block .quarto-title-banner h4,
+      .quarto-title-block .quarto-title-banner h5,
+      .quarto-title-block .quarto-title-banner h6
+      {
+        color: #ffffff;
+      }
+
+      .quarto-title-block .quarto-title-banner {
+        color: #ffffff;
+background: #2A0E52;
+      }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top quarto-banner">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="./index.html" class="navbar-brand navbar-brand-logo">
+    <img src="./logo.png" alt="" class="navbar-logo light-content">
+    <img src="./logo.png" alt="" class="navbar-logo dark-content">
+    </a>
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">spiDE</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="./index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./get-started.html"> 
+<span class="menu-text">Get started</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="./python-tutorial.html" aria-current="page"> 
+<span class="menu-text">Python tutorial</span></a>
+  </li>  
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-articles" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Articles</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-articles">    
+        <li>
+    <a class="dropdown-item" href="./articles/spiDE-model.html">
+ <span class="dropdown-text">The spiDE model</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./articles/spiDE-design.html">
+ <span class="dropdown-text">Designing a study</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./articles/spiDE-calibration.html">
+ <span class="dropdown-text">Validation: calibration and accuracy</span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-reference" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Reference</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-reference">    
+        <li>
+    <a class="dropdown-item" href="./reference/r/index.html">
+ <span class="dropdown-text">R</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./reference/python/index.html">
+ <span class="dropdown-text">Python</span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="./r-vs-python.html"> 
+<span class="menu-text">R vs Python</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./news.html"> 
+<span class="menu-text">News</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-github" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+      <i class="bi bi-github" role="img">
+</i> 
+ <span class="menu-text">GitHub</span>
+    </a>
+    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-menu-github">    
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spiDE">
+ <span class="dropdown-text">spiDE (R)</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spidepy">
+ <span class="dropdown-text">spidepy (Python)</span></a>
+  </li>  
+    </ul>
+  </li>
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<header id="title-block-header" class="quarto-title-block default page-columns page-full">
+  <div class="quarto-title-banner page-columns page-full">
+    <div class="quarto-title column-body">
+      <h1 class="title">Neighbourhood-dependent differential expression with spidepy</h1>
+                      </div>
+  </div>
+    
+  
+  <div class="quarto-title-meta">
+
+      
+    
+      
+    </div>
+    
+  
+  </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul class="collapse">
+  <li><a href="#load-the-data" id="toc-load-the-data" class="nav-link active" data-scroll-target="#load-the-data">Load the data</a></li>
+  <li><a href="#build-the-niches" id="toc-build-the-niches" class="nav-link" data-scroll-target="#build-the-niches">Build the niches</a></li>
+  <li><a href="#fit-the-model" id="toc-fit-the-model" class="nav-link" data-scroll-target="#fit-the-model">Fit the model</a></li>
+  <li><a href="#test-the-slopes" id="toc-test-the-slopes" class="nav-link" data-scroll-target="#test-the-slopes">Test the slopes</a></li>
+  <li><a href="#look-at-the-patients-behind-a-result" id="toc-look-at-the-patients-behind-a-result" class="nav-link" data-scroll-target="#look-at-the-patients-behind-a-result">Look at the patients behind a result</a></li>
+  <li><a href="#test-gene-sets" id="toc-test-gene-sets" class="nav-link" data-scroll-target="#test-gene-sets">Test gene sets</a></li>
+  <li><a href="#a-different-question-niche-abundance" id="toc-a-different-question-niche-abundance" class="nav-link" data-scroll-target="#a-different-question-niche-abundance">A different question: niche abundance</a></li>
+  <li><a href="#plots" id="toc-plots" class="nav-link" data-scroll-target="#plots">Plots</a></li>
+  <li><a href="#practicalities" id="toc-practicalities" class="nav-link" data-scroll-target="#practicalities">Practicalities</a></li>
+  <li><a href="#session-information" id="toc-session-information" class="nav-link" data-scroll-target="#session-information">Session information</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content quarto-banner-title-block" id="quarto-document-content">
+
+
+
+
+
+<p>This walk-through follows the “Getting started” article of <a href="https://github.com/BhuvaLab/spiDE">spiDE</a> (R commit <code>c8db60a</code>) section by section on its shipped example (<code>toy_spide()</code>), using spidepy.</p>
+<p><code>spidepy</code> finds <strong>neighbourhood-dependent differential expression</strong> in spatial transcriptomics. Within an <em>index</em> cell type, it asks whether a gene’s expression changes with the local density (the <em>niche</em>) of another cell type. One hypothesis is one (gene, index type, niche type) <em>triplet</em>, and two questions are asked of it:</p>
+<ul>
+<li><strong>the pooled test</strong>: within patients, does the gene’s expression in the index type change with the density of the niche type, consistently across patients?</li>
+<li><strong>the condition test</strong>: does that dependence differ between two conditions (for example responders and non-responders)?</li>
+</ul>
+<p>Both are questions about patients. The condition is a property of a patient, not of a cell, so the patient is the unit of replication: a triplet’s evidence is the variation of its niche slope <em>between</em> patients, never the number of cells.</p>
+<p>Both tests look at slopes <em>within</em> patients. A condition that only shifts a gene’s overall level, or only changes how much of a cell type patients have, is not tested here (those are questions for pseudobulk differential expression and composition analysis). Between-patient association with a niche is tested separately by <code>test_niche_abundance()</code>.</p>
+<p>There are three steps:</p>
+<ol type="1">
+<li><strong>Niches</strong>: <code>build_niches()</code> computes, per sample, a Gaussian kernel density of every cell type at every cell.</li>
+<li><strong>Fit</strong>: <code>fit_spide()</code> fits, for each index cell type, one negative binomial GLM per gene on the niche densities with an intercept per patient, so each niche coefficient is a within-patient slope.</li>
+<li><strong>Test</strong>: <code>test_spide()</code> tests those slopes across patients. It always runs the pooled test, and runs the condition test when it has a condition.</li>
+</ol>
+<p><code>spide()</code> runs all three.</p>
+<div id="27cdddd6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:08.333246Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:08.333080Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:14.437891Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:14.437297Z&quot;}}" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="op">%</span>matplotlib inline</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> IPython.display <span class="im">import</span> display</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> spidepy <span class="im">as</span> sp</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>matplotlib.rcParams[<span class="st">"figure.dpi"</span>] <span class="op">=</span> <span class="dv">90</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<section id="load-the-data" class="level2">
+<h2 class="anchored" data-anchor-id="load-the-data">Load the data</h2>
+<p>spidepy needs an <code>AnnData</code> with</p>
+<ul>
+<li><strong>raw integer counts</strong> (in <code>layers["counts"]</code> here; <code>assay=</code> names another layer, and <code>"X"</code> uses <code>adata.X</code>);</li>
+<li>a <strong>cell type</strong> per cell (<code>obs["cell_type"]</code>);</li>
+<li>a <strong>patient</strong> per cell (<code>obs["sample_id"]</code>). One sample per patient: if a patient has several sections, give the patient in <code>sample_id</code> and the section in <code>section=</code>, so the spatial variance is estimated per section;</li>
+<li>spatial coordinates in <code>obsm["spatial"]</code>;</li>
+<li>for the condition test, a <strong>two-level condition that is constant within a patient</strong>.</li>
+</ul>
+<p>The example has 16 patients (eight responders, eight non-responders), three cell types and 20 genes. It plants one effect: gene <code>G1</code> is up-regulated in index type <code>A</code>, in responders only, in proportion to the local density of niche type <code>B</code>.</p>
+<div id="82b0afda" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:14.440293Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:14.439758Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:14.476883Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:14.476253Z&quot;}}" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>adata <span class="op">=</span> sp.datasets.toy_spide()</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(adata)</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>patients <span class="op">=</span> adata.obs[[<span class="st">"sample_id"</span>, <span class="st">"condition"</span>]].drop_duplicates()</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(patients[<span class="st">"condition"</span>].value_counts())</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(adata.obs[<span class="st">"cell_type"</span>].value_counts())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>AnnData object with n_obs × n_vars = 2400 × 20
+    obs: 'sample_id', 'condition', 'x', 'y', 'cell_type', 'Age', 'cell_id', 'Area', 'nCount'
+    uns: 'r_call', 'r_dim'
+    obsm: 'spatial'
+    layers: 'counts', None (.X)
+condition
+Responder        8
+Non-responder    8
+Name: count, dtype: int64
+cell_type
+C    861
+A    813
+B    726
+Name: count, dtype: int64</code></pre>
+</div>
+</div>
+</section>
+<section id="build-the-niches" class="level2">
+<h2 class="anchored" data-anchor-id="build-the-niches">Build the niches</h2>
+<p><code>build_niches()</code> places a smooth bump, a Gaussian kernel, on every cell of a given type and adds the bumps up, giving a density of each cell type at every cell: how much of that type there is nearby. The width of the bump, <code>sigma</code>, is the <em>bandwidth</em>, in the units of the spatial coordinates. Each density matrix is stored in <code>obsm</code> under <code>Niche&lt;sigma&gt;</code>. It works in place unless <code>copy=True</code>.</p>
+<div id="24fe1902" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:14.478658Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:14.478440Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:14.510528Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:14.509780Z&quot;}}" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>sp.build_niches(adata, sigma<span class="op">=</span><span class="dv">30</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>adata.obsm[<span class="st">"Niche30"</span>].head(<span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">A</th>
+<th data-quarto-table-cell-role="th">B</th>
+<th data-quarto-table-cell-role="th">C</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">cell1</th>
+<td>0.656945</td>
+<td>1.471217</td>
+<td>0.294722</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">cell2</th>
+<td>1.412475</td>
+<td>0.000353</td>
+<td>1.244943</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">cell3</th>
+<td>0.735279</td>
+<td>0.000000</td>
+<td>1.418453</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<section id="choose-a-bandwidth" class="level3">
+<h3 class="anchored" data-anchor-id="choose-a-bandwidth">Choose a bandwidth</h3>
+<p>The bandwidth sets what we mean by a neighbourhood. A small bandwidth looks at the immediate neighbours of a cell, and a large one at the tissue around it. A good bandwidth gives a niche map that is neither speckled nor flat. We can look at the density of niche type <code>B</code> in one sample at two bandwidths and judge by eye (<code>copy=True</code> leaves <code>adata</code> with the bandwidth 30 only):</p>
+<div id="d7fb9acf" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:14.512366Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:14.512154Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:14.783330Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:14.782834Z&quot;}}" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>adata10 <span class="op">=</span> sp.build_niches(adata, sigma<span class="op">=</span><span class="dv">10</span>, copy<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>display(sp.pl.plot_niche_map(adata10, niche<span class="op">=</span><span class="st">"B"</span>, sample<span class="op">=</span><span class="st">"S1"</span>, index<span class="op">=</span><span class="st">"A"</span>, sigma<span class="op">=</span><span class="dv">10</span>))</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>display(sp.pl.plot_niche_map(adata10, niche<span class="op">=</span><span class="st">"B"</span>, sample<span class="op">=</span><span class="st">"S1"</span>, index<span class="op">=</span><span class="st">"A"</span>, sigma<span class="op">=</span><span class="dv">30</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="python-tutorial_files/figure-html/cell-5-output-1.png" width="472" height="409" class="figure-img"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="python-tutorial_files/figure-html/cell-5-output-2.png" width="472" height="409" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>At the smaller bandwidth most cells have no niche cell of type <code>B</code> within reach and the density is zero, so the map is speckled by the position of single cells. At the larger one the density varies smoothly across the section, and we can see where <code>B</code> cells are concentrated. We use 30 for the rest of this article. For real data, choose the bandwidth from what you know about the biology, such as the distance over which cells signal to one another, and from maps like these. <code>merge_niches()</code> can pool several cell types into one niche group (all lymphocytes, say) before fitting. spidepy never tests an index type against its own niche, merged or not.</p>
+</section>
+</section>
+<section id="fit-the-model" class="level2">
+<h2 class="anchored" data-anchor-id="fit-the-model">Fit the model</h2>
+<p><code>fit_spide()</code> takes the object with its niches, the bandwidth to use and, if we want to test a condition, the name of the condition column. By default it fits every index type with at least <code>min_cells</code> cells in at least <code>min_patients</code> patients (<code>index</code> restricts it), and tests every other cell type as a niche (<code>niche</code> restricts it; the others stay in the model as adjustments). Genes detected in fewer than <code>min_detect</code> of an index type’s cells are not tested in it. Sequencing depth enters as the centred log library size of each cell (<code>depth="loglib"</code>); cell-level covariates are added with <code>covariates</code>.</p>
+<div id="4b58d090" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:14.784871Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:14.784740Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:15.344923Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:15.344385Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>fit <span class="op">=</span> sp.fit_spide(adata, condition<span class="op">=</span><span class="st">"condition"</span>, sigma<span class="op">=</span><span class="dv">30</span>, verbose<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>fit</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre><code>SpiDEFit (slopes engine), bandwidth 30
+  16 patients; condition: condition
+  index A: 20 genes x 2 niches (B, C)
+  index B: 20 genes x 2 niches (A, C)
+  index C: 20 genes x 2 niches (A, B)</code></pre>
+</div>
+</div>
+<p><code>engine</code> chooses how the between-patient error is estimated:</p>
+<ul>
+<li><strong><code>"slopes"</code></strong> (the default) fits the model once, without the condition, then estimates every patient’s own niche slopes, each with a variance that allows for spatially correlated cells. <code>test_spide()</code> combines them across patients, allowing the slope to vary between patients. Because the fit never sees the condition, any patient-level condition can be tested afterwards, and a permutation of the condition reruns only the test.</li>
+<li><strong><code>"sandwich"</code></strong> fits the condition-specific model directly and tests its coefficients with a patient-clustered sandwich standard error. It needs the condition at fit time.</li>
+</ul>
+<p>The slopes engine is the more powerful, most of all when effects vary between patients, and it is needed for <code>spi_gsea()</code>.</p>
+</section>
+<section id="test-the-slopes" class="level2">
+<h2 class="anchored" data-anchor-id="test-the-slopes">Test the slopes</h2>
+<p><code>test_spide()</code> combines the patients’ slopes. It always runs the pooled test, and it runs the condition-specific test when a condition is available, here the one recorded by <code>fit_spide()</code>. A condition can also be given to <code>test_spide()</code> directly. It returns a <code>SpiDEResults</code>; <code>results()</code> gives its tables.</p>
+<div id="8ac2f5e8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:15.346295Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:15.346145Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:15.405818Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:15.405083Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>res <span class="op">=</span> sp.test_spide(fit)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(res)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>SpiDEResults (slopes engine)
+  pooled across patients: 120 tests, 2 at FDR 0.05
+  condition-specific (Responder - Non-responder; pooled_or_heterogeneity family): 2 tests, 1 at FDR 0.05</code></pre>
+</div>
+</div>
+<section id="the-pooled-test" class="level3">
+<h3 class="anchored" data-anchor-id="the-pooled-test">The pooled test</h3>
+<p>The pooled results are a table with one row per triplet. <code>estimate</code> is the average within-patient slope on the natural-log scale per unit of the log1p niche density, <code>t</code> and <code>p</code> are the test statistic and its p-value, and <code>q</code> is the q-value after a Benjamini-Hochberg correction over every triplet.</p>
+<div id="fe3412a2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:15.407409Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:15.407253Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:15.415812Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:15.415325Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>sp.results(res, test<span class="op">=</span><span class="st">"pooled"</span>).head()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">gene</th>
+<th data-quarto-table-cell-role="th">index</th>
+<th data-quarto-table-cell-role="th">niche</th>
+<th data-quarto-table-cell-role="th">test</th>
+<th data-quarto-table-cell-role="th">estimate</th>
+<th data-quarto-table-cell-role="th">se</th>
+<th data-quarto-table-cell-role="th">t</th>
+<th data-quarto-table-cell-role="th">df</th>
+<th data-quarto-table-cell-role="th">p</th>
+<th data-quarto-table-cell-role="th">n_patients</th>
+<th data-quarto-table-cell-role="th">p.heterogeneity</th>
+<th data-quarto-table-cell-role="th">q</th>
+<th data-quarto-table-cell-role="th">in_family</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>G1</td>
+<td>A</td>
+<td>B</td>
+<td>pooled</td>
+<td>0.388137</td>
+<td>0.056796</td>
+<td>6.833884</td>
+<td>238.200655</td>
+<td>6.861903e-11</td>
+<td>16.0</td>
+<td>0.554557</td>
+<td>8.234284e-09</td>
+<td>True</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>G9</td>
+<td>A</td>
+<td>B</td>
+<td>pooled</td>
+<td>-0.410807</td>
+<td>0.096407</td>
+<td>-4.261157</td>
+<td>275.751771</td>
+<td>2.794132e-05</td>
+<td>16.0</td>
+<td>0.254027</td>
+<td>1.676479e-03</td>
+<td>True</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>G8</td>
+<td>B</td>
+<td>C</td>
+<td>pooled</td>
+<td>-1.011057</td>
+<td>0.313747</td>
+<td>-3.222522</td>
+<td>278.860951</td>
+<td>1.421456e-03</td>
+<td>16.0</td>
+<td>0.103677</td>
+<td>5.685822e-02</td>
+<td>True</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>G18</td>
+<td>A</td>
+<td>B</td>
+<td>pooled</td>
+<td>-0.459829</td>
+<td>0.172452</td>
+<td>-2.666419</td>
+<td>260.583332</td>
+<td>8.145921e-03</td>
+<td>16.0</td>
+<td>0.884934</td>
+<td>2.443776e-01</td>
+<td>True</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>G2</td>
+<td>A</td>
+<td>B</td>
+<td>pooled</td>
+<td>-0.374695</td>
+<td>0.156733</td>
+<td>-2.390654</td>
+<td>273.314699</td>
+<td>1.749550e-02</td>
+<td>16.0</td>
+<td>0.259633</td>
+<td>4.198921e-01</td>
+<td>True</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>The planted triplet, <code>G1</code> in <code>A</code> against <code>B</code>, comes out as the strongest pooled association. Remember that a pooled call says that, within a patient, index cells with more of the niche type around them express more (or less) of the gene, consistently across patients.</p>
+</section>
+<section id="the-condition-specific-test" class="level3">
+<h3 class="anchored" data-anchor-id="the-condition-specific-test">The condition-specific test</h3>
+<p>The condition-specific table has the same layout. Its <code>estimate</code> is the difference between the conditions in the average slope, the second level minus the first, and <code>res.contrast</code> says which two levels were compared.</p>
+<div id="d4070db8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:15.417135Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:15.416987Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:15.423955Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:15.423471Z&quot;}}" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(res.contrast)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>cond <span class="op">=</span> sp.results(res, test<span class="op">=</span><span class="st">"condition"</span>)</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>cond[cond[<span class="st">"in_family"</span>]]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Responder - Non-responder</code></pre>
+</div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">gene</th>
+<th data-quarto-table-cell-role="th">index</th>
+<th data-quarto-table-cell-role="th">niche</th>
+<th data-quarto-table-cell-role="th">test</th>
+<th data-quarto-table-cell-role="th">estimate</th>
+<th data-quarto-table-cell-role="th">se</th>
+<th data-quarto-table-cell-role="th">t</th>
+<th data-quarto-table-cell-role="th">df</th>
+<th data-quarto-table-cell-role="th">p</th>
+<th data-quarto-table-cell-role="th">n_patients</th>
+<th data-quarto-table-cell-role="th">p.heterogeneity</th>
+<th data-quarto-table-cell-role="th">q</th>
+<th data-quarto-table-cell-role="th">in_family</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">1</th>
+<td>G1</td>
+<td>A</td>
+<td>B</td>
+<td>condition</td>
+<td>0.273114</td>
+<td>0.088514</td>
+<td>3.085553</td>
+<td>11.312847</td>
+<td>0.010056</td>
+<td>16.0</td>
+<td>0.554557</td>
+<td>0.020112</td>
+<td>True</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">33</th>
+<td>G9</td>
+<td>A</td>
+<td>B</td>
+<td>condition</td>
+<td>-0.240882</td>
+<td>0.210066</td>
+<td>-1.146697</td>
+<td>12.844779</td>
+<td>0.272419</td>
+<td>16.0</td>
+<td>0.254027</td>
+<td>0.272419</td>
+<td>True</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>By default (<code>procedure="pooled_or_heterogeneity"</code>) the condition test is carried out only among the triplets that pass the pooled test or whose slopes vary between patients more than their sampling noise allows (<code>p.heterogeneity</code>, Benjamini-Hochberg at <code>fdr</code>). Neither filter looks at the condition, so the family is exact under any relabelling of patients, and the multiplicity correction is spent on triplets with something for the condition to explain. Rows outside the family have <code>q = NaN</code>. <code>procedure="heterogeneity"</code> and <code>procedure="filtered"</code> use one filter each, and <code>procedure="all"</code> tests every triplet.</p>
+<div id="0a4af47f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:15.425042Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:15.424914Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:15.429421Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:15.429029Z&quot;}}" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>pooled <span class="op">=</span> sp.results(res, test<span class="op">=</span><span class="st">"pooled"</span>)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>g1 <span class="op">=</span> cond[(cond[<span class="st">"gene"</span>] <span class="op">==</span> <span class="st">"G1"</span>) <span class="op">&amp;</span> (cond[<span class="st">"index"</span>] <span class="op">==</span> <span class="st">"A"</span>) <span class="op">&amp;</span> (cond[<span class="st">"niche"</span>] <span class="op">==</span> <span class="st">"B"</span>)].iloc[<span class="dv">0</span>]</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"planted triplet: pooled t = </span><span class="sc">{</span>pooled[<span class="st">'t'</span>]<span class="sc">.</span>iloc[<span class="dv">0</span>]<span class="sc">:.2f}</span><span class="ss"> (strongest); "</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>      <span class="ss">f"responders - non-responders = </span><span class="sc">{</span>g1[<span class="st">'estimate'</span>]<span class="sc">:.2f}</span><span class="ss"> log units per unit log1p density, q = </span><span class="sc">{</span>g1[<span class="st">'q'</span>]<span class="sc">:.2g}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>planted triplet: pooled t = 6.83 (strongest); responders - non-responders = 0.27 log units per unit log1p density, q = 0.02</code></pre>
+</div>
+</div>
+<p>The whole pipeline can also be run in one call. <code>spide()</code> builds the niche matrix itself and does not keep it on the object (<code>name=</code> is the <code>obsm</code> prefix the niches are read from, or built into):</p>
+<div id="b3d5943d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:15.430594Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:15.430472Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:16.117261Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:16.116710Z&quot;}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>res2 <span class="op">=</span> sp.spide(sp.datasets.toy_spide(), condition<span class="op">=</span><span class="st">"condition"</span>, sigma<span class="op">=</span><span class="dv">30</span>, verbose<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(res2)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>SpiDEResults (slopes engine)
+  pooled across patients: 120 tests, 2 at FDR 0.05
+  condition-specific (Responder - Non-responder; pooled_or_heterogeneity family): 2 tests, 1 at FDR 0.05</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="look-at-the-patients-behind-a-result" class="level2">
+<h2 class="anchored" data-anchor-id="look-at-the-patients-behind-a-result">Look at the patients behind a result</h2>
+<p>A call is only as good as the patients behind it. With the slopes engine, every patient has its own slope for every triplet, and these slopes are the evidence that the tests weigh. <code>patient_slopes()</code> returns them as a table, with the slope’s variance and the number of cells that went into it.</p>
+<div id="d01d3523" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:16.118740Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:16.118570Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:16.127593Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:16.127109Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>ps <span class="op">=</span> sp.patient_slopes(fit, gene<span class="op">=</span><span class="st">"G1"</span>, index<span class="op">=</span><span class="st">"A"</span>, niche<span class="op">=</span><span class="st">"B"</span>)</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>ps[[<span class="st">"patient"</span>, <span class="st">"condition"</span>, <span class="st">"slope"</span>, <span class="st">"var_spatial"</span>, <span class="st">"ncells"</span>]].head()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">patient</th>
+<th data-quarto-table-cell-role="th">condition</th>
+<th data-quarto-table-cell-role="th">slope</th>
+<th data-quarto-table-cell-role="th">var_spatial</th>
+<th data-quarto-table-cell-role="th">ncells</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>S1</td>
+<td>Responder</td>
+<td>0.465072</td>
+<td>0.008294</td>
+<td>49</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>S10</td>
+<td>Non-responder</td>
+<td>0.176669</td>
+<td>0.059603</td>
+<td>61</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>S11</td>
+<td>Responder</td>
+<td>0.400428</td>
+<td>0.010850</td>
+<td>60</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>S12</td>
+<td>Non-responder</td>
+<td>0.204428</td>
+<td>0.084545</td>
+<td>41</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>S13</td>
+<td>Responder</td>
+<td>0.401380</td>
+<td>0.021371</td>
+<td>54</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p><code>pl.plot_patient_slopes()</code> draws them. Each point is a patient’s slope with its interval, sized by the weight the patient carries in the tests. The weighted average of each condition is marked, and the pooled estimate is shown as a band.</p>
+<div id="1345252d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:16.128811Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:16.128647Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:16.389971Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:16.389421Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>display(sp.pl.plot_patient_slopes(res, gene<span class="op">=</span>[<span class="st">"G1"</span>, <span class="st">"G2"</span>], index<span class="op">=</span><span class="st">"A"</span>, niche<span class="op">=</span><span class="st">"B"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="python-tutorial_files/figure-html/cell-13-output-1.png" width="900" height="496" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>For <code>G1</code>, the slopes of the patients lie mostly above zero in both conditions, which gives the pooled call, and the slopes of the responders sit further to the right than those of the non-responders, which is what the condition-specific test picks up. For <code>G2</code>, which has no planted effect, the slopes are spread widely on both sides of zero, their intervals are wide, and the two conditions overlap.</p>
+<p>The model also gives each patient a baseline level of every gene, its intercept. These baselines absorb everything that differs between patients as a whole, so they are not tested, but they are worth a look. <code>patient_intercepts()</code> returns them with the patient-level covariates, and <code>pl.plot_patient_effects()</code> summarises them by principal components of the intercepts, showing how much of each component each covariate explains.</p>
+<div id="478d6ae1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:16.391319Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:16.391176Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:16.400326Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:16.399870Z&quot;}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>intercepts <span class="op">=</span> sp.patient_intercepts(fit, gene<span class="op">=</span><span class="st">"G1"</span>, index<span class="op">=</span><span class="st">"A"</span>)</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>intercepts.head()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">gene</th>
+<th data-quarto-table-cell-role="th">index</th>
+<th data-quarto-table-cell-role="th">patient</th>
+<th data-quarto-table-cell-role="th">intercept</th>
+<th data-quarto-table-cell-role="th">ncells</th>
+<th data-quarto-table-cell-role="th">sample_id</th>
+<th data-quarto-table-cell-role="th">condition</th>
+<th data-quarto-table-cell-role="th">Age</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>G1</td>
+<td>A</td>
+<td>S1</td>
+<td>2.185319</td>
+<td>49</td>
+<td>S1</td>
+<td>Responder</td>
+<td>0.525262</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>G1</td>
+<td>A</td>
+<td>S10</td>
+<td>1.782854</td>
+<td>61</td>
+<td>S10</td>
+<td>Non-responder</td>
+<td>-2.566746</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>G1</td>
+<td>A</td>
+<td>S11</td>
+<td>2.157735</td>
+<td>60</td>
+<td>S11</td>
+<td>Responder</td>
+<td>1.213412</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>G1</td>
+<td>A</td>
+<td>S12</td>
+<td>1.627117</td>
+<td>41</td>
+<td>S12</td>
+<td>Non-responder</td>
+<td>0.362418</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>G1</td>
+<td>A</td>
+<td>S13</td>
+<td>2.223423</td>
+<td>54</td>
+<td>S13</td>
+<td>Responder</td>
+<td>-1.853804</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<div id="80e91471" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:16.401534Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:16.401396Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:16.521606Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:16.521004Z&quot;}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>display(sp.pl.plot_patient_effects(res, index<span class="op">=</span><span class="st">"A"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="python-tutorial_files/figure-html/cell-15-output-1.png" width="686" height="363" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>In this example the first component of the intercepts lines up almost entirely with the condition, which is what we expect: the baselines absorb the difference in level between responders and non-responders, so that this difference cannot be mistaken for a difference in slope. If a slide or batch column lined up with a component of the <em>slopes</em> instead, the condition would be partly confounded with it, and that column should go into <code>strata</code>. Setting <code>niche</code> in <code>plot_patient_effects()</code> draws the same plot for the slopes, which is the check to make before trusting a condition-specific call.</p>
+</section>
+<section id="test-gene-sets" class="level2">
+<h2 class="anchored" data-anchor-id="test-gene-sets">Test gene sets</h2>
+<p><code>spi_gsea()</code> tests gene sets the way <code>test_spide()</code> tests genes. Each patient gets a slope for the set: the average of its genes’ slopes, each gene put on a common scale. By default the average over all other tested genes is subtracted, so a set is called when it moves <em>more than the typical gene</em> (<code>type="competitive"</code>). The set slopes then go through the pooled and the condition test, so the correlation between genes of a set is accounted for without being estimated. Any dict of gene symbol lists works, for example MSigDB collections.</p>
+<div id="0bbbc87d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:16.522934Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:16.522794Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:16.553851Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:16.553377Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>sets <span class="op">=</span> {</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"planted"</span>: [<span class="st">"G1"</span>, <span class="st">"G2"</span>, <span class="st">"G3"</span>],</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"other"</span>: [<span class="ss">f"G</span><span class="sc">{</span>i<span class="sc">}</span><span class="ss">"</span> <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">4</span>, <span class="dv">9</span>)],</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"rest"</span>: [<span class="ss">f"G</span><span class="sc">{</span>i<span class="sc">}</span><span class="ss">"</span> <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">9</span>, <span class="dv">21</span>)],</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>gs <span class="op">=</span> sp.spi_gsea(res, sets, min_size<span class="op">=</span><span class="dv">3</span>)</span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>gs[[<span class="st">"set"</span>, <span class="st">"index"</span>, <span class="st">"niche"</span>, <span class="st">"test"</span>, <span class="st">"size"</span>, <span class="st">"estimate"</span>, <span class="st">"p"</span>, <span class="st">"q"</span>, <span class="st">"q.global"</span>]].head()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">set</th>
+<th data-quarto-table-cell-role="th">index</th>
+<th data-quarto-table-cell-role="th">niche</th>
+<th data-quarto-table-cell-role="th">test</th>
+<th data-quarto-table-cell-role="th">size</th>
+<th data-quarto-table-cell-role="th">estimate</th>
+<th data-quarto-table-cell-role="th">p</th>
+<th data-quarto-table-cell-role="th">q</th>
+<th data-quarto-table-cell-role="th">q.global</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>planted</td>
+<td>A</td>
+<td>B</td>
+<td>pooled</td>
+<td>3</td>
+<td>0.578673</td>
+<td>0.000011</td>
+<td>0.000032</td>
+<td>0.000191</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>planted</td>
+<td>C</td>
+<td>A</td>
+<td>pooled</td>
+<td>3</td>
+<td>0.237550</td>
+<td>0.045308</td>
+<td>0.135925</td>
+<td>0.233513</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>other</td>
+<td>B</td>
+<td>C</td>
+<td>pooled</td>
+<td>5</td>
+<td>-0.215171</td>
+<td>0.048372</td>
+<td>0.145115</td>
+<td>0.233513</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>planted</td>
+<td>B</td>
+<td>A</td>
+<td>pooled</td>
+<td>3</td>
+<td>0.270073</td>
+<td>0.051892</td>
+<td>0.155676</td>
+<td>0.233513</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>rest</td>
+<td>A</td>
+<td>B</td>
+<td>pooled</td>
+<td>12</td>
+<td>-0.195542</td>
+<td>0.094970</td>
+<td>0.142454</td>
+<td>0.341890</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p><code>q</code> adjusts within each (index, niche, test) column and <code>q.global</code> over every set, index and niche of a test. With many sets and many columns, <code>q.global</code> is the one to read. <code>pl.plot_triplet_heatmap()</code> shows the sets’ t across every (index, niche) column, with a dot where <code>q.global</code> passes.</p>
+<div id="d214f3de" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:16.555328Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:16.555178Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:16.699743Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:16.696114Z&quot;}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>display(sp.pl.plot_triplet_heatmap(gs, test<span class="op">=</span><span class="st">'pooled'</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="python-tutorial_files/figure-html/cell-17-output-1.png" width="577" height="219" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>The set holding the planted gene stands out in the column of <code>A</code> against <code>B</code>, where it is called, and no other set is called.</p>
+</section>
+<section id="a-different-question-niche-abundance" class="level2">
+<h2 class="anchored" data-anchor-id="a-different-question-niche-abundance">A different question: niche abundance</h2>
+<p>The slopes are within-patient. A patient whose index cells sit among many niche cells may also express a gene differently, as a whole, from a patient whose index cells do not; that between-patient association is absorbed by the patient intercepts and is invisible to <code>test_spide()</code>. It is a different claim: that patients with more of a niche type differ, not that a cell responds to its neighbours. <code>test_niche_abundance()</code> asks it on pseudobulk profiles, one per patient and index type, against the patient’s mean niche density.</p>
+<div id="5fec7541" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:16.701960Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:16.701362Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:16.824395Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:16.823759Z&quot;}}" data-execution_count="17">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>ab <span class="op">=</span> sp.test_niche_abundance(adata, condition<span class="op">=</span><span class="st">"condition"</span>, sigma<span class="op">=</span><span class="dv">30</span>, verbose<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>ab.head()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="17">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">gene</th>
+<th data-quarto-table-cell-role="th">index</th>
+<th data-quarto-table-cell-role="th">niche</th>
+<th data-quarto-table-cell-role="th">term</th>
+<th data-quarto-table-cell-role="th">estimate</th>
+<th data-quarto-table-cell-role="th">t</th>
+<th data-quarto-table-cell-role="th">p</th>
+<th data-quarto-table-cell-role="th">n_patients</th>
+<th data-quarto-table-cell-role="th">leverage</th>
+<th data-quarto-table-cell-role="th">downweighted</th>
+<th data-quarto-table-cell-role="th">q</th>
+<th data-quarto-table-cell-role="th">q.global</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>G1</td>
+<td>A</td>
+<td>B</td>
+<td>niche</td>
+<td>-0.702703</td>
+<td>-0.767075</td>
+<td>0.453956</td>
+<td>16</td>
+<td>3.140745</td>
+<td>1</td>
+<td>0.770461</td>
+<td>0.945496</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>G2</td>
+<td>A</td>
+<td>B</td>
+<td>niche</td>
+<td>1.696534</td>
+<td>0.994912</td>
+<td>0.334588</td>
+<td>16</td>
+<td>3.140745</td>
+<td>1</td>
+<td>0.770461</td>
+<td>0.907598</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>G3</td>
+<td>A</td>
+<td>B</td>
+<td>niche</td>
+<td>-4.467735</td>
+<td>-2.203907</td>
+<td>0.042523</td>
+<td>16</td>
+<td>3.140745</td>
+<td>1</td>
+<td>0.770461</td>
+<td>0.662375</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>G4</td>
+<td>A</td>
+<td>B</td>
+<td>niche</td>
+<td>1.675993</td>
+<td>1.089477</td>
+<td>0.292081</td>
+<td>16</td>
+<td>3.140745</td>
+<td>1</td>
+<td>0.770461</td>
+<td>0.907598</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>G5</td>
+<td>A</td>
+<td>B</td>
+<td>niche</td>
+<td>-2.309309</td>
+<td>-1.504881</td>
+<td>0.151839</td>
+<td>16</td>
+<td>3.140745</td>
+<td>1</td>
+<td>0.770461</td>
+<td>0.737781</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>With a condition, the rows with <code>term</code> <code>"niche"</code> give the association averaged over the two conditions, and those with <code>"condition:niche"</code> test whether it differs between them (second level minus first). Each term is its own multiple-testing family (<code>q.global</code>), and a patient who alone carries most of a niche type’s spread is down-weighted (<code>max_leverage</code>), so that one patient cannot make a call on its own. Gene sets go through the same test with <code>test_niche_abundance(genesets=...)</code>.</p>
+<p>Never report a result of one test as a result of the other.</p>
+<p><code>pl.plot_niche_response()</code> shows both on one gene. With <code>adjust=False</code> it draws the raw data: each segment is one patient’s slope, the quantity spidepy tests, and the dashed line through the patients’ means is the between-patient association that <code>test_niche_abundance()</code> tests.</p>
+<div id="016b3c99" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:16.825698Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:16.825556Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:16.927083Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:16.926035Z&quot;}}" data-execution_count="18">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>display(sp.pl.plot_niche_response(adata, res, gene<span class="op">=</span><span class="st">"G1"</span>, index<span class="op">=</span><span class="st">"A"</span>, niche<span class="op">=</span><span class="st">"B"</span>, adjust<span class="op">=</span><span class="va">False</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="python-tutorial_files/figure-html/cell-19-output-1.png" width="615" height="366" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="plots" class="level2">
+<h2 class="anchored" data-anchor-id="plots">Plots</h2>
+<p>Every plot is a matplotlib <code>Figure</code> in one house style and one colour-blind-safe palette (<code>pl.style()</code>, <code>pl.spide_colours()</code>): gold and violet for a slope that rises or falls with the niche’s density, and dark violet and pink for the first and second level of the condition. Magnitudes use a light-to-dark magma ramp, and the niche map, drawn in tissue coordinates on a dark panel, its brighter <code>"spatial"</code> part.</p>
+<section id="where-the-calls-are" class="level3">
+<h3 class="anchored" data-anchor-id="where-the-calls-are">Where the calls are</h3>
+<p><code>pl.plot_call_map()</code> counts, for each (index, niche) column, how many triplets pass, separately for slopes that rise and slopes that fall with the niche’s density, and <code>pl.plot_top_triplets()</code> shows the strongest ones. With <code>adata</code>, a triangle marks a gene that is several-fold higher in the niche type than in the index type, which we come back to below.</p>
+<div id="9325aeee" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:16.928495Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:16.928277Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:17.212067Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:17.211532Z&quot;}}" data-execution_count="19">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>display(sp.pl.plot_call_map(res, test<span class="op">=</span><span class="st">"pooled"</span>))</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>display(sp.pl.plot_top_triplets(res, test<span class="op">=</span><span class="st">"pooled"</span>, n<span class="op">=</span><span class="dv">12</span>, adata<span class="op">=</span>adata))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="python-tutorial_files/figure-html/cell-20-output-1.png" width="478" height="301" class="figure-img"></p>
+</figure>
+</div>
+</div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="python-tutorial_files/figure-html/cell-20-output-2.png" width="753" height="529" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="the-cells-behind-a-slope" class="level3">
+<h3 class="anchored" data-anchor-id="the-cells-behind-a-slope">The cells behind a slope</h3>
+<p><code>pl.plot_niche_response()</code> shows the cells themselves. By default, each patient’s fitted intercept is divided out, so the patients share one level and the slopes that the tests compare are easy to see.</p>
+<div id="1016a0ec" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:17.213634Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:17.213472Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:17.389828Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:17.389267Z&quot;}}" data-execution_count="20">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>display(sp.pl.plot_niche_response(adata, res, gene<span class="op">=</span>[<span class="st">"G1"</span>, <span class="st">"G2"</span>], index<span class="op">=</span><span class="st">"A"</span>, niche<span class="op">=</span><span class="st">"B"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="python-tutorial_files/figure-html/cell-21-output-1.png" width="943" height="372" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>For <code>G1</code>, the expression of the responders’ cells rises with the density of <code>B</code> while that of the non-responders is nearly flat. For <code>G2</code>, there is no clear trend in either group.</p>
+</section>
+<section id="check-for-spillover" class="level3">
+<h3 class="anchored" data-anchor-id="check-for-spillover">Check for spillover</h3>
+<p>Cell segmentation is never perfect, and transcripts of a neighbouring niche cell can be assigned to an index cell. These transcripts rise with the niche’s density and look like a response of the index cell. <code>pl.plot_spillover()</code> plots every triplet by its signed z statistic against how much higher the gene is in the niche type than in the index type, and marks the region of genes that are several-fold higher in the niche type. If the calls fell mostly in that region, they would be the niche type’s own markers and spillover the likely explanation.</p>
+<div id="131c175e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:17.391126Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:17.390988Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:17.474462Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:17.473838Z&quot;}}" data-execution_count="21">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>display(sp.pl.plot_spillover(res, adata))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="python-tutorial_files/figure-html/cell-22-output-1.png" width="660" height="387" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="diagnostics" class="level3">
+<h3 class="anchored" data-anchor-id="diagnostics">Diagnostics</h3>
+<p><code>pl.plot_p_values()</code> shows the distribution of the p-values by expression band. It is a sanity check on the data at hand and is not a replacement for calibration checks.</p>
+<div id="5ea7f320" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:17.476207Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:17.476008Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:17.924965Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:17.923872Z&quot;}}" data-execution_count="22">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>display(sp.pl.plot_p_values(res))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="python-tutorial_files/figure-html/cell-23-output-1.png" width="998" height="416" class="figure-img"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+</section>
+<section id="practicalities" class="level2">
+<h2 class="anchored" data-anchor-id="practicalities">Practicalities</h2>
+<ul>
+<li><strong>Parallelism.</strong> Genes are fitted independently given an index type, so <code>n_jobs</code> parallelises over genes (it replaces R’s <code>BPPARAM</code>). Results are identical for any <code>n_jobs</code>.</li>
+<li><strong>Counts must be integers.</strong> A back-transformed normalised layer is not a count and is refused.</li>
+<li><strong>Sparse input.</strong> <code>layers["counts"]</code> can be a CSR or CSC matrix and gives the same results as dense.</li>
+<li><strong>Differences from R.</strong> See <code>docs/r-discrepancies.md</code>.</li>
+<li><strong>Several bandwidths.</strong> One fit uses one bandwidth. We can build the niches at several bandwidths and fit each one, but the results are a sensitivity analysis and not a search: each bandwidth is its own set of tests, and picking the best of them after looking would not be valid. Calls that hold at both bandwidths are the more convincing.</li>
+</ul>
+<p>Below we refit index type <code>A</code> at the smaller bandwidth and count the pooled calls at each bandwidth.</p>
+<div id="161fbf11" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:17.926941Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:17.926732Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:18.329546Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:18.328826Z&quot;}}" data-execution_count="23">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>fit10 <span class="op">=</span> sp.fit_spide(adata10, condition<span class="op">=</span><span class="st">"condition"</span>, sigma<span class="op">=</span><span class="dv">10</span>, index<span class="op">=</span><span class="st">"A"</span>, verbose<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>r10 <span class="op">=</span> sp.results(sp.test_spide(fit10), test<span class="op">=</span><span class="st">"pooled"</span>)</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>r30 <span class="op">=</span> sp.results(res, test<span class="op">=</span><span class="st">"pooled"</span>)</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>r30 <span class="op">=</span> r30[r30[<span class="st">"index"</span>] <span class="op">==</span> <span class="st">"A"</span>]</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>({<span class="st">"sigma10"</span>: <span class="bu">int</span>((r10[<span class="st">"q"</span>] <span class="op">&lt;</span> <span class="fl">0.05</span>).<span class="bu">sum</span>()), <span class="st">"sigma30"</span>: <span class="bu">int</span>((r30[<span class="st">"q"</span>] <span class="op">&lt;</span> <span class="fl">0.05</span>).<span class="bu">sum</span>())})</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>{'sigma10': 3, 'sigma30': 2}</code></pre>
+</div>
+</div>
+</section>
+<section id="session-information" class="level2">
+<h2 class="anchored" data-anchor-id="session-information">Session information</h2>
+<div id="71a3540e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-10-22T03:08:18.331040Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-10-22T03:08:18.330871Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-10-22T03:08:18.346491Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-10-22T03:08:18.345933Z&quot;}}" data-execution_count="24">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> platform</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> importlib.metadata <span class="im">import</span> version</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>pkgs <span class="op">=</span> [<span class="st">"spidepy"</span>, <span class="st">"spanormpy"</span>, <span class="st">"anndata"</span>, <span class="st">"numpy"</span>, <span class="st">"pandas"</span>, <span class="st">"scipy"</span>]</span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(platform.python_version(), {p: version(p) <span class="cf">for</span> p <span class="kw">in</span> pkgs})</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>3.12.15 {'spidepy': '0.1.0.dev0', 'spanormpy': '0.1.0', 'anndata': '0.13.4', 'numpy': '2.5.4', 'pandas': '3.0.6', 'scipy': '1.18.1'}</code></pre>
+</div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/bhuvalab\.github\.io\/spiDE");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+<p>GPL (&gt;= 3) licence. Built with <a href="https://quarto.org">Quarto</a>.</p>
+</div>   
+    <div class="nav-footer-center">
+      <ul class="footer-items list-unstyled">
+    <li class="nav-item">
+    <a class="nav-link" href="https://github.com/BhuvaLab/spiDE">
+<p>spiDE (R)</p>
+</a>
+  </li>  
+    <li class="nav-item">
+    <a class="nav-link" href="https://github.com/BhuvaLab/spidepy">
+<p>spidepy (Python)</p>
+</a>
+  </li>  
+</ul>
+    </div>
+    <div class="nav-footer-right">
+<p>Neighbourhood-dependent differential expression</p>
+</div>
+  </div>
+</footer>
+
+
+
+
+</body></html>

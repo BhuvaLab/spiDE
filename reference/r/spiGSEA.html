@@ -81,7 +81,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../../site_libs/quarto-html/quarto-syntax-highlighting-7ef3a5617493e07f253f88e7bef5c60f.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap-2ad0c9cee5de03d6504be9ac3131b32b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-0e8b588de7367b1ec620c9d64b30b97a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -161,6 +161,10 @@ background: #2A0E52;
     <a class="nav-link" href="../../get-started.html"> 
 <span class="menu-text">Get started</span></a>
   </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../python-tutorial.html"> 
+<span class="menu-text">Python tutorial</span></a>
+  </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-articles" role="link" data-bs-toggle="dropdown" aria-expanded="false">
  <span class="menu-text">Articles</span>
@@ -180,9 +184,24 @@ background: #2A0E52;
   </li>  
     </ul>
   </li>
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-reference" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Reference</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-reference">    
+        <li>
+    <a class="dropdown-item" href="../../reference/r/index.html">
+ <span class="dropdown-text">R</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../reference/python/index.html">
+ <span class="dropdown-text">Python</span></a>
+  </li>  
+    </ul>
+  </li>
   <li class="nav-item">
-    <a class="nav-link" href="../../reference/r/index.html"> 
-<span class="menu-text">Reference</span></a>
+    <a class="nav-link" href="../../r-vs-python.html"> 
+<span class="menu-text">R vs Python</span></a>
   </li>  
   <li class="nav-item">
     <a class="nav-link" href="../../news.html"> 
@@ -190,11 +209,23 @@ background: #2A0E52;
   </li>  
 </ul>
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
-  <li class="nav-item">
-    <a class="nav-link" href="https://github.com/BhuvaLab/spiDE"> <i class="bi bi-github" role="img">
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-github" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+      <i class="bi bi-github" role="img">
 </i> 
-<span class="menu-text">GitHub</span></a>
+ <span class="menu-text">GitHub</span>
+    </a>
+    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="nav-menu-github">    
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spiDE">
+ <span class="dropdown-text">spiDE (R)</span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="https://github.com/BhuvaLab/spidepy">
+ <span class="dropdown-text">spidepy (Python)</span></a>
+  </li>  
+    </ul>
+  </li>
 </ul>
           </div> <!-- /navcollapse -->
             <div class="quarto-navbar-tools">
@@ -338,6 +369,13 @@ a BiocParallelParam; the condition-specific test is run in parallel over sets.
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">procedure =</span> <span class="st">"all"</span>)</span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>sets <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="at">first =</span> <span class="fu">paste0</span>(<span class="st">"G"</span>, <span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>), <span class="at">second =</span> <span class="fu">paste0</span>(<span class="st">"G"</span>, <span class="dv">6</span><span class="sc">:</span><span class="dv">12</span>))</span>
 <span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="fu">spiGSEA</span>(res, sets, <span class="at">min.size =</span> <span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":["set"],"name":[1],"type":["chr"],"align":["left"]},{"label":["index"],"name":[2],"type":["chr"],"align":["left"]},{"label":["niche"],"name":[3],"type":["chr"],"align":["left"]},{"label":["test"],"name":[4],"type":["chr"],"align":["left"]},{"label":["size"],"name":[5],"type":["int"],"align":["right"]},{"label":["estimate"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["se"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["t"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["df"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["p"],"name":[10],"type":["dbl"],"align":["right"]},{"label":["q"],"name":[11],"type":["dbl"],"align":["right"]},{"label":["q.global"],"name":[12],"type":["dbl"],"align":["right"]},{"label":["n_patients"],"name":[13],"type":["dbl"],"align":["right"]},{"label":["direction"],"name":[14],"type":["chr"],"align":["left"]}],"data":[{"1":"first","2":"A","3":"B","4":"pooled","5":"5","6":"0.38769013","7":"0.1372262","8":"2.8251898","9":"13.94692","10":"0.0135345542","11":"0.0218438199","12":"0.043687640","13":"16","14":"up"},{"1":"second","2":"A","3":"B","4":"pooled","5":"7","6":"-0.29542855","7":"0.1140288","8":"-2.5908243","9":"13.50847","10":"0.0218438199","11":"0.0218438199","12":"0.043687640","13":"16","14":"down"},{"1":"second","2":"A","3":"C","4":"pooled","5":"7","6":"-0.14773092","7":"0.1284130","8":"-1.1504354","9":"14.42417","10":"0.2686806013","11":"0.3777848642","12":"0.358240802","13":"16","14":"down"},{"1":"first","2":"A","3":"C","4":"pooled","5":"5","6":"0.11825446","7":"0.1299468","8":"0.9100218","9":"14.40681","10":"0.3777848642","11":"0.3777848642","12":"0.377784864","13":"16","14":"up"},{"1":"first","2":"A","3":"B","4":"condition","5":"5","6":"0.82952433","7":"0.1715270","8":"4.8361163","9":"12.94205","10":"0.0003292412","11":"0.0006584823","12":"0.001316965","13":"16","14":"up"},{"1":"second","2":"A","3":"B","4":"condition","5":"7","6":"-0.32919489","7":"0.2309455","8":"-1.4254225","9":"12.62912","10":"0.1782799932","11":"0.1782799932","12":"0.356559986","13":"16","14":"down"},{"1":"first","2":"A","3":"C","4":"condition","5":"5","6":"-0.07702344","7":"0.2733311","8":"-0.2817954","9":"13.37756","10":"0.7824125976","11":"0.8899432378","12":"0.889943238","13":"16","14":"down"},{"1":"second","2":"A","3":"C","4":"condition","5":"7","6":"-0.03659277","7":"0.2594614","8":"-0.1410336","9":"13.38921","10":"0.8899432378","11":"0.8899432378","12":"0.889943238","13":"16","14":"down"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+</div>
 </div>
 
 
@@ -759,8 +797,8 @@ a BiocParallelParam; the condition-specific test is run in parallel over sets.
 </a>
   </li>  
     <li class="nav-item">
-    <a class="nav-link" href="https://github.com/BhuvaLab/SpaNorm">
-<p>SpaNorm (R)</p>
+    <a class="nav-link" href="https://github.com/BhuvaLab/spidepy">
+<p>spidepy (Python)</p>
 </a>
   </li>  
 </ul>
