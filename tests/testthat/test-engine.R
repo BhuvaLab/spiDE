@@ -314,3 +314,17 @@ test_that("both engines store the same per-patient base, then their own pieces",
     expect_identical(x$ncells, stats::setNames(as.integer(n[x$patients]), x$patients))
   }
 })
+
+test_that(".groupSums is a per-group (weighted) column sum that keeps a sparse matrix sparse", {
+  set.seed(3)
+  Y <- Matrix::rsparsematrix(5, 12, 0.5)
+  rownames(Y) <- letters[1:5]
+  g <- rep(1:3, 4); g[c(2, 9)] <- NA
+  w <- runif(12)
+  D <- as.matrix(Y)
+  ref <- sapply(1:3, function(k) rowSums(D[, which(g == k), drop = FALSE] * rep(w[which(g == k)], each = 5)))
+  dimnames(ref) <- list(letters[1:5], NULL)
+  expect_equal(spiDE:::.groupSums(Y, g, w), ref, tolerance = 1e-12)
+  expect_equal(spiDE:::.groupSums(Y, g, ngroups = 4)[, 4], rep(0, 5), ignore_attr = TRUE)
+  expect_identical(dim(spiDE:::.groupSums(D, rep(1L, 12))), c(5L, 1L))
+})

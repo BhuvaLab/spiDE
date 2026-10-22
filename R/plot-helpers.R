@@ -71,9 +71,10 @@
   ok <- which(lib > 0 & !is.na(ct))
   types <- sort(unique(ct[ok]))
   j <- match(ct[ok], types)
-  ind <- Matrix::sparseMatrix(i = ok, j = j, x = 1e4 / lib[ok], dims = c(ncol(Y), length(types)))
+  grp <- rep(NA_integer_, ncol(Y)); grp[ok] <- j
   n <- tabulate(j, length(types))
-  M <- as.matrix(Y[genes, , drop = FALSE] %*% ind) / rep(n, each = length(genes))
+  M <- .groupSums(Y[genes, , drop = FALSE], grp, weights = 1e4 / lib, ngroups = length(types)) /
+    rep(n, each = length(genes))
   dimnames(M) <- list(genes, types)
   attr(M, "ncells") <- stats::setNames(n, types)
   M

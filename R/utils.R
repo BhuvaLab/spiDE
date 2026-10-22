@@ -32,3 +32,16 @@
     stats::setNames(lapply(group_map, .sanitise), .sanitise(names(group_map)))
   vapply(nm, function(n) index == n || index %in% members[[n]], logical(1), USE.NAMES = FALSE)
 }
+
+# Per-group sums of the columns of a genes x cells matrix, as a product with a
+# sparse group indicator, so a sparse or DelayedArray count matrix is never
+# densified whole (invariant 5): only genes x groups is dense. `group` gives
+# each column's group as an integer code (NA = the column is left out),
+# `weights` a scalar or per-column multiplier. Returns genes x ngroups, with
+# Y's rownames and no column names.
+.groupSums <- function(Y, group, weights = 1, ngroups = max(group, na.rm = TRUE)) {
+  ok <- which(!is.na(group))
+  ind <- Matrix::sparseMatrix(i = ok, j = as.integer(group[ok]), x = rep_len(weights, length(group))[ok],
+                              dims = c(length(group), ngroups))
+  as.matrix(Y %*% ind)
+}
