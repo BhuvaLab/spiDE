@@ -175,15 +175,14 @@ setMethod(
       # not the average over all patients the pooled test is about
       des0 <- .indexDesign(L, covk, pat, tested = nc$tested, blocks = blk)
       fit0 <- .fitIndexGLM(Yk, des0, offset = Ok, BPPARAM = BPPARAM)
+      fk <- c(list(genes = gk, niches = nc$tested, adjusted = setdiff(nc$cols, nc$tested),
+                   patients = des0$patients, mean_expr = Matrix::rowMeans(Yk), status = fit0$status,
+                   depth_r2 = if (!is.null(blk)) blk$r2[, nc$tested, drop = FALSE]),
+              .patientLevels(fit0, des0, L[, nc$tested, drop = FALSE], pat, ll[ik]))
       if (engine == "slopes") {
         ps <- .patientSlopes(fit0, des0, Yk, L, tiles[ik], min.cells = min.cells,
                              min.tiles = min.tiles, offset = Ok, BPPARAM = BPPARAM)
-        fits[[k]] <- c(list(genes = gk, niches = nc$tested, adjusted = setdiff(nc$cols, nc$tested),
-                            patients = des0$patients), ps,
-                       list(factor = .patientFactor(ps$v_tile, ps$v_model),
-                            mean_expr = Matrix::rowMeans(Yk), psi = fit0$psi, status = fit0$status,
-                            depth_r2 = if (!is.null(blk)) blk$r2[, nc$tested, drop = FALSE]),
-                       .patientLevels(fit0, des0, L[, nc$tested, drop = FALSE], pat, ll[ik]))
+        fits[[k]] <- c(fk, ps, list(factor = .patientFactor(ps$v_tile, ps$v_model), psi = fit0$psi))
       } else {
         coef <- cbind(test = "pooled", .sandwichCR2(fit0, des0, Yk, offset = Ok, BPPARAM = BPPARAM))
         if (!is.null(trt_of)) {
@@ -193,12 +192,7 @@ setMethod(
           coef <- rbind(coef, cbind(test = "condition", .sandwichCR2(fit1, des1, Yk, offset = Ok,
                                                                      BPPARAM = BPPARAM)))
         }
-        fits[[k]] <- c(list(genes = gk, niches = nc$tested, adjusted = setdiff(nc$cols, nc$tested),
-                            patients = des0$patients, coef = coef, mean_expr = Matrix::rowMeans(Yk),
-                            status = fit0$status,
-                            depth_r2 = if (!is.null(blk)) blk$r2[, nc$tested, drop = FALSE],
-                            ncells = stats::setNames(as.integer(table(pat)), levels(pat))),
-                       .patientLevels(fit0, des0, L[, nc$tested, drop = FALSE], pat, ll[ik]))
+        fits[[k]] <- c(fk, list(coef = coef))
       }
     }
     if (!length(fits)) stop("no index cell type could be fitted", call. = FALSE)
@@ -299,11 +293,13 @@ setMethod(
 # shared, condition-free fit (the level every between-patient difference is
 # absorbed into; under depth = "spatial_spline" the intercept column of the
 # patient's block), the mean log1p density of each tested niche over its index
-# cells, and their mean log library size. Genes x patients, like `pooled`.
+# cells, their mean log library size and their cell count. Genes x patients, like
+# `pooled`.
 .patientLevels <- function(fit0, des, L, pat, ll) {
   a <- fit0$alpha[, des$intercept_cols, drop = FALSE]
   dimnames(a) <- list(rownames(fit0$alpha), des$patients)
   nm <- rowsum(L, pat, reorder = TRUE) / as.numeric(table(pat))
   dm <- tapply(ll, pat, function(v) mean(v[is.finite(v)]))
-  list(intercept = a, niche_mean = nm, loglib_mean = stats::setNames(as.numeric(dm), names(dm)))
+  list(intercept = a, niche_mean = nm, loglib_mean = stats::setNames(as.numeric(dm), names(dm)),
+       ncells = stats::setNames(as.integer(table(pat)), levels(pat)))
 }

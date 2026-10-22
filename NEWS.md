@@ -5,6 +5,19 @@
   the gene-set and niche-abundance models), "Designing a study with spiDE" (`spiDE-design`, new: patients and
   cells needed, minimum detectable effects, the small-design defaults) and "Validation: calibration and
   accuracy" (`spiDE-calibration`). They no longer link to the research site.
+* **`pooled.df = "capped"` is removed.** The pooled test refers its t statistic to limma's df scaled by the Kish
+  effective share of the patients (the 0.99.37 default); the rule used before 0.99.37 is gone. The `pooled.df`
+  argument of `testSpiDE()`, `spiDE()` and `spiGSEA()` and the `SpiDEResults` slot `pooled.df` are removed, and
+  `show()` no longer prints the df rule. Results saved by earlier versions still load; `spiGSEA()` now always uses
+  the proportional rule.
+* `spiDE()` gains `name` (default `"Niche"`), the niche reducedDim prefix, passed to `buildNiches()` and `fitSpiDE()`.
+* `testNicheAbundance()` no longer tests an index type against a merged niche that contains it
+  (`mergeNiches()`), as `fitSpiDE()` does not, and reports the `index` and `niche` labels as spelled in the data
+  (`"T cell"`, not `"T.cell"`).
+* Internal: `buildNiches()` no longer copies the object once per sample; `fitSpiDE()` builds one base list per
+  index type (the order of the elements of `fit@index[[k]]` changes, their values do not); shared helpers for the
+  Cochran and Kish arithmetic, the sparse group sums, the per-patient long tables and the condition inputs; small
+  dead code removed; `MASS` and `withr` dropped from Suggests.
 
 # spiDE 0.99.37
 

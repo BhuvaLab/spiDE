@@ -33,6 +33,25 @@ setMethod("results", "SpiDEResults", function(object, test = NULL, fdr = NULL, .
   tb
 })
 
+# The long, tidy table behind patientSlopes() and patientIntercepts(): one
+# data.frame per index type from build(k, x) (NULL = nothing to report), stacked,
+# joined to the patient-level colData columns recorded by fitSpiDE(), ordered by
+# index type, gene, [niche,] patient, with the `lead` columns first.
+.longByPatient <- function(object, index, lead, build) {
+  out <- list()
+  for (k in intersect(if (is.null(index)) names(object@index) else index, names(object@index))) {
+    out[[k]] <- build(k, object@index[[k]])
+  }
+  d <- do.call(rbind, out)
+  if (is.null(d)) return(data.frame())
+  pt <- object@patients
+  d <- merge(d, pt[, setdiff(colnames(pt), "ncells"), drop = FALSE], by = "patient", all.x = TRUE, sort = FALSE)
+  d <- d[do.call(order, d[c("index", setdiff(lead, c("index", "patient")), "patient")]),
+         c(lead, setdiff(colnames(d), lead))]
+  rownames(d) <- NULL
+  d
+}
+
 #' Each patient's niche slopes
 #'
 #' The slopes engine estimates every patient's own niche slopes (a one-step
@@ -60,27 +79,17 @@ setMethod("patientSlopes", "SpiDEFit", function(object, gene = NULL, index = NUL
   if (object@engine != "slopes") {
     stop("per-patient slopes are estimated by the slopes engine (fitSpiDE(engine = \"slopes\"))", call. = FALSE)
   }
-  out <- list()
-  for (k in intersect(if (is.null(index)) names(object@index) else index, names(object@index))) {
-    x <- object@index[[k]]
+  .longByPatient(object, index, c("gene", "index", "niche", "patient"), function(k, x) {
     gi <- if (is.null(gene)) seq_along(x$genes) else which(x$genes %in% gene)
     ni <- if (is.null(niche)) seq_along(x$niches) else which(x$niches %in% niche)
-    if (!length(gi) || !length(ni)) next
+    if (!length(gi) || !length(ni)) return(NULL)
     g <- expand.grid(g = gi, s = seq_along(x$patients), j = ni)
     ix <- cbind(g$g, g$s, g$j)
-    out[[k]] <- data.frame(gene = x$genes[g$g], index = k, niche = x$niches[g$j],
-                           patient = x$patients[g$s], slope = x$beta[ix], var_spatial = x$v_tile[ix],
-                           var_model = x$v_model[ix], ncells = unname(x$ncells[g$s]),
-                           stringsAsFactors = FALSE)
-  }
-  d <- do.call(rbind, out)
-  if (is.null(d)) return(data.frame())
-  pt <- object@patients
-  d <- merge(d, pt[, setdiff(colnames(pt), "ncells"), drop = FALSE], by = "patient", all.x = TRUE, sort = FALSE)
-  d <- d[order(d$index, d$gene, d$niche, d$patient), c("gene", "index", "niche", "patient",
-                                                       setdiff(colnames(d), c("gene", "index", "niche", "patient")))]
-  rownames(d) <- NULL
-  d
+    data.frame(gene = x$genes[g$g], index = k, niche = x$niches[g$j],
+               patient = x$patients[g$s], slope = x$beta[ix], var_spatial = x$v_tile[ix],
+               var_model = x$v_model[ix], ncells = unname(x$ncells[g$s]),
+               stringsAsFactors = FALSE)
+  })
 })
 
 #' @rdname patientSlopes
@@ -118,25 +127,15 @@ setMethod("patientSlopes", "SpiDEResults", function(object, ...) {
 #' @export
 setMethod("patientIntercepts", "SpiDEFit", function(object, gene = NULL, index = NULL, ...) {
   .assertCurrent(object)
-  out <- list()
-  for (k in intersect(if (is.null(index)) names(object@index) else index, names(object@index))) {
-    x <- object@index[[k]]
+  .longByPatient(object, index, c("gene", "index", "patient"), function(k, x) {
     checkIntercepts(x, "patientIntercepts()")
     gi <- if (is.null(gene)) seq_along(x$genes) else which(x$genes %in% gene)
-    if (!length(gi)) next
+    if (!length(gi)) return(NULL)
     g <- expand.grid(g = gi, s = seq_along(x$patients))
-    out[[k]] <- data.frame(gene = x$genes[g$g], index = k, patient = x$patients[g$s],
-                           intercept = x$intercept[cbind(g$g, g$s)], ncells = unname(x$ncells[g$s]),
-                           stringsAsFactors = FALSE)
-  }
-  d <- do.call(rbind, out)
-  if (is.null(d)) return(data.frame())
-  pt <- object@patients
-  d <- merge(d, pt[, setdiff(colnames(pt), "ncells"), drop = FALSE], by = "patient", all.x = TRUE, sort = FALSE)
-  d <- d[order(d$index, d$gene, d$patient),
-         c("gene", "index", "patient", setdiff(colnames(d), c("gene", "index", "patient")))]
-  rownames(d) <- NULL
-  d
+    data.frame(gene = x$genes[g$g], index = k, patient = x$patients[g$s],
+               intercept = x$intercept[cbind(g$g, g$s)], ncells = unname(x$ncells[g$s]),
+               stringsAsFactors = FALSE)
+  })
 })
 
 #' @rdname patientIntercepts

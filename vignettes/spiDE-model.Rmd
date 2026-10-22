@@ -416,11 +416,10 @@ patients are few. Two refinements keep it honest:
   $n_{\text{eff}} = (\sum_s w_s)^2 / \sum_s w_s^2$, equals the number of
   patients $m$ when the weights are equal and falls towards one as they
   concentrate. The $t$ statistic is referred to $\nu_{\text{limma}}
-  \, n_{\text{eff}} / m$ degrees of freedom (`pooled.df = "proportional"`):
+  \, n_{\text{eff}} / m$ degrees of freedom (the proportional rule):
   limma's degrees of freedom, which include those borrowed from the other
   genes, scaled by the effective share of the patients. To spiDE 0.99.36 they
-  were $\min(\nu_{\text{limma}}, n_{\text{eff}} - 1)$ (`pooled.df =
-  "capped"`). Since $n_{\text{eff}} \le m$, that cap always applied and
+  were $\min(\nu_{\text{limma}}, n_{\text{eff}} - 1)$ (the capped rule). Since $n_{\text{eff}} \le m$, that cap always applied and
   discarded the borrowed degrees of freedom, which made the test conservative
   with few patients.
 
@@ -574,3 +573,9 @@ as genes. This set version has not yet been checked against permutation nulls.
   with weights that favour precise patients. When cell-rich patients have
   systematically different slopes from sparse ones, this average differs from
   a simple average over patients.
+
+# Session information
+
+```{r session, eval = TRUE}
+sessionInfo()
+```

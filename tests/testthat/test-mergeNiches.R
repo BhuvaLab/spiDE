@@ -57,3 +57,22 @@ test_that("mergeNiches with NULL sigma updates all niche reducedDims", {
     c("AC", "B")
   )
 })
+
+test_that("a merge after a merge composes the members at every bandwidth, with one metadata record", {
+  spe <- buildNiches(.toySPE(), sigma = c(10, 20), verbose = FALSE)
+  fine <- SingleCellExperiment::reducedDim(spe, "Niche20")
+  m1 <- mergeNiches(spe, groups = list(AC = c("A", "C")))
+  m2 <- mergeNiches(m1, groups = list(ACB = c("AC", "B")))
+  for (rd in c("Niche10", "Niche20")) {
+    gm <- S4Vectors::metadata(m2)$spiDE_niche_groups[[rd]]
+    expect_identical(names(gm), "ACB")
+    expect_setequal(gm$ACB, c("A", "B", "C"))
+  }
+  expect_equal(unname(SingleCellExperiment::reducedDim(m2, "Niche20")[, "ACB"]), unname(rowSums(fine)))
+  # a second merge of one bandwidth leaves the other bandwidth's record alone
+  m3 <- mergeNiches(m1, groups = list(ACB = c("AC", "B")), sigma = 20)
+  gm <- S4Vectors::metadata(m3)$spiDE_niche_groups
+  expect_setequal(names(gm), c("Niche10", "Niche20"))
+  expect_setequal(gm$Niche20$ACB, c("A", "B", "C"))
+  expect_setequal(gm$Niche10$AC, c("A", "C"))
+})

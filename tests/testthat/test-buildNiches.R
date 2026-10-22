@@ -38,8 +38,8 @@ test_that("rows align with cells regardless of sample interleaving", {
   # sample and compare
   sid <- spe$sample_id[1]
   sub <- spe[, spe$sample_id == sid]
-  ref <- .effectiveNiche(sub, sigma = 15)
-  ref <- .fillMissingDims(ref, colnames(n), "column")
+  ref <- .effectiveNiche(SpatialExperiment::spatialCoords(sub), sub$cell_type, sigma = 15)
+  ref <- .fillMissingDims(ref, colnames(n))
   ref[is.na(ref)] <- 0
   got <- n[spe$sample_id == sid, colnames(ref), drop = FALSE]
   expect_equal(unname(got), unname(ref), tolerance = 1e-8)
@@ -54,4 +54,21 @@ test_that("SerialParam and MulticoreParam give identical niches", {
     SingleCellExperiment::reducedDim(s1, "Niche20"),
     SingleCellExperiment::reducedDim(s2, "Niche20")
   )
+})
+
+test_that("niches are identical for a shuffled cell order, serial and parallel", {
+  skip_on_os("windows")
+  data(toySpiDE)
+  ref <- buildNiches(toySpiDE, sigma = c(20, 30), verbose = FALSE)
+  set.seed(5)
+  o <- sample(ncol(toySpiDE))               # samples interleaved, cell order scrambled
+  shuf <- toySpiDE[, o]
+  for (bp in list(BiocParallel::SerialParam(), BiocParallel::MulticoreParam(2))) {
+    got <- buildNiches(shuf, sigma = c(20, 30), BPPARAM = bp)
+    for (nm in c("Niche20", "Niche30")) {
+      m <- SingleCellExperiment::reducedDim(got, nm)
+      expect_identical(rownames(m), colnames(shuf))
+      expect_identical(m, SingleCellExperiment::reducedDim(ref, nm)[o, ])
+    }
+  }
 })

@@ -14,9 +14,9 @@ spiDE(spe, condition = NULL, ...)
   engine = c("slopes", "sandwich"),
   procedure = c("pooled_or_heterogeneity", "heterogeneity", "filtered", "all"),
   fdr = 0.05,
-  pooled.df = c("proportional", "capped"),
   cell_type = "cell_type",
   sample_id = "sample_id",
+  name = "Niche",
   BPPARAM = BiocParallel::SerialParam(),
   verbose = TRUE,
   ...
@@ -34,10 +34,13 @@ patient-level condition.}
 
 \item{engine}{\code{"slopes"} or \code{"sandwich"}, see \code{\link[=fitSpiDE]{fitSpiDE()}}.}
 
-\item{procedure, fdr, pooled.df}{passed to \code{\link[=testSpiDE]{testSpiDE()}}; \code{procedure}
+\item{procedure, fdr}{passed to \code{\link[=testSpiDE]{testSpiDE()}}; \code{procedure}
 defaults to the engine's default there.}
 
 \item{cell_type, sample_id}{the colData columns of cell type and patient.}
+
+\item{name}{the niche reducedDim prefix: the niches are read from, or built
+into, \code{reducedDim(spe, paste0(name, sigma))}.}
 
 \item{BPPARAM}{a BiocParallelParam.}
 

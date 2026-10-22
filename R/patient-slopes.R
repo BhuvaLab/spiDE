@@ -109,8 +109,7 @@
   list(beta = array(B, c(G, S, nt), dimnames = dn),
        v_tile = array(V, c(G, S, nt), dimnames = dn),
        v_model = array(VM, c(G, S, nt), dimnames = dn),
-       pooled = matrix(fit$alpha[, jn[seq_len(nt)]], G, nt, dimnames = list(genes, des$tested_niche)),
-       ncells = stats::setNames(lengths(rows_of), des$patients))
+       pooled = matrix(fit$alpha[, jn[seq_len(nt)]], G, nt, dimnames = list(genes, des$tested_niche)))
 }
 
 # The per-(patient, niche) variance factor of the pooled test, over the whole

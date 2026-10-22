@@ -26,7 +26,7 @@
 # (NULL = all of them); the rest stay in the design as adjustments.
 .nicheColumns <- function(NM, k, ik, niche = NULL, group_map = NULL) {
   nm <- colnames(NM)
-  self <- .isSelfNiche(rep(.sanitise(k), length(nm)), .sanitise(nm), group_map)
+  self <- .isSelfNiche(k, nm, group_map)
   cols <- nm[!self]
   v <- apply(log1p(NM[ik, cols, drop = FALSE]), 2, stats::var)
   cols <- cols[is.finite(v) & v > 0]
