@@ -33,3 +33,18 @@ test_that("the sandwich engine refuses a condition it was not fitted with", {
   expect_error(testSpiDE(fs, condition = "condition"), "fitted with")
   expect_identical(unique(testSpiDE(fs)@table$test), "pooled")
 })
+
+test_that("spiDE(name = ) reads, or builds, the niches under a custom prefix", {
+  ref <- spiDE(spe, condition = "condition", sigma = 30, index = "A", procedure = "all",
+               verbose = FALSE)
+  # niches already stored under the custom prefix and no "Niche30": used as they are
+  sp <- buildNiches(spe, sigma = 30, name = "Nb", verbose = FALSE)
+  expect_identical(SingleCellExperiment::reducedDimNames(sp), "Nb30")
+  got <- spiDE(sp, condition = "condition", sigma = 30, index = "A", procedure = "all",
+               name = "Nb", verbose = FALSE)
+  expect_identical(got@table, ref@table)
+  # absent: built under the prefix and used (spiDE returns results, so the check is that it runs)
+  got2 <- spiDE(spe, condition = "condition", sigma = 30, index = "A", procedure = "all",
+                name = "Nb", verbose = FALSE)
+  expect_identical(got2@table, ref@table)
+})
