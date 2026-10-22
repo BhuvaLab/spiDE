@@ -31,7 +31,6 @@ spiDE_*.tar.gz
 /site/.quarto/
 /site/_site/
 /site/_rlib/
-/site/_cache/
 /site/site_libs/
 /site/_freeze/
 /site/_includes/

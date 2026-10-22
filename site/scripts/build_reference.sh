@@ -25,13 +25,10 @@ export ALTDOC_VERSION
 Rscript -e 'v <- Sys.getenv("ALTDOC_VERSION"); ok <- requireNamespace("altdoc", lib.loc = "_rlib", quietly = TRUE) && as.character(packageVersion("altdoc", lib.loc = "_rlib")) == v; if (!ok) { if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes", repos = "https://cloud.r-project.org"); remotes::install_version("altdoc", version = v, lib = "_rlib", repos = "https://cloud.r-project.org", upgrade = "never") }'
 Rscript scripts/build-reference-r.R
 
-# quartodoc needs griffe < 2 (quartodoc 0.11 does not support griffe 2): see requirements.txt
-"$PYTHON" -m quartodoc build --config _quarto.yml
-
-# spidepy's docstrings have no Examples yet: append executed examples to each page, on one
-# shared toy fit that is built once here
-"$PYTHON" scripts/make_python_cache.py
-"$PYTHON" scripts/python_examples.py
+# quartodoc needs griffe < 2 (quartodoc 0.11 does not support griffe 2): see requirements.txt.
+# The script builds the pages and turns each docstring's Examples (spidepy's own, on toy_spide())
+# into executed chunks.
+"$PYTHON" scripts/build_python_reference.py
 
 # Quarto resolves {{< include >}} before its pre-render step runs, so copy the included
 # files (spidepy docs, NEWS.md) here too. SPIDEPY_DIR: see copy-assets.sh.

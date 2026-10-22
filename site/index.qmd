@@ -19,7 +19,7 @@ title-block-style: none
 <p class="tagline">Neighbourhood-dependent differential expression for spatial transcriptomics, with patients as the replicates, in R and Python.</p>
 
 ::: {.cta}
-[Get started](get-started.Rmd){.primary}
+[Get started](get-started.qmd){.primary}
 [R reference](reference/r/index.html)
 [Python reference](reference/python/index.html)
 [GitHub](https://github.com/BhuvaLab/spiDE)
@@ -36,8 +36,8 @@ This website covers both packages: the R package **spiDE** (Bioconductor) and th
 
 ::: {.feature-row}
 ::: {.card-sn}
-### [Get started](get-started.Rmd)
-A walk-through on the bundled toy data in R: build niches, fit, test and plot the pooled and condition-specific results. The same walk-through in Python is the [Python tutorial](python-tutorial.qmd).
+### [Get started](get-started.qmd)
+A walk-through on the bundled toy data, every step in R and in Python: build niches, fit, test and plot the pooled and condition-specific results.
 :::
 ::: {.card-sn}
 ### [The model](articles/spiDE-model.Rmd)

@@ -3,7 +3,7 @@ title: "Articles"
 toc: false
 ---
 
-Long-form documentation. The quick start is [Get started](../get-started.Rmd).
+Long-form documentation. The quick start is [Get started](../get-started.qmd).
 
 | Article | What it covers |
 | --- | --- |
