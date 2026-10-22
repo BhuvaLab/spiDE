@@ -85,8 +85,27 @@ results(res, test = "condition")   # its difference between the conditions
 ::: {.card-sn}
 ### Authors
 
-- Dharmesh D. Bhuva, author and maintainer [![ORCID](https://orcid.org/assets/vectors/orcid.logo.icon.svg){.orcid fig-alt="ORCID"}](https://orcid.org/0000-0002-6398-9157)
-- Chin Wee Tan, author [![ORCID](https://orcid.org/assets/vectors/orcid.logo.icon.svg){.orcid fig-alt="ORCID"}](https://orcid.org/0000-0001-9695-7218)
+```{r}
+#| echo: false
+#| results: asis
+# Authors card, generated from Authors@R in ../DESCRIPTION. The role line is built from the
+# MARC codes; only the maintainer (cre) gets a mailto: link.
+ppl <- eval(parse(text = read.dcf("../DESCRIPTION", fields = "Authors@R")[1, 1]))
+role_name <- c(aut = "author", cre = "maintainer", fnd = "funder", ctb = "contributor",
+               ths = "thesis advisor", cph = "copyright holder")
+for (p in ppl) {
+  r <- p$role
+  lab <- if (all(c("aut", "cre") %in% r)) "author and maintainer" else
+    paste(unname(role_name[r]), collapse = ", ")
+  nm <- paste(p$given, p$family)
+  if ("cre" %in% r && length(p$email))
+    lab <- sprintf("%s ([%s](mailto:%s))", lab, p$email, p$email)
+  orcid <- p$comment[["ORCID"]]
+  icon <- if (!is.null(orcid) && nzchar(orcid))
+    sprintf(" [![ORCID](https://orcid.org/assets/vectors/orcid.logo.icon.svg){.orcid fig-alt=\"ORCID\"}](https://orcid.org/%s)", orcid) else ""
+  cat(sprintf("- %s, %s%s\n", nm, lab, icon))
+}
+```
 :::
 
 ::: {.card-sn}

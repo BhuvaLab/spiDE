@@ -1,6 +1,6 @@
 # Convert the package's Rd files to Quarto pages under reference/r/ with altdoc's Rd converter
 # (altdoc is installed in the git-ignored _rlib), plus an index grouped by topic.
-# Examples are shown but not run on the site.
+# Examples are shown, and run only for the plotting pages (run_pages below).
 .libPaths(c(normalizePath("_rlib"), .libPaths()))
 suppressPackageStartupMessages(library(altdoc))
 
@@ -34,20 +34,33 @@ for (f in rd_files) {
   }
 }
 
-# front matter (page title = Rd name), examples shown but not executed
+# Pages whose examples are RUN at build time, so the figures appear under the code. Every
+# other page shows its examples unexecuted (spiDE(), fitSpiDE() and the rest are slow). The
+# examples are self-contained (toy data), so no setup chunk is needed.
+run_pages <- c("plotNicheMap", "plotPatientSlopes", "plotNicheResponse", "plotCallMap",
+               "plotTopTriplets", "plotSpillover", "plotTripletHeatmap", "plotPValues",
+               "plotPatientEffects", "theme_spiDE", "spiDEColours")
+missing_run <- setdiff(run_pages, sub("\\.Rd$", "", basename(rd_files)))
+if (length(missing_run)) stop("run_pages without an Rd file: ", paste(missing_run, collapse = ", "), call. = FALSE)
+
+# front matter (page title = Rd name); examples executed only for run_pages
 for (f in rd_files) {
   nm <- sub("\\.Rd$", "", basename(f))
   qmd <- file.path(out_dir, paste0(nm, ".qmd"))
   x <- readLines(qmd)
-  x <- gsub("eval\\s*=\\s*TRUE", "eval=FALSE", x)
+  run <- nm %in% run_pages
+  x <- gsub("eval\\s*=\\s*(TRUE|FALSE)", if (run) "eval=TRUE" else "eval=FALSE", x)
+  if (run) x <- gsub("(```\\{r, warning=FALSE, message=FALSE, eval=TRUE)\\}", "\\1, fig-width=7, fig-height=4.5}", x)
   writeLines(c("---", sprintf("title: \"%s\"", nm), "toc: false",
-               "execute:", "  eval: false", "---", "", x), qmd)
+               "execute:", sprintf("  eval: %s", tolower(run)), "---", "", x), qmd)
 }
 
-# examples are never run on the site: no chunk may be left executable
+# explicit allow-list: only run_pages may carry an executable chunk, so a slow example
+# is never run by accident
 for (f in list.files(out_dir, pattern = "\\.qmd$", full.names = TRUE)) {
-  if (any(grepl("eval\\s*[=:]\\s*(TRUE|true)", readLines(f)))) {
-    stop("executable chunk left in ", f, call. = FALSE)
+  nm <- sub("\\.qmd$", "", basename(f))
+  if (!(nm %in% run_pages) && any(grepl("eval\\s*[=:]\\s*(TRUE|true)", readLines(f)))) {
+    stop("executable chunk left in ", f, " (not in run_pages)", call. = FALSE)
   }
 }
 
