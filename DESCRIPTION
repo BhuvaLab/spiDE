@@ -58,9 +58,7 @@ Suggests:
     ggrepel,
     patchwork,
     RhpcBLASctl,
-    clubSandwich,
-    MASS,
-    withr
+    clubSandwich
 Remotes:
     bhuvad/SpaNorm
 URL: https://bhuvalab.github.io/spiDE, https://github.com/BhuvaLab/spiDE
