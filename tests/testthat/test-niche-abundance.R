@@ -159,3 +159,26 @@ test_that("testNicheAbundance(genesets = ) tests sets like genes, with the same 
   expect_error(testNicheAbundance(spe_c, sigma = 50, genesets = sets, min.size = 50L, verbose = FALSE), "min.size")
   expect_error(testNicheAbundance(spe_c, sigma = 50, genesets = c("G1", "G2"), verbose = FALSE), "genesets")
 })
+
+test_that("an index type is never tested against a merged niche that contains it", {
+  m <- mergeNiches(spe_c, list(AC = c("A", "C")), sigma = 50)
+  ct <- testNicheAbundance(m, condition = "condition", sigma = 50, verbose = FALSE)
+  expect_false(any(ct$index == "A" & ct$niche == "AC"))
+  expect_false(any(ct$index == "C" & ct$niche == "AC"))
+  # B is not a member of AC, so its pair with the merged niche stays
+  expect_true(any(ct$index == "B" & ct$niche == "AC"))
+  # and the requested index goes through the same rule
+  a <- testNicheAbundance(m, condition = "condition", sigma = 50, index = "A", verbose = FALSE)
+  expect_false("AC" %in% a$niche)
+  expect_true("B" %in% a$niche)
+})
+
+test_that("index and niche labels keep their original spelling", {
+  s <- .toySPE(n_samples = 12, n_per = 200, n_genes = 12, seed = 3)
+  s$cell_type <- c(A = "T cell", B = "B-cell", C = "C")[s$cell_type]
+  s <- buildNiches(s, sigma = 50, verbose = FALSE)
+  ct <- testNicheAbundance(s, condition = "condition", sigma = 50, verbose = FALSE)
+  expect_setequal(unique(ct$index), c("T cell", "B-cell", "C"))
+  expect_setequal(unique(ct$niche), c("T cell", "B-cell", "C"))
+  expect_false(any(ct$index == ct$niche))
+})

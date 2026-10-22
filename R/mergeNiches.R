@@ -59,42 +59,33 @@ setMethod(
       stop(sprintf("niche reducedDim(s) not found: %s", paste(missing, collapse = ", ")))
     }
 
+    groups_md <- S4Vectors::metadata(spe)[["spiDE_niche_groups"]]
+    if (is.null(groups_md)) {
+      groups_md <- list()
+    }
     for (rd in targets) {
       mat <- SingleCellExperiment::reducedDim(spe, rd)
       # carry through any cell type not named in a group as its own niche
       leftover <- setdiff(colnames(mat), unlist(groups, use.names = FALSE))
       full_groups <- c(groups, stats::setNames(as.list(leftover), leftover))
 
-      # actual (fine) members summed into each merged column, composed through
-      # any mapping from a previous mergeNiches() call on this reducedDim so the
-      # stored members always resolve to the original fine cell types
-      prior <- S4Vectors::metadata(spe)[["spiDE_niche_groups"]][[rd]]
-      group_map <- lapply(full_groups, function(cts) {
-        cts <- intersect(cts, colnames(mat))
-        .resolveMembers(cts, prior)
-      })
-
-      merged <- vapply(full_groups, function(cts) {
-        cts <- intersect(cts, colnames(mat))
-        if (length(cts) == 0) {
-          return(rep(0, nrow(mat)))
-        }
-        rowSums(mat[, cts, drop = FALSE])
+      # each group's columns that exist, once; their fine members are composed
+      # through any mapping from a previous mergeNiches() call on this
+      # reducedDim, so the stored members always resolve to the original fine
+      # cell types
+      cts <- lapply(full_groups, intersect, colnames(mat))
+      prior <- groups_md[[rd]]
+      merged <- vapply(cts, function(m) {
+        if (length(m) == 0) rep(0, nrow(mat)) else rowSums(mat[, m, drop = FALSE])
       }, numeric(nrow(mat)))
       rownames(merged) <- rownames(mat)
       SingleCellExperiment::reducedDim(spe, rd) <- merged
 
       # record the merged column -> fine member mapping so the design builder
       # can drop covariates whose index is a member of the merged niche
-      md <- S4Vectors::metadata(spe)
-      groups_md <- md[["spiDE_niche_groups"]]
-      if (is.null(groups_md)) {
-        groups_md <- list()
-      }
-      groups_md[[rd]] <- group_map
-      md[["spiDE_niche_groups"]] <- groups_md
-      S4Vectors::metadata(spe) <- md
+      groups_md[[rd]] <- lapply(cts, .resolveMembers, prior)
     }
+    if (length(targets)) S4Vectors::metadata(spe)[["spiDE_niche_groups"]] <- groups_md
 
     return(spe)
   }

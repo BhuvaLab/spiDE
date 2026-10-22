@@ -9,12 +9,9 @@
 # the intercepts, zeros elsewhere.
 .glmStart <- function(Yk, des, offset = NULL) {
   npc <- as.numeric(table(factor(des$patient, levels = seq_len(des$npat))))
-  # per-patient sums as a product with a sparse indicator, so a sparse or
-  # DelayedArray count matrix is never densified whole (genes x cells of a
+  # per-patient sums, never densifying the counts whole (genes x cells of a
   # WTA tumour compartment is several GB dense); only genes x patients is
-  ind <- Matrix::sparseMatrix(i = seq_along(des$patient), j = des$patient, x = 1,
-                              dims = c(length(des$patient), des$npat))
-  lm <- as.matrix(Yk %*% ind) / rep(npc, each = nrow(Yk))
+  lm <- .groupSums(Yk, des$patient, ngroups = des$npat) / rep(npc, each = nrow(Yk))
   a <- matrix(0, nrow(Yk), ncol(des$W))
   a[, des$intercept_cols] <- log(lm + 1e-3)
   if (!is.null(offset)) {
@@ -92,7 +89,7 @@
 # residuals r of the NB score, w = mu / (1 + psi mu), r = (y - mu) / (1 + psi mu).
 .workingWR <- function(y, W, alpha, psi, offset = 0) {
   mu <- exp(.linPred(W, alpha) + offset)
-  list(w = mu / (1 + psi * mu), r = (y - mu) / (1 + psi * mu), mu = mu)
+  list(w = mu / (1 + psi * mu), r = (y - mu) / (1 + psi * mu))
 }
 
 # Split genes into chunks and run FUN over them with BiocParallel, one BLAS

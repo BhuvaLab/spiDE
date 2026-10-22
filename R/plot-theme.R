@@ -100,13 +100,11 @@ spiDEColours <- function(role = NULL, n = 9L) {
 }
 
 # The magnitude ramp, light to dark (magma). spatial = TRUE gives the
-# dark-panel ramp of tissue plots, dark to bright. skip drops that fraction of
-# the first end of the ramp.
-.magnitudeRamp <- function(n = 256L, skip = 0, spatial = FALSE) {
+# dark-panel ramp of tissue plots, dark to bright.
+.magnitudeRamp <- function(n = 256L, spatial = FALSE) {
   base <- if (spatial) .magmaSpatial else .magma
-  if (skip == 0 && n == length(base)) return(base)
+  if (n == length(base)) return(base)
   r <- grDevices::colorRampPalette(base, space = "Lab")(1000L)
-  r <- r[seq(floor(skip * 999) + 1, 1000)]
   r[round(seq(1, length(r), length.out = n))]
 }
 

@@ -76,3 +76,18 @@ test_that("a set with no usable patients drops out without taking the others wit
   expect_true(is.na(b$p[b$set == "dead"]))
   expect_true(all(is.finite(b$p[b$set != "dead"])))
 })
+
+test_that("spiGSEA(type = 'self-contained') runs end to end and differs from the competitive test", {
+  gs <- spiGSEA(res, sets, min.size = 3, type = "self-contained")
+  comp <- spiGSEA(res, sets, min.size = 3)
+  nn <- length(res@fit@index$A$niches)
+  expect_equal(nrow(gs), 3L * nn * 2L)
+  key <- function(d) paste(d$set, d$index, d$niche, d$test)
+  expect_setequal(key(gs), key(comp))
+  expect_true(all(is.finite(gs$p)))
+  expect_true(all(gs$p >= 0 & gs$p <= 1))
+  expect_true(all(gs$q >= gs$p - 1e-12))
+  expect_true(all(gs$direction %in% c("up", "down")))
+  # the competitive score subtracts the background genes' mean; the self-contained one does not
+  expect_false(isTRUE(all.equal(gs$estimate[order(key(gs))], comp$estimate[order(key(comp))])))
+})

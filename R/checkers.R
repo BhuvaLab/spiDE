@@ -104,10 +104,7 @@ checkCovariates <- function(spe, covariates, finite.only = FALSE) {
 checkSample <- function(spe, condition = NULL, sample_id = "sample_id",
                         covariates = character()) {
   cd <- SummarizedExperiment::colData(spe)
-  if (!sample_id %in% colnames(cd)) {
-    stop(sprintf("sample id column '%s' not found in colData(spe)", sample_id))
-  }
-  smp <- as.character(cd[[sample_id]])
+  smp <- as.character(cd[[sample_id]])   # checkSPE() has already found the column
   # A condition-free (niche-only) design has no condition to be patient-level,
   # so this check applies only when one was supplied.
   if (!is.null(condition)) {
@@ -142,8 +139,6 @@ checkSample <- function(spe, condition = NULL, sample_id = "sample_id",
   invisible(TRUE)
 }
 
-# fdr must be a single value in (0, 1]; 1 is allowed as the "show everything"
-# threshold (see testSpiDE()'s documentation).
 # A colData column named by an optional argument (NULL = not used).
 checkColumn <- function(spe, column, what) {
   if (is.null(column)) return(invisible(TRUE))
@@ -155,6 +150,8 @@ checkColumn <- function(spe, column, what) {
   invisible(TRUE)
 }
 
+# fdr must be a single value in (0, 1]; 1 is allowed as the "show everything"
+# threshold (see testSpiDE()'s documentation).
 checkFdr <- function(fdr) {
   if (!is.numeric(fdr) || length(fdr) != 1 || is.na(fdr) || fdr <= 0 || fdr > 1) {
     stop("'fdr' should be a single numeric value in (0, 1]")

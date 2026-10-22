@@ -90,8 +90,8 @@ last.
 
 The pooled test's degrees of freedom matter most with few patients. spiDE 0.99.37
 refers the pooled test to limma's degrees of freedom scaled by the effective
-share of the patients (`pooled.df = "proportional"`). The previous rule capped
-them at the effective number of patients less one, which made the test
+share of the patients (the proportional rule). The rule used before spiDE
+0.99.37 capped them at the effective number of patients less one, which made the test
 conservative: its null spread was 0.83 to 0.88 at 6 patients and 0.91 to 0.97 at
 12. It is now 0.94 to 1.05 at every size.
 
@@ -125,7 +125,7 @@ because its smaller family carries a lighter multiple-testing correction.
 
 Many studies have only 5 to 7 patients per condition. Two choices of spiDE 0.99.37
 were made for them. One is the pooled test's degrees of freedom
-(`pooled.df = "proportional"`), and the other is the condition test's family
+(the proportional rule), and the other is the condition test's family
 (`procedure = "pooled_or_heterogeneity"`). Each was confirmed on null data that
 no earlier step had used, against criteria written before those data were
 scored.

@@ -128,17 +128,13 @@ test_that("the pooled test equals a direct limma fit with the effective df", {
   f <- limma::eBayes(f, robust = TRUE, trend = TRUE)
   neff <- rowSums(w, na.rm = TRUE)^2 / rowSums(w^2, na.rm = TRUE)
   m <- rowSums(is.finite(w))
-  # the default (0.99.37): limma's df scaled by the Kish effective share; to 0.99.36: capped
-  for (rule in c("proportional", "capped")) {
-    got <- spiDE:::.pooledColumnTest(b, v, tau, x$mean_expr, df.rule = rule)
-    df <- if (rule == "capped") pmin(f$df.total, pmax(neff - 1, 1)) else f$df.total * neff / m
-    expect_equal(got$estimate, unname(f$coefficients[, 1]), tolerance = 1e-10)
-    expect_equal(got$df, unname(df), tolerance = 1e-10)
-    ok <- is.finite(got$t)
-    expect_equal(got$p[ok], unname(2 * pt(-abs(f$t[ok, 1]), df[ok])), tolerance = 1e-10)
-  }
-  expect_identical(spiDE:::.pooledColumnTest(b, v, tau, x$mean_expr),
-                   spiDE:::.pooledColumnTest(b, v, tau, x$mean_expr, df.rule = "proportional"))
+  # limma's df scaled by the Kish effective share of the patients
+  got <- spiDE:::.pooledColumnTest(b, v, tau, x$mean_expr)
+  df <- f$df.total * neff / m
+  expect_equal(got$estimate, unname(f$coefficients[, 1]), tolerance = 1e-10)
+  expect_equal(got$df, unname(df), tolerance = 1e-10)
+  ok <- is.finite(got$t)
+  expect_equal(got$p[ok], unname(2 * pt(-abs(f$t[ok, 1]), df[ok])), tolerance = 1e-10)
 })
 
 test_that("the condition test is weighted least squares with an HC2 SE and Bell-McCaffrey df", {
@@ -302,4 +298,33 @@ test_that("the condition test is identical serially and in parallel", {
   r2 <- testSpiDE(fit16, condition = "condition", procedure = "all",
                   BPPARAM = BiocParallel::MulticoreParam(2))@table
   expect_identical(r2$p, r1$p)
+})
+
+test_that("both engines store the same per-patient base, then their own pieces", {
+  base <- c("genes", "niches", "adjusted", "patients", "mean_expr", "status", "depth_r2",
+            "intercept", "niche_mean", "loglib_mean", "ncells")
+  fs <- fitSpiDE(spe16, condition = "condition", index = "A", sigma = 30, verbose = FALSE)
+  fw <- fitSpiDE(spe16, condition = "condition", index = "A", sigma = 30, engine = "sandwich",
+                 verbose = FALSE)
+  expect_setequal(names(fs@index$A), c(base, "beta", "v_tile", "v_model", "pooled", "factor", "psi"))
+  expect_setequal(names(fw@index$A), c(base, "coef"))
+  n <- table(spe16$sample_id[spe16$cell_type == "A"])
+  for (f in list(fs, fw)) {
+    x <- f@index$A
+    expect_identical(x$ncells, stats::setNames(as.integer(n[x$patients]), x$patients))
+  }
+})
+
+test_that(".groupSums is a per-group (weighted) column sum that keeps a sparse matrix sparse", {
+  set.seed(3)
+  Y <- Matrix::rsparsematrix(5, 12, 0.5)
+  rownames(Y) <- letters[1:5]
+  g <- rep(1:3, 4); g[c(2, 9)] <- NA
+  w <- runif(12)
+  D <- as.matrix(Y)
+  ref <- sapply(1:3, function(k) rowSums(D[, which(g == k), drop = FALSE] * rep(w[which(g == k)], each = 5)))
+  dimnames(ref) <- list(letters[1:5], NULL)
+  expect_equal(spiDE:::.groupSums(Y, g, w), ref, tolerance = 1e-12)
+  expect_equal(spiDE:::.groupSums(Y, g, ngroups = 4)[, 4], rep(0, 5), ignore_attr = TRUE)
+  expect_identical(dim(spiDE:::.groupSums(D, rep(1L, 12))), c(5L, 1L))
 })
