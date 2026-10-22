@@ -11,7 +11,7 @@ out <- if (length(args)) args[1] else here
 source(file.path(here, "sticker-helper.R"))
 
 cx <- 0
-cy <- -0.14
+cy <- -0.22
 deg <- (0:8) * 40 + 20
 ang <- deg * pi / 180
 rings <- c(0.31, 0.42, 0.53, 0.63)
@@ -77,7 +77,7 @@ p <- p +
   geom_polygon(data = ic$core, aes(x, y), fill = neon$magenta, colour = NA, alpha = 0.35) +
   geom_point(data = ic$dots, aes(x, y), colour = neon$pink, size = 0.7) +
   glow_path(rbind(ic$core, ic$core[1, ]), "#FFD3EE", lw = 1.1)
-p <- glitch_text(p, "spiDE", 0, 0.6, 19, neon$magenta, off = 0.013, c1 = neon$cyan, c2 = neon$blue, angle = 3)
+p <- glitch_text(p, "spiDE", -0.03, 0.55, 24, neon$magenta, off = 0.013, c1 = neon$cyan, c2 = neon$blue, angle = 2)
 sticker <- finish(p, neon$magenta, 2.6)
 
 
