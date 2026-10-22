@@ -179,11 +179,16 @@ setMethod(
     checkNiche(spe, sigma, name = name)
 
     cd <- SummarizedExperiment::colData(spe)
-    ct <- .sanitise(as.character(cd[[cell_type]]))
+    ct_raw <- as.character(cd[[cell_type]])
+    ct <- .sanitise(ct_raw)
+    # sanitised -> original labels, so the output reads as fitSpiDE()'s does
+    ct_lab <- stats::setNames(ct_raw[!duplicated(ct)], ct[!duplicated(ct)])
     smp <- as.character(cd[[sample_id]])
     Y <- SummarizedExperiment::assay(spe, assay)
     NM <- as.matrix(SingleCellExperiment::reducedDim(spe, paste0(name, sigma)))
-    colnames(NM) <- .sanitise(colnames(NM))
+    nm_lab <- stats::setNames(colnames(NM), .sanitise(colnames(NM)))
+    colnames(NM) <- names(nm_lab)
+    group_map <- S4Vectors::metadata(spe)[["spiDE_niche_groups"]][[paste0(name, sigma)]]
     niches <- if (is.null(niche)) colnames(NM) else intersect(.sanitise(niche), colnames(NM))
     if (!length(niches)) stop("no requested niche cell types found in the niche reducedDim")
     NM <- NM[, niches, drop = FALSE]
@@ -208,8 +213,9 @@ setMethod(
         if (is.null(sc)) next
         b$Y <- sc$S
       }
-      for (n in setdiff(niches, k)) {
-        if (verbose) message(sprintf("testNicheAbundance: %s x %s (%d samples)", k, n, length(b$samples)))
+      # an index type is never tested against its own niche, merged or not
+      for (n in niches[!.isSelfNiche(ct_lab[[k]], nm_lab[niches], group_map)]) {
+        if (verbose) message(sprintf("testNicheAbundance: %s x %s (%d samples)", ct_lab[[k]], nm_lab[[n]], length(b$samples)))
         df <- data.frame(niche = as.numeric(b$niche[b$samples, n]))
         if (!is.null(cond_s)) df$condition <- factor(cond_s[b$samples], levels = levels(cond_s))
         for (cv in covariates) df[[cv]] <- cov_s[[cv]][b$samples]
@@ -217,7 +223,7 @@ setMethod(
         if (is.null(r)) next
         for (tm in names(r$terms)) {
           d <- data.frame(
-            gene = rownames(b$Y), index = k, niche = n, term = tm,
+            gene = rownames(b$Y), index = ct_lab[[k]], niche = nm_lab[[n]], term = tm,
             estimate = r$terms[[tm]]$estimate, t = r$terms[[tm]]$t, p = r$terms[[tm]]$p,
             n_patients = r$n, leverage = r$leverage, downweighted = r$downweighted,
             row.names = NULL, stringsAsFactors = FALSE)
