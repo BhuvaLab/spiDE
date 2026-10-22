@@ -33,6 +33,8 @@ test_that("plotNicheMap() colours one sample's cells by a niche's density", {
 test_that("plotNicheResponse() adjusted: one panel per gene, patients' bins and group means", {
   p <- plotNicheResponse(spe, res, gene = c("G1", "G2"), index = "A", niche = "B")
   b <- builds(p)
+  # the fitted-slope segments carry the condition colours (not white)
+  expect_false(any(b$data[[2]]$colour == "white"))
   expect_true(all(c("gene", "patient", "bin", "expr", "density", "condition", "gene_lab") %in% names(p$data)))
   expect_equal(length(unique(b$layout$layout$gene_lab)), 2L)
   expect_true(all(is.finite(p$data$expr)))

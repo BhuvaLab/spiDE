@@ -225,7 +225,7 @@ plotNicheResponse <- function(spe, x, gene, index, niche, adjust = TRUE, bins = 
                  shape = 16) +
       geom_segment(data = ln, aes(x = .data$x, xend = .data$xend, y = .data$y, yend = .data$yend,
                                   colour = .data$condition, linetype = "fitted slope"),
-                   linewidth = 0.8, colour = "white", inherit.aes = FALSE) +
+                   linewidth = 0.8, inherit.aes = FALSE) +
       geom_line(data = sm, aes(.data$density, .data$mean, colour = .data$condition,
                                linetype = "mean across patients"), linewidth = 0.5) +
       geom_pointrange(data = sm, aes(.data$density, .data$mean, ymin = .data$lo, ymax = .data$hi,

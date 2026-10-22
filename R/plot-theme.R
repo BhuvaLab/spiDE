@@ -15,9 +15,10 @@
 .spideCols <- c(up = "#C99A16", down = "#5B2C9E", first = "#3E1A78", second = "#E05A9E",
                 mid = "#F7F7F7", faint = "grey92", light = "grey80", grey = "grey45",
                 ink = "#140B2E", dim = "#3B3158")
-# viridisLite::magma(11, begin = 0.08, end = 0.98), reversed to run light to
-# dark; written out so that viridisLite is not a dependency
-.magma <- c("#FCF4B6", "#FECA8D", "#FE9F6D", "#F8745C", "#E44F64", "#C23B75", "#9C2E7F",
+# Near white, then viridisLite::magma(11, begin = 0.08, end = 0.98) reversed to
+# run light to dark (cream, orange, pink, violet, near black); written out so
+# that viridisLite is not a dependency. Near white so that low values look empty.
+.magma <- c("#FDFAF4", "#FCF4B6", "#FECA8D", "#FE9F6D", "#F8745C", "#E44F64", "#C23B75", "#9C2E7F",
             "#782281", "#55137D", "#2E1162", "#0F0B2C")
 # viridisLite::magma(11, begin = 0.25, end = 0.98), dark to bright
 .magmaSpatial <- c("#51127C", "#6D1D81", "#8B2981", "#A9337D", "#C73D73", "#E34E65", "#F46A5C",

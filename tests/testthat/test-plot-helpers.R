@@ -17,12 +17,15 @@ test_that("spiDEColours() gives each role its colours; the magnitude ramp darken
   expect_equal(unname(spiDEColours("direction")), c("#C99A16", "#5B2C9E"))
   expect_equal(unname(spiDEColours("condition")), c("#3E1A78", "#E05A9E"))
   expect_length(spiDEColours("magnitude", 9), 9)
+  # zero reads as empty: the ramp starts near white
+  expect_equal(spiDEColours("magnitude", length(.magma))[1], "#FDFAF4")
+  expect_equal(.breakLabel(c("Non-responder", "Responder", "Late stage group")), c("Non-\nresponder", "Responder", "Late\nstage group"))
   lum <- function(h) colSums(grDevices::col2rgb(h) * c(0.2126, 0.7152, 0.0722))
   expect_true(all(diff(lum(spiDEColours("magnitude", 9))) < 0))
   # the spatial ramp runs dark to bright and starts above the dark panel
   expect_length(spiDEColours("spatial", 9), 9)
   expect_true(all(diff(lum(spiDEColours("spatial", 9))) > 0))
-  expect_equal(spiDEColours("magnitude", 11), .magma)
+  expect_equal(spiDEColours("magnitude", length(.magma)), .magma)
   expect_equal(spiDEColours("spatial", 11), .magmaSpatial)
   expect_length(spiDEColours("nuisance", 10), 10)
   expect_named(spiDEColours(), c("up", "down", "first", "second", "mid", "faint", "light", "grey", "ink", "dim"))

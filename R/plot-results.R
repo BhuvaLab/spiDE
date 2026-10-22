@@ -228,7 +228,7 @@ plotSpillover <- function(x, spe, test = "pooled", fold = 4, label = 6L, fdr = x
   }
   ggplot(tab, aes(.data$fold, .data$z)) +
     annotate("rect", xmin = log2(fold), xmax = Inf, ymin = -Inf, ymax = Inf, fill = .spideCols[["faint"]]) +
-    annotate("text", x = Inf, y = -Inf, hjust = 1.05, vjust = -0.5, size = 3.4,
+    annotate("text", x = log2(fold), y = -Inf, hjust = 1.05, vjust = -0.5, size = 3.4,
              label = sprintf('atop("%d of %d calls", "" >= %s * "-fold in niche type")', sum(mk), sum(called),
                              format(fold)), parse = TRUE) +
     geom_hline(yintercept = 0, linewidth = 0.3) +
@@ -369,5 +369,5 @@ plotPValues <- function(x, bands = 5L) {
     scale_x_continuous(breaks = c(0, 0.5, 1), labels = c("0", "0.5", "1"), expand = expansion(add = 0.03)) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
     labs(x = "p-value", y = "triplets") +
-    theme_spiDE() + theme(panel.spacing = unit(1, "lines"))
+    theme_spiDE() + theme(panel.spacing = unit(1, "lines"), strip.text.x = element_text(size = rel(0.85)))
 }
