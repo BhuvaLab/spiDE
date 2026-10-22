@@ -1,0 +1,11 @@
+---
+title: "Articles"
+toc: false
+---
+
+Long-form documentation. The quick start is [Get started](../get-started.Rmd).
+
+| Article | What it covers |
+| --- | --- |
+| [The spiDE model](spiDE-model.Rmd) | What spiDE computes and why, step by step. |
+| [Calibration](spiDE-calibration.Rmd) | How the tests were checked against real-data nulls. |

@@ -26,3 +26,19 @@ spiDE_*.tar.gz
 /figures/
 /research/
 /design/
+
+# Quarto site (site/): nothing generated is committed
+/site/.quarto/
+/site/_site/
+/site/_rlib/
+/site/_cache/
+/site/site_libs/
+/site/_freeze/
+/site/_includes/
+/site/reference/
+/site/objects.json
+/site/logo.png
+/site/get-started.Rmd
+/site/articles/spiDE-*.Rmd
+site/**/*.quarto_ipynb
+/site/_*.local

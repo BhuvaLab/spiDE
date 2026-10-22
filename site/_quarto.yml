@@ -1,0 +1,57 @@
+project:
+  pre-render: scripts/copy-assets.sh
+  type: website
+
+execute:
+  warning: false
+
+website:
+  title: "spiDE"
+  favicon: logo.png
+  site-url: https://bhuvalab.github.io/spiDE
+  repo-url: https://github.com/BhuvaLab/spiDE
+  page-navigation: true
+  page-footer:
+    background: "#2A0E52"
+    left: "GPL (>= 3) licence. Built with [Quarto](https://quarto.org)."
+    center:
+      - text: "spiDE (R)"
+        href: https://github.com/BhuvaLab/spiDE
+      - text: "SpaNorm (R)"
+        href: https://github.com/BhuvaLab/SpaNorm
+    right: "Neighbourhood-dependent differential expression"
+  navbar:
+    logo: logo.png
+    left:
+      - text: Home
+        href: index.qmd
+      - text: Get started
+        href: get-started.Rmd
+      # The article list lives in two places: this menu and articles/index.qmd.
+      # The files themselves are copied by scripts/copy-assets.sh (ARTICLES).
+      - text: Articles
+        menu:
+          - text: The spiDE model
+            href: articles/spiDE-model.Rmd
+          - text: Calibration
+            href: articles/spiDE-calibration.Rmd
+      - text: Reference
+        href: reference/r/index.html
+      - text: News
+        href: news.qmd
+    right:
+      - icon: github
+        text: GitHub
+        href: https://github.com/BhuvaLab/spiDE
+
+format:
+  html:
+    theme: [default, styles.scss]
+    title-block-banner: "#2A0E52"
+    title-block-banner-color: "#ffffff"
+    toc: true
+    toc-depth: 2
+    number-sections: false
+    code-copy: true
+    code-tools: false
+    df-print: paged

@@ -1,0 +1,101 @@
+---
+title: "spiDE"
+subtitle: "Neighbourhood-dependent differential expression in spatial transcriptomics"
+pagetitle: "spiDE: neighbourhood-dependent differential expression"
+toc: false
+title-block-banner: false
+title-block-style: none
+---
+
+<style>#title-block-header{display:none} #quarto-content > main{padding-top:0;margin-top:0}</style>
+
+::: {.hero .column-screen}
+::: {.hero-inner}
+![](logo.png){.hero-logo fig-alt="The spiDE hex sticker"}
+
+::: {}
+# spiDE {.unnumbered .unlisted}
+
+<p class="tagline">Neighbourhood-dependent differential expression for spatial transcriptomics, with patients as the replicates.</p>
+
+::: {.cta}
+[Get started](get-started.Rmd){.primary}
+[Reference](reference/r/index.html)
+[GitHub](https://github.com/BhuvaLab/spiDE)
+:::
+:::
+:::
+:::
+
+::: {.intro}
+spiDE finds neighbourhood-dependent differential expression in spatial transcriptomics. Within an *index* cell type, it asks whether a gene's expression changes with the local density (the *niche*) of another cell type, within patients, and whether that dependence differs between two conditions. Patients are the unit of replication throughout: a triplet's evidence (gene, index type, niche type) is how its niche slope varies between patients, never the number of cells.
+:::
+
+::: {.feature-row}
+::: {.card-sn}
+### [Get started](get-started.Rmd)
+A walk-through on the bundled toy data: build niches, fit, test and plot the pooled and condition-specific results.
+:::
+::: {.card-sn}
+### [The model](articles/spiDE-model.Rmd)
+What spiDE computes and why, one step at a time, in plain language and then in formulas.
+:::
+::: {.card-sn}
+### [Calibration](articles/spiDE-calibration.Rmd)
+How the tests were checked against real-data nulls, and what the error rates are.
+:::
+::: {.card-sn}
+### [Reference](reference/r/index.html)
+Every exported function and class, with arguments, values and examples.
+:::
+:::
+
+## Install {.section-title}
+
+::: {.card-sn .install-card}
+
+```r
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+# development version from GitHub (needs SpaNorm >= 1.7.14)
+BiocManager::install("BhuvaLab/spiDE")
+```
+
+```r
+library(spiDE)
+data(toySpiDE)
+
+res <- spiDE(toySpiDE, condition = "condition", sigma = 30)
+results(res, test = "pooled")      # niche-dependent expression, across patients
+results(res, test = "condition")   # its difference between the conditions
+```
+:::
+
+## How it works {.section-title}
+
+1. **Niches** (`buildNiches()`): per sample, a Gaussian kernel density of every cell type at every cell.
+2. **Fit** (`fitSpiDE()`): for every index cell type, one negative binomial GLM per gene on the niche densities with an intercept per patient, fitted with [SpaNorm](https://github.com/BhuvaLab/SpaNorm)'s Newton solver. Each niche coefficient is a within-patient slope.
+3. **Test** (`testSpiDE()`): the **pooled** test (is the slope non-zero, consistently across patients?) always, and the **condition-specific** test (does it differ between conditions?) when given a condition.
+
+## Project {.section-title}
+
+::: {.project-grid}
+
+::: {.card-sn}
+### Authors
+
+- Dharmesh D. Bhuva, author and maintainer [![ORCID](https://orcid.org/assets/vectors/orcid.logo.icon.svg){.orcid fig-alt="ORCID"}](https://orcid.org/0000-0002-6398-9157)
+- Chin Wee Tan, author [![ORCID](https://orcid.org/assets/vectors/orcid.logo.icon.svg){.orcid fig-alt="ORCID"}](https://orcid.org/0000-0001-9695-7218)
+:::
+
+::: {.card-sn}
+### Links and licence
+
+- Source: [BhuvaLab/spiDE](https://github.com/BhuvaLab/spiDE)
+- Report a bug: [issues](https://github.com/BhuvaLab/spiDE/issues)
+- Cite: `citation("spiDE")` in R
+- Licence: GPL (>= 3)
+:::
+
+:::
