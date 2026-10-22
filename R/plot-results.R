@@ -228,7 +228,7 @@ plotSpillover <- function(x, spe, test = "pooled", fold = 4, label = 6L, fdr = x
   }
   ggplot(tab, aes(.data$fold, .data$z)) +
     annotate("rect", xmin = log2(fold), xmax = Inf, ymin = -Inf, ymax = Inf, fill = .spideCols[["faint"]]) +
-    annotate("text", x = Inf, y = -Inf, hjust = 1.05, vjust = -0.5, size = 3.4,
+    annotate("text", x = log2(fold), y = -Inf, hjust = 1.05, vjust = -0.5, size = 3.4,
              label = sprintf('atop("%d of %d calls", "" >= %s * "-fold in niche type")', sum(mk), sum(called),
                              format(fold)), parse = TRUE) +
     geom_hline(yintercept = 0, linewidth = 0.3) +
@@ -245,7 +245,7 @@ plotSpillover <- function(x, spe, test = "pooled", fold = 4, label = 6L, fdr = x
 #' Niche-response profiles of genes or gene sets
 #'
 #' Features (genes, or gene sets from [spiGSEA()]) against every (index,
-#' niche) column: the fill is the test's t (amber: the slope rises with the
+#' niche) column: the fill is the test's t (gold: the slope rises with the
 #' niche's density, or is higher in the second condition; violet: the
 #' reverse), a dot marks a call, grey a feature not tested in that index type.
 #' Rows are clustered on their t profiles. Read it for a gene's or pathway's
@@ -365,9 +365,9 @@ plotPValues <- function(x, bands = 5L) {
     geom_histogram(breaks = seq(0, 1, 0.05), fill = .magnitudeRamp(9L)[5], colour = "white", linewidth = 0.2) +
     geom_hline(data = uni, aes(yintercept = .data$level, linetype = "uniform"), linewidth = 0.4) +
     scale_linetype_manual(values = c(uniform = "dashed"), name = NULL) +
-    facet_grid(test ~ band, scales = "free_y") +
+    facet_grid(test ~ band, scales = "free_y", labeller = label_wrap_gen(9)) +
     scale_x_continuous(breaks = c(0, 0.5, 1), labels = c("0", "0.5", "1"), expand = expansion(add = 0.03)) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
     labs(x = "p-value", y = "triplets") +
-    theme_spiDE() + theme(panel.spacing = unit(1, "lines"))
+    theme_spiDE() + theme(panel.spacing = unit(1, "lines"), strip.text.x = element_text(size = rel(0.85)))
 }

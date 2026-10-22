@@ -247,9 +247,10 @@ Never report a result of one as a result of the other.
 # Plots
 
 Every plot is a ggplot2 object in one house style (`theme_spiDE()`) and one
-colour-blind-safe palette (`spiDEColours()`): amber and violet for a slope that
-rises or falls with the niche's density, teal and rufous for the first and
-second level of the condition. Each returns its data in `p$data`, so a plot is
+colour-blind-safe palette (`spiDEColours()`): gold and violet for a slope that
+rises or falls with the niche's density, dark violet and pink for the first and
+second level of the condition, and the viridis "magma" ramp for magnitudes.
+Each returns its data in `p$data`, so a plot is
 changed by adding layers or a theme, and any two combine with patchwork.
 
 Where the calls are, and the strongest of them. With `spe`, a triangle marks a

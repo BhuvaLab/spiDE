@@ -85,13 +85,30 @@ plotPatientSlopes <- function(x, gene, index, niche, ci = 0.95) {
     scale_fill_manual(values = .spideCols[["faint"]], name = NULL) +
     scale_size_area(max_size = 2.8, name = "weight", labels = scales::label_percent()) +
     facet_grid(condition ~ gene_lab, scales = "free", space = "free_y",
-               labeller = labeller(gene_lab = label_parsed)) +
+               labeller = labeller(gene_lab = label_parsed, condition = .breakLabel)) +
+    scale_x_continuous(breaks = scales::breaks_extended(n = 3)) +
     labs(x = sprintf("slope on %s density (log1p)", niche), y = NULL) +
     guides(colour = "none", size = guide_legend(order = 1, override.aes = list(colour = .spideCols[["grey"]])),
            fill = guide_legend(order = 2)) +
-    theme_spiDE() + theme(axis.text.y = element_text(size = rel(0.65)))
+    theme_spiDE() + theme(axis.text.y = element_text(size = rel(0.65)),
+                          strip.text.y = element_text(size = rel(0.95)),
+                          strip.text.x = element_text(size = rel(0.85)), plot.caption.position = "plot")
   if (length(x@condition)) p <- p + labs(caption = bquote(Delta * ": slope difference, " * .(x@contrast)))
   p
+}
+
+# A label longer than 9 characters broken onto two lines, at its first hyphen
+# or, failing that, the space nearest its middle ("Non-\nresponder").
+.breakLabel <- function(x) {
+  x <- as.character(x)
+  vapply(x, function(l) {
+    if (nchar(l) <= 9L) return(l)
+    if (grepl("-", l, fixed = TRUE)) return(sub("-", "-\n", l, fixed = TRUE))
+    sp <- gregexpr(" ", l, fixed = TRUE)[[1]]
+    if (sp[1] < 0) return(l)
+    k <- sp[which.min(abs(sp - nchar(l) / 2))]
+    paste0(substr(l, 1, k - 1), "\n", substr(l, k + 1, nchar(l)))
+  }, "", USE.NAMES = FALSE)
 }
 
 # Each gene's strip: the italic symbol over the condition test's slope
@@ -179,7 +196,7 @@ plotPatientEffects <- function(x, index, niche = NULL, covariates = NULL, type =
     sc <- if (length(condition) && identical(colour.by, condition)) {
       .scaleCondition(attr(.conditionCoding(fit@patients, condition), "levels"))
     } else if (is.numeric(v)) {
-      scale_colour_gradientn(colours = .magnitudeRamp(256L, skip = 0.1))
+      scale_colour_gradientn(colours = .magnitudeRamp(256L))
     } else {
       scale_colour_manual(values = spiDEColours("nuisance", nlevels(factor(v))))
     }
