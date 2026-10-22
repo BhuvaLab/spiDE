@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Dharmesh D. Bhuva">
+
+<title>Getting started with spiDE – spiDE</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<link href="./logo.png" rel="icon" type="image/png">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-7ef3a5617493e07f253f88e7bef5c60f.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-2ad0c9cee5de03d6504be9ac3131b32b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<style>
+
+      .quarto-title-block .quarto-title-banner h1,
+      .quarto-title-block .quarto-title-banner h2,
+      .quarto-title-block .quarto-title-banner h3,
+      .quarto-title-block .quarto-title-banner h4,
+      .quarto-title-block .quarto-title-banner h5,
+      .quarto-title-block .quarto-title-banner h6
+      {
+        color: #ffffff;
+      }
+
+      .quarto-title-block .quarto-title-banner {
+        color: #ffffff;
+background: #2A0E52;
+      }
+</style>
+<link href="site_libs/pagedtable-1.1/css/pagedtable.css" rel="stylesheet">
+<script src="site_libs/pagedtable-1.1/js/pagedtable.js"></script>
+
+
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top quarto-banner">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="./index.html" class="navbar-brand navbar-brand-logo">
+    <img src="./logo.png" alt="" class="navbar-logo light-content">
+    <img src="./logo.png" alt="" class="navbar-logo dark-content">
+    </a>
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">spiDE</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="./index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="./get-started.html" aria-current="page"> 
+<span class="menu-text">Get started</span></a>
+  </li>  
+  <li class="nav-item dropdown ">
+    <a class="nav-link dropdown-toggle" href="#" id="nav-menu-articles" role="link" data-bs-toggle="dropdown" aria-expanded="false">
+ <span class="menu-text">Articles</span>
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="nav-menu-articles">    
+        <li>
+    <a class="dropdown-item" href="./articles/spiDE-model.html">
+ <span class="dropdown-text">The spiDE model</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./articles/spiDE-design.html">
+ <span class="dropdown-text">Designing a study</span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./articles/spiDE-calibration.html">
+ <span class="dropdown-text">Validation: calibration and accuracy</span></a>
+  </li>  
+    </ul>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="./reference/r/index.html"> 
+<span class="menu-text">Reference</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./news.html"> 
+<span class="menu-text">News</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="https://github.com/BhuvaLab/spiDE"> <i class="bi bi-github" role="img">
+</i> 
+<span class="menu-text">GitHub</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<header id="title-block-header" class="quarto-title-block default page-columns page-full">
+  <div class="quarto-title-banner page-columns page-full">
+    <div class="quarto-title column-body">
+      <h1 class="title">Getting started with spiDE</h1>
+                      </div>
+  </div>
+    
+  
+  <div class="quarto-title-meta">
+
+      <div>
+      <div class="quarto-title-meta-heading">Author</div>
+      <div class="quarto-title-meta-contents">
+               <p>Dharmesh D. Bhuva </p>
+            </div>
+    </div>
+      
+    
+      
+    </div>
+    
+  
+  </header><div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul class="collapse">
+  <li><a href="#spide" id="toc-spide" class="nav-link active" data-scroll-target="#spide">spiDE</a></li>
+  <li><a href="#load-the-data" id="toc-load-the-data" class="nav-link" data-scroll-target="#load-the-data">Load the data</a></li>
+  <li><a href="#build-the-niches" id="toc-build-the-niches" class="nav-link" data-scroll-target="#build-the-niches">Build the niches</a>
+  <ul class="collapse">
+  <li><a href="#choose-a-bandwidth" id="toc-choose-a-bandwidth" class="nav-link" data-scroll-target="#choose-a-bandwidth">Choose a bandwidth</a></li>
+  </ul></li>
+  <li><a href="#fit-the-model" id="toc-fit-the-model" class="nav-link" data-scroll-target="#fit-the-model">Fit the model</a></li>
+  <li><a href="#test-the-slopes" id="toc-test-the-slopes" class="nav-link" data-scroll-target="#test-the-slopes">Test the slopes</a>
+  <ul class="collapse">
+  <li><a href="#the-pooled-test" id="toc-the-pooled-test" class="nav-link" data-scroll-target="#the-pooled-test">The pooled test</a></li>
+  <li><a href="#the-condition-specific-test" id="toc-the-condition-specific-test" class="nav-link" data-scroll-target="#the-condition-specific-test">The condition-specific test</a></li>
+  </ul></li>
+  <li><a href="#look-at-the-patients-behind-a-result" id="toc-look-at-the-patients-behind-a-result" class="nav-link" data-scroll-target="#look-at-the-patients-behind-a-result">Look at the patients behind a result</a></li>
+  <li><a href="#test-gene-sets" id="toc-test-gene-sets" class="nav-link" data-scroll-target="#test-gene-sets">Test gene sets</a></li>
+  <li><a href="#a-different-question-niche-abundance" id="toc-a-different-question-niche-abundance" class="nav-link" data-scroll-target="#a-different-question-niche-abundance">A different question: niche abundance</a></li>
+  <li><a href="#plots" id="toc-plots" class="nav-link" data-scroll-target="#plots">Plots</a>
+  <ul class="collapse">
+  <li><a href="#where-the-calls-are" id="toc-where-the-calls-are" class="nav-link" data-scroll-target="#where-the-calls-are">Where the calls are</a></li>
+  <li><a href="#the-cells-behind-a-slope" id="toc-the-cells-behind-a-slope" class="nav-link" data-scroll-target="#the-cells-behind-a-slope">The cells behind a slope</a></li>
+  <li><a href="#check-for-spillover" id="toc-check-for-spillover" class="nav-link" data-scroll-target="#check-for-spillover">Check for spillover</a></li>
+  <li><a href="#diagnostics" id="toc-diagnostics" class="nav-link" data-scroll-target="#diagnostics">Diagnostics</a></li>
+  </ul></li>
+  <li><a href="#practicalities" id="toc-practicalities" class="nav-link" data-scroll-target="#practicalities">Practicalities</a></li>
+  <li><a href="#session-information" id="toc-session-information" class="nav-link" data-scroll-target="#session-information">Session information</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content quarto-banner-title-block" id="quarto-document-content">
+
+
+
+
+
+<section id="spide" class="level1">
+<h1>spiDE</h1>
+<p>spiDE finds <strong>neighbourhood-dependent differential expression</strong> in spatial transcriptomics. Cells of one type do not behave the same everywhere in a tissue. A tumour cell sitting among fibroblasts may express a different set of genes from a tumour cell surrounded by other tumour cells, and the way it responds may differ between patients who respond to a treatment and patients who do not. spiDE asks, for a chosen <em>index</em> cell type, whether the expression of a gene changes with the local density of another cell type, which we call the <em>niche</em>, and whether that change differs between two conditions.</p>
+<p>Doing this well is harder than it sounds. The cells of one patient share their genetics, their treatment and the way their sample was handled, and neighbouring cells share their local tissue environment. If every cell is treated as an independent observation, the more cells are measured the more certain a result looks, even when the patients disagree with each other. A condition such as response to treatment is a property of a patient, not of a cell, so the patient is the right unit of replication. spiDE builds this into every test: the evidence for a result is how consistently the niche slope behaves <em>between</em> patients, never how many cells were measured.</p>
+<p>One hypothesis in spiDE is one (gene, index type, niche type) combination, which we call a <em>triplet</em>. Each triplet gets up to two tests:</p>
+<ol type="1">
+<li><strong>The pooled test</strong> asks whether, within patients, the gene’s expression in the index type changes with the density of the niche type, consistently across patients.</li>
+<li><strong>The condition-specific test</strong> asks whether that dependence differs between two conditions, such as responders and non-responders.</li>
+</ol>
+<p>The analysis runs in three steps, and each has its own function:</p>
+<ol type="1">
+<li><code>buildNiches()</code> measures the density of every cell type around every cell.</li>
+<li><code>fitSpiDE()</code> fits a negative binomial regression for every gene in every index type, with a separate baseline for every patient, so that the niche coefficients are slopes <em>within</em> patients.</li>
+<li><code>testSpiDE()</code> tests those slopes across patients.</li>
+</ol>
+<p><code>spiDE()</code> runs all three in one call. This article walks through the whole pipeline on a small example, and then through the gene-set test, the between-patient test of niche abundance, the plots and a few practical points. The statistics are explained in <code>vignette("spiDE-model")</code>, how well the tests hold up in <code>vignette("spiDE-calibration")</code>, and how many patients and cells a study needs in <code>vignette("spiDE-design")</code>.</p>
+<p>The package can be installed as follows:</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">"BiocManager"</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">install.packages</span>(<span class="st">"BiocManager"</span>)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>BiocManager<span class="sc">::</span><span class="fu">install</span>(<span class="st">"BhuvaLab/spiDE"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="load-the-data" class="level1">
+<h1>Load the data</h1>
+<p>We begin by loading a small simulated data set that ships with the package. It holds 16 patients, eight responders and eight non-responders, with 150 cells each, three cell types (<code>A</code>, <code>B</code> and <code>C</code>) and 20 genes. We planted exactly one effect in it: gene <code>G1</code> is up-regulated in index type <code>A</code>, in responders only, in proportion to the local density of niche type <code>B</code>. Because we know the answer, we can check that spiDE finds it.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(spiDE)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(SpatialExperiment)</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="fu">data</span>(toySpiDE)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>toySpiDE</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; class: SpatialExperiment </span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; dim: 20 2400 </span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; metadata(0):</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; assays(1): counts</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; rownames(20): G1 G2 ... G19 G20</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; rowData names(0):</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; colnames(2400): cell1 cell2 ... cell2399 cell2400</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; colData names(9): sample_id condition ... Area nCount</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; reducedDimNames(0):</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; mainExpName: NULL</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; altExpNames(0):</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; spatialCoords names(2) : x y</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; imgData names(0):</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>patients <span class="ot">&lt;-</span> <span class="fu">unique</span>(<span class="fu">as.data.frame</span>(<span class="fu">colData</span>(toySpiDE))[, <span class="fu">c</span>(<span class="st">"sample_id"</span>, <span class="st">"condition"</span>)])</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="fu">table</span>(patients<span class="sc">$</span>condition)</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Non-responder     Responder </span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;             8             8</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a><span class="fu">table</span>(toySpiDE<span class="sc">$</span>cell_type)</span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   A   B   C </span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 813 726 861</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>spiDE needs a <code>SpatialExperiment</code> with the following:</p>
+<ul>
+<li><strong>Raw integer counts</strong> in the <code>counts</code> assay. Normalised or back-transformed values are refused, because the model needs the counting noise of real counts.</li>
+<li>A <strong>cell type</strong> for every cell, in <code>cell_type</code>.</li>
+<li>A <strong>patient</strong> for every cell, in <code>sample_id</code>. There should be one sample per patient. If a patient has several sections, put the patient in <code>sample_id</code> and the section in <code>section</code>, so that spatial variation is estimated for each section separately.</li>
+<li>For the condition-specific test, a <strong>two-level condition that is constant within each patient</strong>, here the <code>condition</code> column. If the condition is partly confounded with slide or batch, a patient-level column of slides can be given as <code>strata</code>.</li>
+</ul>
+</section>
+<section id="build-the-niches" class="level1">
+<h1>Build the niches</h1>
+<p>For each cell, <code>buildNiches()</code> places a smooth bump, a Gaussian kernel, on every cell of a given type and adds the bumps up. The result is a density of each cell type at every cell, which says how much of that type there is nearby. The width of the bump, <code>sigma</code>, is the <em>bandwidth</em> and is in the units of the spatial coordinates. Each density is stored as a column of a <code>reducedDim</code> named after the bandwidth.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>spe <span class="ot">&lt;-</span> <span class="fu">buildNiches</span>(toySpiDE, <span class="at">sigma =</span> <span class="dv">30</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(<span class="fu">reducedDim</span>(spe, <span class="st">"Niche30"</span>), <span class="dv">3</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;               A            B         C</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; cell1 0.6569450 1.4712172285 0.2947218</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; cell2 1.4124748 0.0003534644 1.2449427</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; cell3 0.7352794 0.0000000000 1.4184528</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<section id="choose-a-bandwidth" class="level2">
+<h2 class="anchored" data-anchor-id="choose-a-bandwidth">Choose a bandwidth</h2>
+<p>The bandwidth sets what we mean by a neighbourhood. A small bandwidth looks at the immediate neighbours of a cell, and a large one at the tissue around it. A good bandwidth gives a niche map that is neither speckled nor flat. We can look at the density of niche type <code>B</code> in one sample at two bandwidths and judge by eye:</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>spe2 <span class="ot">&lt;-</span> <span class="fu">buildNiches</span>(spe, <span class="at">sigma =</span> <span class="dv">10</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">plotNicheMap</span>(spe2, <span class="at">niche =</span> <span class="st">"B"</span>, <span class="at">sample =</span> <span class="st">"S1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">sigma =</span> <span class="dv">10</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/bandwidth-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotNicheMap</span>(spe2, <span class="at">niche =</span> <span class="st">"B"</span>, <span class="at">sample =</span> <span class="st">"S1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">sigma =</span> <span class="dv">30</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/bandwidth-2.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>At the smaller bandwidth most cells have no niche cell of type <code>B</code> within reach and the density is zero, so the map is speckled by the position of single cells. At the larger one the density varies smoothly across the section, and we can see where <code>B</code> cells are concentrated. We use 30 for the rest of this article. For real data, choose the bandwidth from what you know about the biology, such as the distance over which cells signal to one another, and from maps like these. <code>mergeNiches()</code> can pool several cell types into one niche group (all lymphocytes, say) before fitting. spiDE never tests an index type against its own niche, merged or not.</p>
+</section>
+</section>
+<section id="fit-the-model" class="level1">
+<h1>Fit the model</h1>
+<p><code>fitSpiDE()</code> takes the object with its niches, the bandwidth to use and, if we want to test a condition, the name of the condition column.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">fitSpiDE</span>(spe, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>fit</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; SpiDEFit (slopes engine), bandwidth 30</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   16 patients; condition: condition</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   index A: 20 genes x 2 niches (B, C)</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   index B: 20 genes x 2 niches (A, C)</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   index C: 20 genes x 2 niches (A, B)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>By default every cell type with at least <code>min.cells</code> cells in at least <code>min.patients</code> patients is an index type, and every other cell type is tested as its niche. The <code>index</code> and <code>niche</code> arguments restrict this; niche types that are not tested stay in the model as adjustments. Genes detected in fewer than <code>min.detect</code> of an index type’s cells are not tested in it. The model adjusts for sequencing depth with the centred log library size of each cell, and further cell-level measurements such as cell area can be added with <code>covariates</code>.</p>
+<p>The <code>engine</code> argument chooses how the error between patients is estimated. The default, <code>"slopes"</code>, fits the model once without the condition and then estimates every patient’s own slope for every niche. Because the fit never sees the condition, any patient-level condition can be tested afterwards, and permuting the condition reruns only the test. The alternative, <code>"sandwich"</code>, fits the condition-specific model directly and needs the condition at fit time. The slopes engine is the more powerful of the two when effects vary between patients, and it is needed for <code>spiGSEA()</code>. <code>vignette("spiDE-model")</code> explains both engines.</p>
+</section>
+<section id="test-the-slopes" class="level1">
+<h1>Test the slopes</h1>
+<p><code>testSpiDE()</code> combines the patients’ slopes. It always runs the pooled test, and it runs the condition-specific test when a condition is available, here the one recorded by <code>fitSpiDE()</code>. A condition can also be given to <code>testSpiDE()</code> directly.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">testSpiDE</span>(fit)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>res</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; SpiDEResults (slopes engine)</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   pooled across patients: 120 tests, 2 at FDR 0.05</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   condition-specific (Responder - Non-responder; pooled_or_heterogeneity family): 2 tests, 1 at FDR 0.05</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<section id="the-pooled-test" class="level2">
+<h2 class="anchored" data-anchor-id="the-pooled-test">The pooled test</h2>
+<p>The pooled results are a table with one row per triplet. <code>estimate</code> is the average within-patient slope on the natural-log scale per unit of the log1p niche density, <code>t</code> and <code>p</code> are the test statistic and its p-value, and <code>q</code> is the q-value after a Benjamini-Hochberg correction over every triplet.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(<span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["gene"],"name":[1],"type":["chr"],"align":["left"]},{"label":["index"],"name":[2],"type":["chr"],"align":["left"]},{"label":["niche"],"name":[3],"type":["chr"],"align":["left"]},{"label":["test"],"name":[4],"type":["chr"],"align":["left"]},{"label":["estimate"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["se"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["t"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["df"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["p"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["n_patients"],"name":[10],"type":["dbl"],"align":["right"]},{"label":["p.heterogeneity"],"name":[11],"type":["dbl"],"align":["right"]},{"label":["q"],"name":[12],"type":["dbl"],"align":["right"]},{"label":["in_family"],"name":[13],"type":["lgl"],"align":["right"]}],"data":[{"1":"G1","2":"A","3":"B","4":"pooled","5":"0.3881372","6":"0.05679598","7":"6.833884","8":"238.20066","9":"6.861903e-11","10":"16","11":"0.5545574","12":"8.234284e-09","13":"TRUE","_rn_":"1"},{"1":"G9","2":"A","3":"B","4":"pooled","5":"-0.4108065","6":"0.09640727","7":"-4.261157","8":"275.75177","9":"2.794132e-05","10":"16","11":"0.2540271","12":"1.676479e-03","13":"TRUE","_rn_":"2"},{"1":"G8","2":"B","3":"C","4":"pooled","5":"-1.0110568","6":"0.31374706","7":"-3.222522","8":"278.86095","9":"1.421456e-03","10":"16","11":"0.1036774","12":"5.685822e-02","13":"TRUE","_rn_":"3"},{"1":"G18","2":"A","3":"B","4":"pooled","5":"-0.4598285","6":"0.17245172","7":"-2.666419","8":"260.58333","9":"8.145921e-03","10":"16","11":"0.8849338","12":"2.443776e-01","13":"TRUE","_rn_":"4"},{"1":"G2","2":"A","3":"B","4":"pooled","5":"-0.3746952","6":"0.15673331","7":"-2.390654","8":"273.31470","9":"1.749550e-02","10":"16","11":"0.2596331","12":"4.198921e-01","13":"TRUE","_rn_":"5"},{"1":"G4","2":"C","3":"A","4":"pooled","5":"-0.2958241","6":"0.13034836","7":"-2.269488","8":"26.38717","9":"3.163711e-02","10":"16","11":"0.5791366","12":"6.071471e-01","13":"TRUE","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+</div>
+</div>
+<p>The planted triplet, <code>G1</code> in <code>A</code> against <code>B</code>, comes out as the strongest pooled association, with a <code>t</code> of 6.83. Remember that a pooled call says that, within a patient, index cells with more of the niche type around them express more (or less) of the gene, consistently across patients.</p>
+</section>
+<section id="the-condition-specific-test" class="level2">
+<h2 class="anchored" data-anchor-id="the-condition-specific-test">The condition-specific test</h2>
+<p>The condition-specific table has the same layout. Its <code>estimate</code> is the difference between the conditions in the average slope, the second level minus the first, and <code>res$contrast</code> says which two levels were compared.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>res<span class="sc">$</span>contrast</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [1] "Responder - Non-responder"</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>cond <span class="ot">&lt;-</span> <span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"condition"</span>)</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>cond[cond<span class="sc">$</span>in_family, ]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["gene"],"name":[1],"type":["chr"],"align":["left"]},{"label":["index"],"name":[2],"type":["chr"],"align":["left"]},{"label":["niche"],"name":[3],"type":["chr"],"align":["left"]},{"label":["test"],"name":[4],"type":["chr"],"align":["left"]},{"label":["estimate"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["se"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["t"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["df"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["p"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["n_patients"],"name":[10],"type":["dbl"],"align":["right"]},{"label":["p.heterogeneity"],"name":[11],"type":["dbl"],"align":["right"]},{"label":["q"],"name":[12],"type":["dbl"],"align":["right"]},{"label":["in_family"],"name":[13],"type":["lgl"],"align":["right"]}],"data":[{"1":"G1","2":"A","3":"B","4":"condition","5":"0.2731141","6":"0.08851382","7":"3.085553","8":"11.31285","9":"0.01005585","10":"16","11":"0.5545574","12":"0.02011171","13":"TRUE","_rn_":"2"},{"1":"G9","2":"A","3":"B","4":"condition","5":"-0.2408824","6":"0.21006634","7":"-1.146697","8":"12.84478","9":"0.27241928","10":"16","11":"0.2540271","12":"0.27241928","13":"TRUE","_rn_":"34"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+</div>
+</div>
+<p>By default the condition-specific test is carried out only among the triplets that pass the pooled test, or whose slopes vary between patients more than their sampling noise allows (<code>p.heterogeneity</code>, corrected at the same <code>fdr</code>). Neither filter looks at the condition, so the correction for multiple testing is spent on triplets that have something for the condition to explain, and the result is valid under any relabelling of the patients. Rows outside this family have <code>q = NA</code>. Other families are available through the <code>procedure</code> argument: <code>"heterogeneity"</code> and <code>"filtered"</code> use one filter each, and <code>"all"</code> tests every triplet.</p>
+<p>In the table, the planted slope is larger in responders than in non-responders by 0.27 log units per unit of log1p density (<code>q</code> = 0.02), which is the effect we planted. The whole pipeline can also be run in one call:</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">spiDE</span>(toySpiDE, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+</section>
+<section id="look-at-the-patients-behind-a-result" class="level1">
+<h1>Look at the patients behind a result</h1>
+<p>A call is only as good as the patients behind it. With the slopes engine, every patient has its own slope for every triplet, and these slopes are the evidence that the tests weigh. <code>patientSlopes()</code> returns them as a table, with the slope’s variance and the number of cells that went into it.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>ps <span class="ot">&lt;-</span> <span class="fu">patientSlopes</span>(fit, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(ps[, <span class="fu">c</span>(<span class="st">"patient"</span>, <span class="st">"condition"</span>, <span class="st">"slope"</span>, <span class="st">"var_spatial"</span>, <span class="st">"ncells"</span>)])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["patient"],"name":[1],"type":["chr"],"align":["left"]},{"label":["condition"],"name":[2],"type":["chr"],"align":["left"]},{"label":["slope"],"name":[3],"type":["dbl"],"align":["right"]},{"label":["var_spatial"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["ncells"],"name":[5],"type":["int"],"align":["right"]}],"data":[{"1":"S1","2":"Responder","3":"0.46507215","4":"0.008293659","5":"49","_rn_":"1"},{"1":"S10","2":"Non-responder","3":"0.17666906","4":"0.059603450","5":"61","_rn_":"2"},{"1":"S11","2":"Responder","3":"0.40042779","4":"0.010850030","5":"60","_rn_":"3"},{"1":"S12","2":"Non-responder","3":"0.20442830","4":"0.084545395","5":"41","_rn_":"4"},{"1":"S13","2":"Responder","3":"0.40137955","4":"0.021370670","5":"54","_rn_":"5"},{"1":"S14","2":"Non-responder","3":"0.09021844","4":"0.095534715","5":"45","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+</div>
+</div>
+<p><code>plotPatientSlopes()</code> draws them. Each point is a patient’s slope with its interval, sized by the weight the patient carries in the tests. The weighted average of each condition is marked, and the pooled estimate is shown as a band.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotPatientSlopes</span>(res, <span class="at">gene =</span> <span class="fu">c</span>(<span class="st">"G1"</span>, <span class="st">"G2"</span>), <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/slopes-plot-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>For <code>G1</code>, the slopes of the patients lie mostly above zero in both conditions, which gives the pooled call, and the slopes of the responders sit further to the right than those of the non-responders, which is what the condition-specific test picks up. The panel title reports its difference and q-value. For <code>G2</code>, which has no planted effect, the slopes are spread widely on both sides of zero, their intervals are wide, and the two conditions overlap.</p>
+<p>The model also gives each patient a baseline level of every gene, its intercept. These baselines absorb everything that differs between patients as a whole, so they are not tested, but they are worth a look. <code>patientIntercepts()</code> returns them with the patient-level covariates, and <code>plotPatientEffects()</code> summarises them by principal components of the intercepts, showing how much of each component each covariate explains.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>intercepts <span class="ot">&lt;-</span> <span class="fu">patientIntercepts</span>(fit, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(intercepts)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["gene"],"name":[1],"type":["chr"],"align":["left"]},{"label":["index"],"name":[2],"type":["chr"],"align":["left"]},{"label":["patient"],"name":[3],"type":["chr"],"align":["left"]},{"label":["intercept"],"name":[4],"type":["dbl"],"align":["right"]},{"label":["ncells"],"name":[5],"type":["int"],"align":["right"]},{"label":["sample_id"],"name":[6],"type":["chr"],"align":["left"]},{"label":["condition"],"name":[7],"type":["chr"],"align":["left"]},{"label":["Age"],"name":[8],"type":["dbl"],"align":["right"]}],"data":[{"1":"G1","2":"A","3":"S1","4":"2.185319","5":"49","6":"S1","7":"Responder","8":"0.5252615","_rn_":"1"},{"1":"G1","2":"A","3":"S10","4":"1.782854","5":"61","6":"S10","7":"Non-responder","8":"-2.5667462","_rn_":"2"},{"1":"G1","2":"A","3":"S11","4":"2.157735","5":"60","6":"S11","7":"Responder","8":"1.2134123","_rn_":"3"},{"1":"G1","2":"A","3":"S12","4":"1.627117","5":"41","6":"S12","7":"Non-responder","8":"0.3624176","_rn_":"4"},{"1":"G1","2":"A","3":"S13","4":"2.223423","5":"54","6":"S13","7":"Responder","8":"-1.8538037","_rn_":"5"},{"1":"G1","2":"A","3":"S14","4":"1.707590","5":"45","6":"S14","7":"Non-responder","8":"0.8369687","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotPatientEffects</span>(res, <span class="at">index =</span> <span class="st">"A"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-effects-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>In this example the first component of the intercepts lines up almost entirely with the condition, which is what we expect: the baselines absorb the difference in level between responders and non-responders, so that this difference cannot be mistaken for a difference in slope. Other covariates, such as the number of cells and the depth of a patient, explain smaller parts of the other components. If a slide or batch column lined up with a component of the <em>slopes</em> instead, the condition would be partly confounded with it, and that column should go into <code>strata</code>. Setting <code>niche</code> in <code>plotPatientEffects()</code> draws the same plot for the slopes, which is the check to make before trusting a condition-specific call.</p>
+</section>
+<section id="test-gene-sets" class="level1">
+<h1>Test gene sets</h1>
+<p>Genes do not act alone, and a set of genes with a shared function often shows an effect that no single gene shows clearly. <code>spiGSEA()</code> tests gene sets in the way <code>testSpiDE()</code> tests genes. It takes the results and any named list of gene symbols, such as the collections of the <code>msigdb</code> package. Each patient gets a slope for the set, which averages its genes’ slopes after putting them on a common scale, and these set slopes go through the same pooled and condition-specific tests. By default (<code>type = "competitive"</code>) the average over the other tested genes is subtracted, so a set is called when it moves <em>more than the typical gene</em>. <code>spiGSEA()</code> needs the slopes engine.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>sets <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="at">planted =</span> <span class="fu">c</span>(<span class="st">"G1"</span>, <span class="st">"G2"</span>, <span class="st">"G3"</span>), <span class="at">other =</span> <span class="fu">paste0</span>(<span class="st">"G"</span>, <span class="dv">4</span><span class="sc">:</span><span class="dv">8</span>),</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>             <span class="at">rest =</span> <span class="fu">paste0</span>(<span class="st">"G"</span>, <span class="dv">9</span><span class="sc">:</span><span class="dv">20</span>))</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>gs <span class="ot">&lt;-</span> <span class="fu">spiGSEA</span>(res, sets, <span class="at">min.size =</span> <span class="dv">3</span>)</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(gs[, <span class="fu">c</span>(<span class="st">"set"</span>, <span class="st">"index"</span>, <span class="st">"niche"</span>, <span class="st">"test"</span>, <span class="st">"size"</span>, <span class="st">"estimate"</span>, <span class="st">"p"</span>, <span class="st">"q"</span>, <span class="st">"q.global"</span>)])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["set"],"name":[1],"type":["chr"],"align":["left"]},{"label":["index"],"name":[2],"type":["chr"],"align":["left"]},{"label":["niche"],"name":[3],"type":["chr"],"align":["left"]},{"label":["test"],"name":[4],"type":["chr"],"align":["left"]},{"label":["size"],"name":[5],"type":["int"],"align":["right"]},{"label":["estimate"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["p"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["q"],"name":[8],"type":["dbl"],"align":["right"]},{"label":["q.global"],"name":[9],"type":["dbl"],"align":["right"]}],"data":[{"1":"planted","2":"A","3":"B","4":"pooled","5":"3","6":"0.5786725","7":"1.062184e-05","8":"3.186553e-05","9":"0.0001911932","_rn_":"1"},{"1":"planted","2":"C","3":"A","4":"pooled","5":"3","6":"0.2375498","7":"4.530821e-02","8":"1.359246e-01","9":"0.2335133889","_rn_":"2"},{"1":"other","2":"B","3":"C","4":"pooled","5":"5","6":"-0.2151709","7":"4.837164e-02","8":"1.451149e-01","9":"0.2335133889","_rn_":"3"},{"1":"planted","2":"B","3":"A","4":"pooled","5":"3","6":"0.2700726","7":"5.189186e-02","8":"1.556756e-01","9":"0.2335133889","_rn_":"4"},{"1":"rest","2":"A","3":"B","4":"pooled","5":"12","6":"-0.1955425","7":"9.496954e-02","8":"1.424543e-01","9":"0.3418903349","_rn_":"5"},{"1":"rest","2":"C","3":"A","4":"pooled","5":"12","6":"-0.1856722","7":"1.141085e-01","8":"1.711627e-01","9":"0.3423253865","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+</div>
+</div>
+<p>There are two q-values. <code>q</code> adjusts within each (index, niche, test) column, and <code>q.global</code> over every set, index and niche of a test. When there are many sets and many columns, <code>q.global</code> is the one to read. <code>plotTripletHeatmap()</code> shows the t statistic of every set in every (index, niche) column, with a dot where <code>q.global</code> passes.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotTripletHeatmap</span>(gs, <span class="at">test =</span> <span class="st">"pooled"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/gsea-plot-1.png" class="img-fluid figure-img" width="576"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>The set holding the planted gene stands out in the column of <code>A</code> against <code>B</code>, where it is called, and no other set is called.</p>
+</section>
+<section id="a-different-question-niche-abundance" class="level1">
+<h1>A different question: niche abundance</h1>
+<p>The tests above use only the slopes within patients. A patient whose index cells sit among many niche cells may also express a gene differently as a whole from a patient whose index cells do not. This is a real association, but it is a different claim. It says that patients with more of a niche type differ, not that a cell responds to its neighbours, and the patient intercepts absorb it so that <code>testSpiDE()</code> never sees it. <code>testNicheAbundance()</code> asks it directly. For each patient and index type it forms a pseudobulk profile and compares it with the patient’s average niche density, across patients.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>ab <span class="ot">&lt;-</span> <span class="fu">testNicheAbundance</span>(spe, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(ab)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div data-pagedtable="false">
+  <script data-pagedtable-source="" type="application/json">
+{"columns":[{"label":[""],"name":["_rn_"],"type":[""],"align":["left"]},{"label":["gene"],"name":[1],"type":["chr"],"align":["left"]},{"label":["index"],"name":[2],"type":["chr"],"align":["left"]},{"label":["niche"],"name":[3],"type":["chr"],"align":["left"]},{"label":["term"],"name":[4],"type":["chr"],"align":["left"]},{"label":["estimate"],"name":[5],"type":["dbl"],"align":["right"]},{"label":["t"],"name":[6],"type":["dbl"],"align":["right"]},{"label":["p"],"name":[7],"type":["dbl"],"align":["right"]},{"label":["n_patients"],"name":[8],"type":["int"],"align":["right"]},{"label":["leverage"],"name":[9],"type":["dbl"],"align":["right"]},{"label":["downweighted"],"name":[10],"type":["int"],"align":["right"]},{"label":["q"],"name":[11],"type":["dbl"],"align":["right"]},{"label":["q.global"],"name":[12],"type":["dbl"],"align":["right"]}],"data":[{"1":"G1","2":"A","3":"B","4":"niche","5":"-0.7027035","6":"-0.7670751","7":"0.45395614","8":"16","9":"3.140745","10":"1","11":"0.7704611","12":"0.9454957","_rn_":"1"},{"1":"G2","2":"A","3":"B","4":"niche","5":"1.6965338","6":"0.9949125","7":"0.33458847","8":"16","9":"3.140745","10":"1","11":"0.7704611","12":"0.9075984","_rn_":"2"},{"1":"G3","2":"A","3":"B","4":"niche","5":"-4.4677351","6":"-2.2039072","7":"0.04252324","8":"16","9":"3.140745","10":"1","11":"0.7704611","12":"0.6623751","_rn_":"3"},{"1":"G4","2":"A","3":"B","4":"niche","5":"1.6759925","6":"1.0894772","7":"0.29208148","8":"16","9":"3.140745","10":"1","11":"0.7704611","12":"0.9075984","_rn_":"4"},{"1":"G5","2":"A","3":"B","4":"niche","5":"-2.3093092","6":"-1.5048814","7":"0.15183925","8":"16","9":"3.140745","10":"1","11":"0.7704611","12":"0.7377807","_rn_":"5"},{"1":"G6","2":"A","3":"B","4":"niche","5":"-1.6818163","6":"-1.0171063","7":"0.32423758","8":"16","9":"3.140745","10":"1","11":"0.7704611","12":"0.9075984","_rn_":"6"}],"options":{"columns":{"min":{},"max":[10]},"rows":{"min":[10],"max":[10]},"pages":{}}}
+  </script>
+</div>
+</div>
+</div>
+<p>With a condition, the rows with <code>term</code> <code>"niche"</code> give the association averaged over the two conditions, and the rows with <code>"condition:niche"</code> test whether it differs between them, again the second level minus the first. Each term is its own family for multiple testing, with its own <code>q.global</code>. A patient who alone carries most of a niche type’s spread is down-weighted (<code>max.leverage</code>), so that one patient cannot make a call on its own. Gene sets go through the same test with <code>testNicheAbundance(genesets = )</code>.</p>
+<p>The two kinds of result must not be mixed up. A result of <code>testSpiDE()</code> says that, within a patient, cells with more of this niche differ, and a result of <code>testNicheAbundance()</code> says that patients with more of this niche differ. <code>plotNicheResponse()</code> shows both on one gene. With <code>adjust = FALSE</code> it draws the raw data: each segment is one patient’s slope, the quantity spiDE tests, and the dashed line through the patients’ means is the between-patient association that <code>testNicheAbundance()</code> tests.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotNicheResponse</span>(spe, res, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>, <span class="at">adjust =</span> <span class="cn">FALSE</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/abundance-plot-1.png" class="img-fluid figure-img" width="576"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="plots" class="level1">
+<h1>Plots</h1>
+<p>All the plots are ggplot2 objects in one house style (<code>theme_spiDE()</code>), with one colour-blind-safe palette (<code>spiDEColours()</code>) that uses one pair of colours for slopes that rise or fall with the niche and another pair for the two levels of the condition. Each plot returns its data in <code>p$data</code>, so a plot is changed by adding layers or a theme, and any two plots can be combined with patchwork.</p>
+<section id="where-the-calls-are" class="level2">
+<h2 class="anchored" data-anchor-id="where-the-calls-are">Where the calls are</h2>
+<p><code>plotCallMap()</code> counts, for each (index, niche) column, how many triplets pass, separately for slopes that rise and slopes that fall with the niche’s density, and <code>plotTopTriplets()</code> shows the strongest ones. When we give it the <code>SpatialExperiment</code>, a triangle marks a gene that is several-fold higher in the niche type than in the index type, which we come back to below.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotCallMap</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-results-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotTopTriplets</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>, <span class="at">n =</span> <span class="dv">12</span>, <span class="at">spe =</span> spe)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-results-2.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="the-cells-behind-a-slope" class="level2">
+<h2 class="anchored" data-anchor-id="the-cells-behind-a-slope">The cells behind a slope</h2>
+<p><code>plotNicheResponse()</code> shows the cells themselves. By default, each patient’s fitted intercept is divided out, so the patients share one level and the slopes that the tests compare are easy to see.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotNicheResponse</span>(spe, res, <span class="at">gene =</span> <span class="fu">c</span>(<span class="st">"G1"</span>, <span class="st">"G2"</span>), <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-response-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>For <code>G1</code>, the expression of the responders’ cells rises with the density of <code>B</code> while that of the non-responders is nearly flat. For <code>G2</code>, there is no clear trend in either group.</p>
+</section>
+<section id="check-for-spillover" class="level2">
+<h2 class="anchored" data-anchor-id="check-for-spillover">Check for spillover</h2>
+<p>Cell segmentation is never perfect, and transcripts of a neighbouring niche cell can be assigned to an index cell. These transcripts rise with the niche’s density and look like a response of the index cell. <code>plotSpillover()</code> plots every triplet by its signed z statistic against how much higher the gene is in the niche type than in the index type, and marks the region of genes that are several-fold higher in the niche type. If the calls fell mostly in that region, they would be the niche type’s own markers and spillover the likely explanation.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotSpillover</span>(res, spe)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-spillover-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>In this example the plot reports that none of the two calls lies in that region, so spillover does not explain them. In real data, report the niche type’s fold change together with every call.</p>
+</section>
+<section id="diagnostics" class="level2">
+<h2 class="anchored" data-anchor-id="diagnostics">Diagnostics</h2>
+<p><code>plotPValues()</code> shows the distribution of the p-values by expression band. It is a sanity check on the data at hand and is not a replacement for the calibration checks of <code>vignette("spiDE-calibration")</code>.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotPValues</span>(res)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-diagnostics-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Figures combine with patchwork, for example to put a patient-level and a cell-level view of the same triplet side by side:</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(patchwork)</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="fu">plotPatientSlopes</span>(res, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>) <span class="sc">+</span></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">plotNicheResponse</span>(spe, res, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>) <span class="sc">+</span></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">plot_annotation</span>(<span class="at">tag_levels =</span> <span class="st">"A"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-patchwork-1.png" class="img-fluid figure-img" width="864"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+</section>
+<section id="practicalities" class="level1">
+<h1>Practicalities</h1>
+<p><strong>Runtime.</strong> The fit is the expensive step. Every gene is fitted separately in every index type, so the time grows with the number of index types, the number of genes and the number of cells, but it hardly depends on the number of patients, because the patient baselines are handled algebraically. The example above takes a few seconds. Testing is fast, and a permutation of the condition under the slopes engine reruns only the test.</p>
+<p><strong>Parallelism.</strong> Genes are fitted independently within an index type, so the <code>BPPARAM</code> argument spreads the genes over workers:</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(BiocParallel)</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">fitSpiDE</span>(spe, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>,</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>                <span class="at">BPPARAM =</span> <span class="fu">MulticoreParam</span>(<span class="dv">4</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>Forked workers run one BLAS thread each when the <code>RhpcBLASctl</code> package is installed. Otherwise, set <code>OMP_NUM_THREADS=1</code> in the job, because workers that each use many threads compete with one another and run much slower.</p>
+<p><strong>Several bandwidths.</strong> One fit uses one bandwidth. We can build the niches at several bandwidths and fit each one, but the results are a sensitivity analysis and not a search: each bandwidth is its own set of tests, and picking the best of them after looking would not be valid. Calls that hold at both bandwidths are the more convincing.</p>
+<p>Below we refit index type <code>A</code> at the smaller bandwidth and count the pooled calls at each bandwidth.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>fit10 <span class="ot">&lt;-</span> <span class="fu">fitSpiDE</span>(spe2, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">10</span>, <span class="at">index =</span> <span class="st">"A"</span>,</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>                  <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>res10 <span class="ot">&lt;-</span> <span class="fu">testSpiDE</span>(fit10)</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>r10 <span class="ot">&lt;-</span> <span class="fu">results</span>(res10, <span class="at">test =</span> <span class="st">"pooled"</span>)</span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>r30 <span class="ot">&lt;-</span> <span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>)</span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>r30 <span class="ot">&lt;-</span> r30[r30<span class="sc">$</span>index <span class="sc">==</span> <span class="st">"A"</span>, ]</span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">sigma10 =</span> <span class="fu">sum</span>(r10<span class="sc">$</span>q <span class="sc">&lt;</span> <span class="fl">0.05</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>), <span class="at">sigma30 =</span> <span class="fu">sum</span>(r30<span class="sc">$</span>q <span class="sc">&lt;</span> <span class="fl">0.05</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; sigma10 sigma30 </span></span>
+<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;       3       2</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>Both bandwidths call a handful of triplets in <code>A</code>, including the planted one, so the conclusion does not hinge on the choice here.</p>
+<p><strong>Objects from older versions.</strong> Objects saved by spiDE 0.99.22 and earlier came from a different model and are refused by this version, with a message that names the archive that reads them.</p>
+</section>
+<section id="session-information" class="level1">
+<h1>Session information</h1>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; R version 4.6.1 (2026-06-24)</span></span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Platform: x86_64-pc-linux-gnu</span></span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Running under: Ubuntu 24.04.5 LTS</span></span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Matrix products: default</span></span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; BLAS:   /usr/lib/x86_64-linux-gnu/openblas-pthread/libblas.so.3 </span></span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; LAPACK: /usr/lib/x86_64-linux-gnu/openblas-pthread/libopenblasp-r0.3.26.so;  LAPACK version 3.12.0</span></span>
+<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; locale:</span></span>
+<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [1] LC_CTYPE=C.UTF-8       LC_NUMERIC=C           LC_TIME=C.UTF-8       </span></span>
+<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [4] LC_COLLATE=C.UTF-8     LC_MONETARY=C.UTF-8    LC_MESSAGES=C.UTF-8   </span></span>
+<span id="cb27-13"><a href="#cb27-13" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [7] LC_PAPER=C.UTF-8       LC_NAME=C              LC_ADDRESS=C          </span></span>
+<span id="cb27-14"><a href="#cb27-14" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [10] LC_TELEPHONE=C         LC_MEASUREMENT=C.UTF-8 LC_IDENTIFICATION=C   </span></span>
+<span id="cb27-15"><a href="#cb27-15" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb27-16"><a href="#cb27-16" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; time zone: UTC</span></span>
+<span id="cb27-17"><a href="#cb27-17" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; tzcode source: system (glibc)</span></span>
+<span id="cb27-18"><a href="#cb27-18" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb27-19"><a href="#cb27-19" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; attached base packages:</span></span>
+<span id="cb27-20"><a href="#cb27-20" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [1] stats4    stats     graphics  grDevices utils     datasets  methods  </span></span>
+<span id="cb27-21"><a href="#cb27-21" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [8] base     </span></span>
+<span id="cb27-22"><a href="#cb27-22" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb27-23"><a href="#cb27-23" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; other attached packages:</span></span>
+<span id="cb27-24"><a href="#cb27-24" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [1] patchwork_1.3.2             SpatialExperiment_1.23.0   </span></span>
+<span id="cb27-25"><a href="#cb27-25" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [3] SingleCellExperiment_1.35.2 SummarizedExperiment_1.43.0</span></span>
+<span id="cb27-26"><a href="#cb27-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [5] Biobase_2.73.2              GenomicRanges_1.65.4       </span></span>
+<span id="cb27-27"><a href="#cb27-27" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [7] Seqinfo_1.3.2               IRanges_2.47.5             </span></span>
+<span id="cb27-28"><a href="#cb27-28" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [9] S4Vectors_0.51.10           BiocGenerics_0.59.12       </span></span>
+<span id="cb27-29"><a href="#cb27-29" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [11] generics_0.1.4              MatrixGenerics_1.25.0      </span></span>
+<span id="cb27-30"><a href="#cb27-30" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [13] matrixStats_1.5.0           spiDE_0.99.37              </span></span>
+<span id="cb27-31"><a href="#cb27-31" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb27-32"><a href="#cb27-32" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; loaded via a namespace (and not attached):</span></span>
+<span id="cb27-33"><a href="#cb27-33" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [1] gtable_0.3.6           rjson_0.2.23           xfun_0.62             </span></span>
+<span id="cb27-34"><a href="#cb27-34" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [4] ggplot2_4.0.3          ggrepel_0.9.8          spatstat.sparse_3.2-0 </span></span>
+<span id="cb27-35"><a href="#cb27-35" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [7] lattice_0.22-9         vctrs_0.7.3            tools_4.6.1           </span></span>
+<span id="cb27-36"><a href="#cb27-36" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [10] spatstat.utils_3.2-5   goftest_1.2-3          parallel_4.6.1        </span></span>
+<span id="cb27-37"><a href="#cb27-37" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [13] tibble_3.3.1           pkgconfig_2.0.3        Matrix_1.7-5          </span></span>
+<span id="cb27-38"><a href="#cb27-38" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [16] RColorBrewer_1.1-3     S7_0.2.2               lifecycle_1.0.5       </span></span>
+<span id="cb27-39"><a href="#cb27-39" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [19] SpaNorm_1.7.16         deldir_2.0-4           compiler_4.6.1        </span></span>
+<span id="cb27-40"><a href="#cb27-40" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [22] farver_2.1.2           RhpcBLASctl_0.23-42    statmod_1.5.2         </span></span>
+<span id="cb27-41"><a href="#cb27-41" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [25] codetools_0.2-20       spatstat.explore_3.8-3 htmltools_0.5.9       </span></span>
+<span id="cb27-42"><a href="#cb27-42" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [28] yaml_2.3.12            pillar_1.11.1          BiocParallel_1.47.0   </span></span>
+<span id="cb27-43"><a href="#cb27-43" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [31] DelayedArray_0.39.8    limma_3.99.2           spatstat.univar_3.2-0 </span></span>
+<span id="cb27-44"><a href="#cb27-44" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [34] magick_2.9.1           abind_1.4-8            nlme_3.1-169          </span></span>
+<span id="cb27-45"><a href="#cb27-45" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [37] spatstat.geom_3.8-3    tidyselect_1.2.1       rsvd_1.0.6            </span></span>
+<span id="cb27-46"><a href="#cb27-46" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [40] digest_0.6.39          BiocSingular_1.29.2    dplyr_1.2.1           </span></span>
+<span id="cb27-47"><a href="#cb27-47" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [43] splines_4.6.1          labeling_0.4.3         polyclip_1.10-7       </span></span>
+<span id="cb27-48"><a href="#cb27-48" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [46] fastmap_1.2.0          grid_4.6.1             cli_3.6.6             </span></span>
+<span id="cb27-49"><a href="#cb27-49" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [49] SparseArray_1.13.4     magrittr_2.0.5         S4Arrays_1.13.2       </span></span>
+<span id="cb27-50"><a href="#cb27-50" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [52] spatstat.data_3.1-9    withr_3.0.3            tensor_1.5.1          </span></span>
+<span id="cb27-51"><a href="#cb27-51" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [55] scales_1.4.0           rmarkdown_2.32         XVector_0.53.0        </span></span>
+<span id="cb27-52"><a href="#cb27-52" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [58] otel_0.2.0             ScaledMatrix_1.21.0    beachmat_2.29.3       </span></span>
+<span id="cb27-53"><a href="#cb27-53" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [61] evaluate_1.0.5         knitr_1.52             irlba_2.4.1           </span></span>
+<span id="cb27-54"><a href="#cb27-54" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [64] mgcv_1.9-4             rlang_1.3.0            Rcpp_1.1.2            </span></span>
+<span id="cb27-55"><a href="#cb27-55" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [67] spatstat.random_3.5-2  glue_1.8.1             jsonlite_2.0.0        </span></span>
+<span id="cb27-56"><a href="#cb27-56" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [70] R6_2.6.1</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/bhuvalab\.github\.io\/spiDE");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+<p>GPL (&gt;= 3) licence. Built with <a href="https://quarto.org">Quarto</a>.</p>
+</div>   
+    <div class="nav-footer-center">
+      <ul class="footer-items list-unstyled">
+    <li class="nav-item">
+    <a class="nav-link" href="https://github.com/BhuvaLab/spiDE">
+<p>spiDE (R)</p>
+</a>
+  </li>  
+    <li class="nav-item">
+    <a class="nav-link" href="https://github.com/BhuvaLab/SpaNorm">
+<p>SpaNorm (R)</p>
+</a>
+  </li>  
+</ul>
+    </div>
+    <div class="nav-footer-right">
+<p>Neighbourhood-dependent differential expression</p>
+</div>
+  </div>
+</footer>
+
+
+
+
+</body></html>
