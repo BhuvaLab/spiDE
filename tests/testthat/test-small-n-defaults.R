@@ -142,3 +142,18 @@ test_that("the defaults are identical serially and in parallel", {
   r2 <- testSpiDE(fit16h, condition = "condition", BPPARAM = BiocParallel::MulticoreParam(2))@table
   expect_identical(r1, r2)
 })
+
+test_that(".cochran and .kishN are the direct formulas", {
+  x <- fit16h@index$A
+  vp <- sweep(x$v_model, c(2, 3), x$factor, "*")
+  cq <- spiDE:::.cochran(x$beta, vp)
+  g <- 2L; j <- 1L
+  b <- x$beta[g, , j]; w <- 1 / vp[g, , j]
+  ok <- is.finite(b) & is.finite(w) & w > 0
+  expect_equal(cq$m[g, j], sum(ok))
+  expect_equal(cq$sw[g, j], sum(w[ok]), tolerance = 1e-12)
+  expect_equal(cq$sw2[g, j], sum(w[ok]^2), tolerance = 1e-12)
+  expect_equal(cq$Q[g, j], sum(w[ok] * (b[ok] - sum(w[ok] * b[ok]) / sum(w[ok]))^2), tolerance = 1e-10)
+  W <- rbind(c(1, 1, 1, 1), c(1, 2, NA, 3), c(NA, NA, NA, NA))
+  expect_equal(spiDE:::.kishN(W)[1:2], c(4, 36 / 14))
+})
