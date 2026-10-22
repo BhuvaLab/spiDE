@@ -1,6 +1,5 @@
-# Shared helpers used across spiDE: cell-type name sanitising and the
-# self-niche rule. Both moved here from R/design.R when the mixed-effects
-# engine was archived (0.99.30); the bodies are unchanged.
+# Shared helpers used across spiDE: cell-type name sanitising, the self-niche
+# rule and the sparse per-group column sums.
 
 # sanitise cell-type / niche names the same way as the analysis scripts
 .sanitise <- function(x) gsub(" |-", ".", x)
