@@ -8,7 +8,7 @@
 
 <meta name="author" content="Dharmesh D. Bhuva">
 
-<title>Getting started with spiDE – spiDE</title>
+<title>Get started – spiDE</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -82,7 +82,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="site_libs/quarto-html/quarto-syntax-highlighting-7ef3a5617493e07f253f88e7bef5c60f.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-0e8b588de7367b1ec620c9d64b30b97a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-2ad0c9cee5de03d6504be9ac3131b32b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -162,10 +162,6 @@ background: #2A0E52;
     <a class="nav-link active" href="./get-started.html" aria-current="page"> 
 <span class="menu-text">Get started</span></a>
   </li>  
-  <li class="nav-item">
-    <a class="nav-link" href="./python-tutorial.html"> 
-<span class="menu-text">Python tutorial</span></a>
-  </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-articles" role="link" data-bs-toggle="dropdown" aria-expanded="false">
  <span class="menu-text">Articles</span>
@@ -238,7 +234,8 @@ background: #2A0E52;
 <header id="title-block-header" class="quarto-title-block default page-columns page-full">
   <div class="quarto-title-banner page-columns page-full">
     <div class="quarto-title column-body">
-      <h1 class="title">Getting started with spiDE</h1>
+      <h1 class="title">Get started</h1>
+            <p class="subtitle lead">spiDE: neighbourhood-dependent differential expression, in R and Python</p>
                       </div>
   </div>
     
@@ -288,6 +285,7 @@ background: #2A0E52;
   <li><a href="#diagnostics" id="toc-diagnostics" class="nav-link" data-scroll-target="#diagnostics">Diagnostics</a></li>
   </ul></li>
   <li><a href="#practicalities" id="toc-practicalities" class="nav-link" data-scroll-target="#practicalities">Practicalities</a></li>
+  <li><a href="#do-r-and-python-agree" id="toc-do-r-and-python-agree" class="nav-link" data-scroll-target="#do-r-and-python-agree">Do R and Python agree?</a></li>
   <li><a href="#session-information" id="toc-session-information" class="nav-link" data-scroll-target="#session-information">Session information</a></li>
   </ul>
 </nav>
@@ -299,23 +297,30 @@ background: #2A0E52;
 
 
 
+<!--
+MAINTENANCE. This page is written by hand. It follows vignettes/spiDE.Rmd (R) and spidepy's
+docs/tutorial.ipynb (Python) section by section. When either changes, change the matching
+text and chunk here, in both language tabs. The vignette itself is not copied to the site any
+more (scripts/copy-assets.sh).
+-->
 <section id="spide" class="level1">
 <h1>spiDE</h1>
 <p>spiDE finds <strong>neighbourhood-dependent differential expression</strong> in spatial transcriptomics. Cells of one type do not behave the same everywhere in a tissue. A tumour cell sitting among fibroblasts may express a different set of genes from a tumour cell surrounded by other tumour cells, and the way it responds may differ between patients who respond to a treatment and patients who do not. spiDE asks, for a chosen <em>index</em> cell type, whether the expression of a gene changes with the local density of another cell type, which we call the <em>niche</em>, and whether that change differs between two conditions.</p>
 <p>Doing this well is harder than it sounds. The cells of one patient share their genetics, their treatment and the way their sample was handled, and neighbouring cells share their local tissue environment. If every cell is treated as an independent observation, the more cells are measured the more certain a result looks, even when the patients disagree with each other. A condition such as response to treatment is a property of a patient, not of a cell, so the patient is the right unit of replication. spiDE builds this into every test: the evidence for a result is how consistently the niche slope behaves <em>between</em> patients, never how many cells were measured.</p>
-<p>One hypothesis in spiDE is one (gene, index type, niche type) combination, which we call a <em>triplet</em>. Each triplet gets up to two tests:</p>
+<p>One hypothesis is one (gene, index type, niche type) combination, which we call a <em>triplet</em>. Each triplet gets up to two tests:</p>
 <ol type="1">
 <li><strong>The pooled test</strong> asks whether, within patients, the gene’s expression in the index type changes with the density of the niche type, consistently across patients.</li>
 <li><strong>The condition-specific test</strong> asks whether that dependence differs between two conditions, such as responders and non-responders.</li>
 </ol>
-<p>The analysis runs in three steps, and each has its own function:</p>
+<p>Both tests look at slopes <em>within</em> patients. A condition that only shifts a gene’s overall level, or only changes how much of a cell type patients have, is not tested here; those are questions for pseudobulk differential expression and composition analysis. The analysis runs in three steps, and each has its own function:</p>
 <ol type="1">
-<li><code>buildNiches()</code> measures the density of every cell type around every cell.</li>
-<li><code>fitSpiDE()</code> fits a negative binomial regression for every gene in every index type, with a separate baseline for every patient, so that the niche coefficients are slopes <em>within</em> patients.</li>
-<li><code>testSpiDE()</code> tests those slopes across patients.</li>
+<li>Build the niches (<code>buildNiches()</code> in R, <code>build_niches()</code> in Python) measures the density of every cell type around every cell.</li>
+<li>Fit (<code>fitSpiDE()</code> in R, <code>fit_spide()</code> in Python) fits a negative binomial regression for every gene in every index type, with a separate baseline for every patient, so that the niche coefficients are slopes <em>within</em> patients.</li>
+<li>Test (<code>testSpiDE()</code> in R, <code>test_spide()</code> in Python) tests those slopes across patients.</li>
 </ol>
-<p><code>spiDE()</code> runs all three in one call. This article walks through the whole pipeline on a small example, and then through the gene-set test, the between-patient test of niche abundance, the plots and a few practical points. The statistics are explained in <code>vignette("spiDE-model")</code>, how well the tests hold up in <code>vignette("spiDE-calibration")</code>, and how many patients and cells a study needs in <code>vignette("spiDE-design")</code>.</p>
-<p>This website documents two packages that implement the same method: the R package <strong>spiDE</strong> and the Python package <strong>spidepy</strong>. This page walks through the R package. The same walk-through for Python, with its outputs, is the <a href="./python-tutorial.html">Python tutorial</a>, and <a href="./r-vs-python.html">R vs Python</a> lists how the two correspond and where they differ. Both packages can be installed as follows:</p>
+<p><code>spiDE()</code> in R and <code>spide()</code> in Python run all three in one call.</p>
+<p>This website documents two packages that implement the same method: the R package <strong>spiDE</strong> and the Python package <strong>spidepy</strong>. Every step below is shown in both. Pick a language in any tab and all the tabs on the site follow. The example is the small simulated data set that ships with both packages, so nothing is subsampled or simplified to keep the page quick: the whole page runs in about a minute. The two packages are separate implementations of one method, so we should not expect identical output in general. On this data set the tables agree to numerical precision, which we check directly near the end of the page; on other data they agree qualitatively, with small numerical differences, and <a href="./r-vs-python.html">R vs Python</a> lists where the two packages intentionally differ. The statistics are explained in <a href="articles/spiDE-model.html">The spiDE model</a>, how well the tests hold up in <a href="articles/spiDE-calibration.html">Validation</a>, and how many patients and cells a study needs in <a href="articles/spiDE-design.html">Designing a study</a>.</p>
+<p>Both packages can be installed as follows:</p>
 <div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
 <ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-1-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-1" role="tab" aria-controls="tabset-1-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-1-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-2" role="tab" aria-controls="tabset-1-2" aria-selected="false" href="">Python</a></li></ul>
 <div class="tab-content" data-group="language">
@@ -334,7 +339,11 @@ background: #2A0E52;
 </section>
 <section id="load-the-data" class="level1">
 <h1>Load the data</h1>
-<p>We begin by loading a small simulated data set that ships with the package. It holds 16 patients, eight responders and eight non-responders, with 150 cells each, three cell types (<code>A</code>, <code>B</code> and <code>C</code>) and 20 genes. We planted exactly one effect in it: gene <code>G1</code> is up-regulated in index type <code>A</code>, in responders only, in proportion to the local density of niche type <code>B</code>. Because we know the answer, we can check that spiDE finds it.</p>
+<p>We begin by loading a small simulated data set that ships with the package. It holds 16 patients, eight responders and eight non-responders, with 150 cells each, three cell types (<code>A</code>, <code>B</code> and <code>C</code>) and 20 genes. We planted exactly one effect in it: gene <code>G1</code> is up-regulated in index type <code>A</code>, in responders only, in proportion to the local density of niche type <code>B</code>. Because we know the answer, we can check that spiDE finds it. The Python package ships the same data.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-2-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-1" role="tab" aria-controls="tabset-2-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-2-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-2" role="tab" aria-controls="tabset-2-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-2-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-2-1-tab">
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(spiDE)</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(SpatialExperiment)</span>
@@ -363,80 +372,201 @@ background: #2A0E52;
 <span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   A   B   C </span></span>
 <span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 813 726 861</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
-<p>spiDE needs a <code>SpatialExperiment</code> with the following:</p>
+</div>
+<div id="tabset-2-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-2-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> spidepy <span class="im">as</span> sp</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>adata <span class="op">=</span> sp.datasets.toy_spide()</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(adata)</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; AnnData object with n_obs × n_vars = 2400 × 20</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;     obs: 'sample_id', 'condition', 'x', 'y', 'cell_type', 'Age', 'cell_id', 'Area', 'nCount'</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;     uns: 'r_call', 'r_dim'</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;     obsm: 'spatial'</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;     layers: 'counts', None (.X)</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>patients <span class="op">=</span> adata.obs[[<span class="st">"sample_id"</span>, <span class="st">"condition"</span>]].drop_duplicates()</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(patients[<span class="st">"condition"</span>].value_counts())</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; condition</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Responder        8</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Non-responder    8</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Name: count, dtype: int64</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(adata.obs[<span class="st">"cell_type"</span>].value_counts())</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; cell_type</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; C    861</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; A    813</span></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; B    726</span></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Name: count, dtype: int64</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
+</div>
+<p>The same 2,400 cells and 20 genes are loaded in both. The two conditions have eight patients each, and the three cell types are present in similar numbers. spiDE needs the following in the object:</p>
 <ul>
-<li><strong>Raw integer counts</strong> in the <code>counts</code> assay. Normalised or back-transformed values are refused, because the model needs the counting noise of real counts.</li>
+<li><strong>Raw integer counts</strong>: the <code>counts</code> assay in R, <code>layers["counts"]</code> in Python (<code>assay=</code> names another layer, and <code>"X"</code> uses <code>adata.X</code>). Normalised or back-transformed values are refused, because the model needs the counting noise of real counts.</li>
 <li>A <strong>cell type</strong> for every cell, in <code>cell_type</code>.</li>
 <li>A <strong>patient</strong> for every cell, in <code>sample_id</code>. There should be one sample per patient. If a patient has several sections, put the patient in <code>sample_id</code> and the section in <code>section</code>, so that spatial variation is estimated for each section separately.</li>
+<li>The spatial coordinates, in <code>spatialCoords()</code> in R and <code>obsm["spatial"]</code> in Python.</li>
 <li>For the condition-specific test, a <strong>two-level condition that is constant within each patient</strong>, here the <code>condition</code> column. If the condition is partly confounded with slide or batch, a patient-level column of slides can be given as <code>strata</code>.</li>
 </ul>
+<p>The container is a <code>SpatialExperiment</code> in R and an <code>AnnData</code> in Python.</p>
 </section>
 <section id="build-the-niches" class="level1">
 <h1>Build the niches</h1>
-<p>For each cell, <code>buildNiches()</code> places a smooth bump, a Gaussian kernel, on every cell of a given type and adds the bumps up. The result is a density of each cell type at every cell, which says how much of that type there is nearby. The width of the bump, <code>sigma</code>, is the <em>bandwidth</em> and is in the units of the spatial coordinates. Each density is stored as a column of a <code>reducedDim</code> named after the bandwidth.</p>
+<p>For each cell, <code>buildNiches()</code> places a smooth bump, a Gaussian kernel, on every cell of a given type and adds the bumps up. The result is a density of each cell type at every cell, which says how much of that type there is nearby. The width of the bump, <code>sigma</code>, is the <em>bandwidth</em> and is in the units of the spatial coordinates. Each density is stored as a column of a <code>reducedDim</code> named after the bandwidth in R, and in <code>obsm["Niche30"]</code> in Python, which <code>build_niches()</code> fills in place unless <code>copy=True</code>.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-3-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-3-1" role="tab" aria-controls="tabset-3-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-3-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-3-2" role="tab" aria-controls="tabset-3-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-3-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-3-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>spe <span class="ot">&lt;-</span> <span class="fu">buildNiches</span>(toySpiDE, <span class="at">sigma =</span> <span class="dv">30</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(<span class="fu">reducedDim</span>(spe, <span class="st">"Niche30"</span>), <span class="dv">3</span>)</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;               A            B         C</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; cell1 0.6569450 1.4712172285 0.2947218</span></span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; cell2 1.4124748 0.0003534644 1.2449427</span></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; cell3 0.7352794 0.0000000000 1.4184528</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>spe <span class="ot">&lt;-</span> <span class="fu">buildNiches</span>(toySpiDE, <span class="at">sigma =</span> <span class="dv">30</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(<span class="fu">reducedDim</span>(spe, <span class="st">"Niche30"</span>), <span class="dv">3</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;               A            B         C</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; cell1 0.6569450 1.4712172285 0.2947218</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; cell2 1.4124748 0.0003534644 1.2449427</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; cell3 0.7352794 0.0000000000 1.4184528</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
+</div>
+<div id="tabset-3-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-3-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>sp.build_niches(adata, sigma<span class="op">=</span><span class="dv">30</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; AnnData object with n_obs × n_vars = 2400 × 20</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;     obs: 'sample_id', 'condition', 'x', 'y', 'cell_type', 'Age', 'cell_id', 'Area', 'nCount'</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;     uns: 'r_call', 'r_dim'</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;     obsm: 'spatial', 'Niche30'</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;     layers: 'counts', None (.X)</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>adata.obsm[<span class="st">"Niche30"</span>].head(<span class="dv">3</span>)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;               A         B         C</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; cell1  0.656945  1.471217  0.294722</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; cell2  1.412475  0.000353  1.244943</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; cell3  0.735279  0.000000  1.418453</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
+</div>
+<p>Each row is a cell and each column the density of one cell type around it. The densities are on the same scale in both languages, and we can see that the first few cells sit among different mixtures of the three types.</p>
 <section id="choose-a-bandwidth" class="level2">
 <h2 class="anchored" data-anchor-id="choose-a-bandwidth">Choose a bandwidth</h2>
-<p>The bandwidth sets what we mean by a neighbourhood. A small bandwidth looks at the immediate neighbours of a cell, and a large one at the tissue around it. A good bandwidth gives a niche map that is neither speckled nor flat. We can look at the density of niche type <code>B</code> in one sample at two bandwidths and judge by eye:</p>
+<p>The bandwidth sets what we mean by a neighbourhood. A small bandwidth looks at the immediate neighbours of a cell, and a large one at the tissue around it. A good bandwidth gives a niche map that is neither speckled nor flat. We can look at the density of niche type <code>B</code> in one sample at two bandwidths and judge by eye. In Python, <code>copy=True</code> leaves <code>adata</code> with the bandwidth 30 only.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-4-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-1" role="tab" aria-controls="tabset-4-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-4-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-2" role="tab" aria-controls="tabset-4-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-4-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-4-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>spe2 <span class="ot">&lt;-</span> <span class="fu">buildNiches</span>(spe, <span class="at">sigma =</span> <span class="dv">10</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="fu">plotNicheMap</span>(spe2, <span class="at">niche =</span> <span class="st">"B"</span>, <span class="at">sample =</span> <span class="st">"S1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">sigma =</span> <span class="dv">10</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>spe2 <span class="ot">&lt;-</span> <span class="fu">buildNiches</span>(spe, <span class="at">sigma =</span> <span class="dv">10</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="fu">plotNicheMap</span>(spe2, <span class="at">niche =</span> <span class="st">"B"</span>, <span class="at">sample =</span> <span class="st">"S1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">sigma =</span> <span class="dv">10</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="get-started_files/figure-html/bandwidth-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="get-started_files/figure-html/bandwidth-r-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotNicheMap</span>(spe2, <span class="at">niche =</span> <span class="st">"B"</span>, <span class="at">sample =</span> <span class="st">"S1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">sigma =</span> <span class="dv">30</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotNicheMap</span>(spe2, <span class="at">niche =</span> <span class="st">"B"</span>, <span class="at">sample =</span> <span class="st">"S1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">sigma =</span> <span class="dv">30</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="get-started_files/figure-html/bandwidth-2.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="get-started_files/figure-html/bandwidth-r-2.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
 </div>
-<p>At the smaller bandwidth most cells have no niche cell of type <code>B</code> within reach and the density is zero, so the map is speckled by the position of single cells. At the larger one the density varies smoothly across the section, and we can see where <code>B</code> cells are concentrated. We use 30 for the rest of this article. For real data, choose the bandwidth from what you know about the biology, such as the distance over which cells signal to one another, and from maps like these. <code>mergeNiches()</code> can pool several cell types into one niche group (all lymphocytes, say) before fitting. spiDE never tests an index type against its own niche, merged or not.</p>
+</div>
+<div id="tabset-4-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-4-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>adata10 <span class="op">=</span> sp.build_niches(adata, sigma<span class="op">=</span><span class="dv">10</span>, copy<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> sp.pl.plot_niche_map(adata10, niche<span class="op">=</span><span class="st">"B"</span>, sample<span class="op">=</span><span class="st">"S1"</span>, index<span class="op">=</span><span class="st">"A"</span>, sigma<span class="op">=</span><span class="dv">10</span>)</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/bandwidth-py-1.png" class="img-fluid figure-img" width="576"></p>
+</figure>
+</div>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> sp.pl.plot_niche_map(adata10, niche<span class="op">=</span><span class="st">"B"</span>, sample<span class="op">=</span><span class="st">"S1"</span>, index<span class="op">=</span><span class="st">"A"</span>, sigma<span class="op">=</span><span class="dv">30</span>)</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/bandwidth-py-2.png" class="img-fluid figure-img" width="576"></p>
+</figure>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<p>At the smaller bandwidth most cells have no niche cell of type <code>B</code> within reach and the density is zero, so the map is speckled by the position of single cells. At the larger one the density varies smoothly across the section, and we can see where <code>B</code> cells are concentrated. We use 30 for the rest of this page. For real data, choose the bandwidth from what you know about the biology, such as the distance over which cells signal to one another, and from maps like these. <code>mergeNiches()</code> (<code>merge_niches()</code>) can pool several cell types into one niche group (all lymphocytes, say) before fitting. spiDE never tests an index type against its own niche, merged or not.</p>
 </section>
 </section>
 <section id="fit-the-model" class="level1">
 <h1>Fit the model</h1>
-<p><code>fitSpiDE()</code> takes the object with its niches, the bandwidth to use and, if we want to test a condition, the name of the condition column.</p>
+<p>The fit takes the object with its niches, the bandwidth to use and, if we want to test a condition, the name of the condition column.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-5-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-5-1" role="tab" aria-controls="tabset-5-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-5-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-5-2" role="tab" aria-controls="tabset-5-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-5-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-5-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">fitSpiDE</span>(spe, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>fit</span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; SpiDEFit (slopes engine), bandwidth 30</span></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   16 patients; condition: condition</span></span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   index A: 20 genes x 2 niches (B, C)</span></span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   index B: 20 genes x 2 niches (A, C)</span></span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   index C: 20 genes x 2 niches (A, B)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">fitSpiDE</span>(spe, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>fit</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; SpiDEFit (slopes engine), bandwidth 30</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   16 patients; condition: condition</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   index A: 20 genes x 2 niches (B, C)</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   index B: 20 genes x 2 niches (A, C)</span></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   index C: 20 genes x 2 niches (A, B)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
-<p>By default every cell type with at least <code>min.cells</code> cells in at least <code>min.patients</code> patients is an index type, and every other cell type is tested as its niche. The <code>index</code> and <code>niche</code> arguments restrict this; niche types that are not tested stay in the model as adjustments. Genes detected in fewer than <code>min.detect</code> of an index type’s cells are not tested in it. The model adjusts for sequencing depth with the centred log library size of each cell, and further cell-level measurements such as cell area can be added with <code>covariates</code>.</p>
-<p>The <code>engine</code> argument chooses how the error between patients is estimated. The default, <code>"slopes"</code>, fits the model once without the condition and then estimates every patient’s own slope for every niche. Because the fit never sees the condition, any patient-level condition can be tested afterwards, and permuting the condition reruns only the test. The alternative, <code>"sandwich"</code>, fits the condition-specific model directly and needs the condition at fit time. The slopes engine is the more powerful of the two when effects vary between patients, and it is needed for <code>spiGSEA()</code>. <code>vignette("spiDE-model")</code> explains both engines.</p>
+</div>
+<div id="tabset-5-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-5-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>fit <span class="op">=</span> sp.fit_spide(adata, condition<span class="op">=</span><span class="st">"condition"</span>, sigma<span class="op">=</span><span class="dv">30</span>, verbose<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>fit</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; SpiDEFit (slopes engine), bandwidth 30</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   16 patients; condition: condition</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   index A: 20 genes x 2 niches (B, C)</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   index B: 20 genes x 2 niches (A, C)</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   index C: 20 genes x 2 niches (A, B)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
+</div>
+<p>By default every cell type with at least <code>min.cells</code> cells in at least <code>min.patients</code> patients is an index type (<code>min_cells</code> and <code>min_patients</code> in Python), and every other cell type is tested as its niche. The <code>index</code> and <code>niche</code> arguments restrict this; niche types that are not tested stay in the model as adjustments. Genes detected in fewer than <code>min.detect</code> of an index type’s cells are not tested in it. The model adjusts for sequencing depth with the centred log library size of each cell, and further cell-level measurements such as cell area can be added with <code>covariates</code>. Python keeps R’s argument names in <code>snake_case</code>, so <code>min.cells</code> is <code>min_cells</code>.</p>
+<p>The <code>engine</code> argument chooses how the error between patients is estimated. The default, <code>"slopes"</code>, fits the model once without the condition and then estimates every patient’s own slope for every niche, each with a variance that allows for spatially correlated cells. Because the fit never sees the condition, any patient-level condition can be tested afterwards, and permuting the condition reruns only the test. The alternative, <code>"sandwich"</code>, fits the condition-specific model directly, tests its coefficients with a patient-clustered sandwich standard error and needs the condition at fit time. The slopes engine is the more powerful of the two when effects vary between patients, and it is needed for <code>spiGSEA()</code>. <a href="articles/spiDE-model.html">The spiDE model</a> explains both engines.</p>
 </section>
 <section id="test-the-slopes" class="level1">
 <h1>Test the slopes</h1>
-<p><code>testSpiDE()</code> combines the patients’ slopes. It always runs the pooled test, and it runs the condition-specific test when a condition is available, here the one recorded by <code>fitSpiDE()</code>. A condition can also be given to <code>testSpiDE()</code> directly.</p>
+<p>The test combines the patients’ slopes. It always runs the pooled test, and it runs the condition-specific test when a condition is available, here the one recorded by the fit. A condition can also be given to <code>testSpiDE()</code> (<code>test_spide()</code>) directly.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-6-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-6-1" role="tab" aria-controls="tabset-6-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-6-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-6-2" role="tab" aria-controls="tabset-6-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-6-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-6-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">testSpiDE</span>(fit)</span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>res</span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; SpiDEResults (slopes engine)</span></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   pooled across patients: 120 tests, 2 at FDR 0.05</span></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   condition-specific (Responder - Non-responder; pooled_or_heterogeneity family): 2 tests, 1 at FDR 0.05</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">testSpiDE</span>(fit)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>res</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; SpiDEResults (slopes engine)</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   pooled across patients: 120 tests, 2 at FDR 0.05</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   condition-specific (Responder - Non-responder; pooled_or_heterogeneity family): 2 tests, 1 at FDR 0.05</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+<div id="tabset-6-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-6-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>res <span class="op">=</span> sp.test_spide(fit)</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(res)</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; SpiDEResults (slopes engine)</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   pooled across patients: 120 tests, 2 at FDR 0.05</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   condition-specific (Responder - Non-responder; pooled_or_heterogeneity family): 2 tests, 1 at FDR 0.05</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
 </div>
 <section id="the-pooled-test" class="level2">
 <h2 class="anchored" data-anchor-id="the-pooled-test">The pooled test</h2>
-<p>The pooled results are a table with one row per triplet. <code>estimate</code> is the average within-patient slope on the natural-log scale per unit of the log1p niche density, <code>t</code> and <code>p</code> are the test statistic and its p-value, and <code>q</code> is the q-value after a Benjamini-Hochberg correction over every triplet.</p>
+<p>The pooled results are a table with one row per triplet; <code>results(res, test = "pooled")</code> gives it in R and <code>sp.results(res, test="pooled")</code> in Python. <code>estimate</code> is the average within-patient slope on the natural-log scale per unit of the log1p niche density, <code>t</code> and <code>p</code> are the test statistic and its p-value, and <code>q</code> is the q-value after a Benjamini-Hochberg correction over every triplet.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-7-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-7-1" role="tab" aria-controls="tabset-7-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-7-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-7-2" role="tab" aria-controls="tabset-7-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-7-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-7-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(<span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(<span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div data-pagedtable="false">
   <script data-pagedtable-source="" type="application/json">
@@ -445,16 +575,36 @@ background: #2A0E52;
 </div>
 </div>
 </div>
-<p>The planted triplet, <code>G1</code> in <code>A</code> against <code>B</code>, comes out as the strongest pooled association, with a <code>t</code> of 6.83. Remember that a pooled call says that, within a patient, index cells with more of the niche type around them express more (or less) of the gene, consistently across patients.</p>
+</div>
+<div id="tabset-7-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-7-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>sp.results(res, test<span class="op">=</span><span class="st">"pooled"</span>).head()</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   gene index niche  ... p.heterogeneity             q  in_family</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 0   G1     A     B  ...        0.554557  8.234284e-09       True</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 1   G9     A     B  ...        0.254027  1.676479e-03       True</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 2   G8     B     C  ...        0.103677  5.685822e-02       True</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 3  G18     A     B  ...        0.884934  2.443776e-01       True</span></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 4   G2     A     B  ...        0.259633  4.198921e-01       True</span></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [5 rows x 13 columns]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
+</div>
+<p>The planted triplet, <code>G1</code> in <code>A</code> against <code>B</code>, comes out as the strongest pooled association, with a <code>t</code> of 6.83 in R. Remember that a pooled call says that, within a patient, index cells with more of the niche type around them express more (or less) of the gene, consistently across patients.</p>
 </section>
 <section id="the-condition-specific-test" class="level2">
 <h2 class="anchored" data-anchor-id="the-condition-specific-test">The condition-specific test</h2>
-<p>The condition-specific table has the same layout. Its <code>estimate</code> is the difference between the conditions in the average slope, the second level minus the first, and <code>res$contrast</code> says which two levels were compared.</p>
+<p>The condition-specific table has the same layout. Its <code>estimate</code> is the difference between the conditions in the average slope, the second level minus the first, and <code>res$contrast</code> (<code>res.contrast</code>) says which two levels were compared.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-8-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-8-1" role="tab" aria-controls="tabset-8-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-8-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-8-2" role="tab" aria-controls="tabset-8-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-8-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-8-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>res<span class="sc">$</span>contrast</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [1] "Responder - Non-responder"</span></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>cond <span class="ot">&lt;-</span> <span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"condition"</span>)</span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>cond[cond<span class="sc">$</span>in_family, ]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>res<span class="sc">$</span>contrast</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [1] "Responder - Non-responder"</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>cond <span class="ot">&lt;-</span> <span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"condition"</span>)</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>cond[cond<span class="sc">$</span>in_family, ]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div data-pagedtable="false">
   <script data-pagedtable-source="" type="application/json">
@@ -463,19 +613,56 @@ background: #2A0E52;
 </div>
 </div>
 </div>
-<p>By default the condition-specific test is carried out only among the triplets that pass the pooled test, or whose slopes vary between patients more than their sampling noise allows (<code>p.heterogeneity</code>, corrected at the same <code>fdr</code>). Neither filter looks at the condition, so the correction for multiple testing is spent on triplets that have something for the condition to explain, and the result is valid under any relabelling of the patients. Rows outside this family have <code>q = NA</code>. Other families are available through the <code>procedure</code> argument: <code>"heterogeneity"</code> and <code>"filtered"</code> use one filter each, and <code>"all"</code> tests every triplet.</p>
-<p>In the table, the planted slope is larger in responders than in non-responders by 0.27 log units per unit of log1p density (<code>q</code> = 0.02), which is the effect we planted. The whole pipeline can also be run in one call:</p>
+</div>
+<div id="tabset-8-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-8-2-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">spiDE</span>(toySpiDE, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(res.contrast)</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Responder - Non-responder</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>cond <span class="op">=</span> sp.results(res, test<span class="op">=</span><span class="st">"condition"</span>)</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>cond[cond[<span class="st">"in_family"</span>]]</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;    gene index niche  ... p.heterogeneity         q  in_family</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 1    G1     A     B  ...        0.554557  0.020112       True</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 33   G9     A     B  ...        0.254027  0.272419       True</span></span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [2 rows x 13 columns]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
+</div>
+<p>By default the condition-specific test is carried out only among the triplets that pass the pooled test, or whose slopes vary between patients more than their sampling noise allows (<code>p.heterogeneity</code>, corrected at the same <code>fdr</code>). Neither filter looks at the condition, so the correction for multiple testing is spent on triplets that have something for the condition to explain, and the result is valid under any relabelling of the patients. Rows outside this family have <code>q = NA</code> (<code>NaN</code> in Python). Other families are available through the <code>procedure</code> argument: <code>"heterogeneity"</code> and <code>"filtered"</code> use one filter each, and <code>"all"</code> tests every triplet.</p>
+<p>In the table, the planted slope is larger in responders than in non-responders by 0.27 log units per unit of log1p density in R (<code>q</code> = 0.02), which is the effect we planted. The whole pipeline can also be run in one call:</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-9-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-9-1" role="tab" aria-controls="tabset-9-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-9-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-9-2" role="tab" aria-controls="tabset-9-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-9-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-9-1-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">spiDE</span>(toySpiDE, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+<div id="tabset-9-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-9-2-tab">
+<p><code>spide()</code> builds the niche matrix itself and does not keep it on the object (<code>name=</code> is the <code>obsm</code> prefix the niches are read from, or built into):</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>res2 <span class="op">=</span> sp.spide(sp.datasets.toy_spide(), condition<span class="op">=</span><span class="st">"condition"</span>, sigma<span class="op">=</span><span class="dv">30</span>, verbose<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(res2)</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; SpiDEResults (slopes engine)</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   pooled across patients: 120 tests, 2 at FDR 0.05</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   condition-specific (Responder - Non-responder; pooled_or_heterogeneity family): 2 tests, 1 at FDR 0.05</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
 </div>
 </section>
 </section>
 <section id="look-at-the-patients-behind-a-result" class="level1">
 <h1>Look at the patients behind a result</h1>
-<p>A call is only as good as the patients behind it. With the slopes engine, every patient has its own slope for every triplet, and these slopes are the evidence that the tests weigh. <code>patientSlopes()</code> returns them as a table, with the slope’s variance and the number of cells that went into it.</p>
+<p>A call is only as good as the patients behind it. With the slopes engine, every patient has its own slope for every triplet, and these slopes are the evidence that the tests weigh. <code>patientSlopes()</code> (<code>patient_slopes()</code>) returns them as a table, with the slope’s variance and the number of cells that went into it.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-10-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-10-1" role="tab" aria-controls="tabset-10-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-10-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-10-2" role="tab" aria-controls="tabset-10-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-10-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-10-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>ps <span class="ot">&lt;-</span> <span class="fu">patientSlopes</span>(fit, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>)</span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(ps[, <span class="fu">c</span>(<span class="st">"patient"</span>, <span class="st">"condition"</span>, <span class="st">"slope"</span>, <span class="st">"var_spatial"</span>, <span class="st">"ncells"</span>)])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>ps <span class="ot">&lt;-</span> <span class="fu">patientSlopes</span>(fit, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>)</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(ps[, <span class="fu">c</span>(<span class="st">"patient"</span>, <span class="st">"condition"</span>, <span class="st">"slope"</span>, <span class="st">"var_spatial"</span>, <span class="st">"ncells"</span>)])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div data-pagedtable="false">
   <script data-pagedtable-source="" type="application/json">
@@ -484,22 +671,61 @@ background: #2A0E52;
 </div>
 </div>
 </div>
-<p><code>plotPatientSlopes()</code> draws them. Each point is a patient’s slope with its interval, sized by the weight the patient carries in the tests. The weighted average of each condition is marked, and the pooled estimate is shown as a band.</p>
+</div>
+<div id="tabset-10-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-10-2-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotPatientSlopes</span>(res, <span class="at">gene =</span> <span class="fu">c</span>(<span class="st">"G1"</span>, <span class="st">"G2"</span>), <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>ps <span class="op">=</span> sp.patient_slopes(fit, gene<span class="op">=</span><span class="st">"G1"</span>, index<span class="op">=</span><span class="st">"A"</span>, niche<span class="op">=</span><span class="st">"B"</span>)</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>ps[[<span class="st">"patient"</span>, <span class="st">"condition"</span>, <span class="st">"slope"</span>, <span class="st">"var_spatial"</span>, <span class="st">"ncells"</span>]].head()</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   patient      condition     slope  var_spatial  ncells</span></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 0      S1      Responder  0.465072     0.008294      49</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 1     S10  Non-responder  0.176669     0.059603      61</span></span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 2     S11      Responder  0.400428     0.010850      60</span></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 3     S12  Non-responder  0.204428     0.084545      41</span></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 4     S13      Responder  0.401380     0.021371      54</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
+</div>
+<p><code>plotPatientSlopes()</code> (<code>pl.plot_patient_slopes()</code>) draws them. Each point is a patient’s slope with its interval, sized by the weight the patient carries in the tests. The weighted average of each condition is marked, and the pooled estimate is shown as a band.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-11-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-11-1" role="tab" aria-controls="tabset-11-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-11-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-11-2" role="tab" aria-controls="tabset-11-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-11-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-11-1-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotPatientSlopes</span>(res, <span class="at">gene =</span> <span class="fu">c</span>(<span class="st">"G1"</span>, <span class="st">"G2"</span>), <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="get-started_files/figure-html/slopes-plot-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="get-started_files/figure-html/slopes-plot-r-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
 </div>
-<p>For <code>G1</code>, the slopes of the patients lie mostly above zero in both conditions, which gives the pooled call, and the slopes of the responders sit further to the right than those of the non-responders, which is what the condition-specific test picks up. The panel title reports its difference and q-value. For <code>G2</code>, which has no planted effect, the slopes are spread widely on both sides of zero, their intervals are wide, and the two conditions overlap.</p>
-<p>The model also gives each patient a baseline level of every gene, its intercept. These baselines absorb everything that differs between patients as a whole, so they are not tested, but they are worth a look. <code>patientIntercepts()</code> returns them with the patient-level covariates, and <code>plotPatientEffects()</code> summarises them by principal components of the intercepts, showing how much of each component each covariate explains.</p>
+</div>
+<div id="tabset-11-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-11-2-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>intercepts <span class="ot">&lt;-</span> <span class="fu">patientIntercepts</span>(fit, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>)</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(intercepts)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> sp.pl.plot_patient_slopes(res, gene<span class="op">=</span>[<span class="st">"G1"</span>, <span class="st">"G2"</span>], index<span class="op">=</span><span class="st">"A"</span>, niche<span class="op">=</span><span class="st">"B"</span>)</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/slopes-plot-py-1.png" class="img-fluid figure-img" width="1018"></p>
+</figure>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<p>For <code>G1</code>, the slopes of the patients lie mostly above zero in both conditions, which gives the pooled call, and the slopes of the responders sit further to the right than those of the non-responders, which is what the condition-specific test picks up. The panel title reports its difference and q-value. For <code>G2</code>, which has no planted effect, the slopes are spread widely on both sides of zero, their intervals are wide, and the two conditions overlap.</p>
+<p>The model also gives each patient a baseline level of every gene, its intercept. These baselines absorb everything that differs between patients as a whole, so they are not tested, but they are worth a look. <code>patientIntercepts()</code> (<code>patient_intercepts()</code>) returns them with the patient-level covariates, and <code>plotPatientEffects()</code> (<code>pl.plot_patient_effects()</code>) summarises them by principal components of the intercepts, showing how much of each component each covariate explains.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-12-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-12-1" role="tab" aria-controls="tabset-12-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-12-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-12-2" role="tab" aria-controls="tabset-12-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-12-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-12-1-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>intercepts <span class="ot">&lt;-</span> <span class="fu">patientIntercepts</span>(fit, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>)</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(intercepts)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div data-pagedtable="false">
   <script data-pagedtable-source="" type="application/json">
@@ -509,25 +735,55 @@ background: #2A0E52;
 </div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotPatientEffects</span>(res, <span class="at">index =</span> <span class="st">"A"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotPatientEffects</span>(res, <span class="at">index =</span> <span class="st">"A"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="get-started_files/figure-html/plots-effects-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="get-started_files/figure-html/effects-plot-r-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
 </div>
-<p>In this example the first component of the intercepts lines up almost entirely with the condition, which is what we expect: the baselines absorb the difference in level between responders and non-responders, so that this difference cannot be mistaken for a difference in slope. Other covariates, such as the number of cells and the depth of a patient, explain smaller parts of the other components. If a slide or batch column lined up with a component of the <em>slopes</em> instead, the condition would be partly confounded with it, and that column should go into <code>strata</code>. Setting <code>niche</code> in <code>plotPatientEffects()</code> draws the same plot for the slopes, which is the check to make before trusting a condition-specific call.</p>
+</div>
+<div id="tabset-12-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-12-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>intercepts <span class="op">=</span> sp.patient_intercepts(fit, gene<span class="op">=</span><span class="st">"G1"</span>, index<span class="op">=</span><span class="st">"A"</span>)</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>intercepts.head()</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   gene index patient  intercept  ncells sample_id      condition       Age</span></span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 0   G1     A      S1   2.185319      49        S1      Responder  0.525262</span></span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 1   G1     A     S10   1.782854      61       S10  Non-responder -2.566746</span></span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 2   G1     A     S11   2.157735      60       S11      Responder  1.213412</span></span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 3   G1     A     S12   1.627117      41       S12  Non-responder  0.362418</span></span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 4   G1     A     S13   2.223423      54       S13      Responder -1.853804</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> sp.pl.plot_patient_effects(res, index<span class="op">=</span><span class="st">"A"</span>)</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/effects-plot-py-1.png" class="img-fluid figure-img" width="778"></p>
+</figure>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<p>In this example the first component of the intercepts lines up almost entirely with the condition, which is what we expect: the baselines absorb the difference in level between responders and non-responders, so that this difference cannot be mistaken for a difference in slope. Other covariates, such as the number of cells and the depth of a patient, explain smaller parts of the other components. If a slide or batch column lined up with a component of the <em>slopes</em> instead, the condition would be partly confounded with it, and that column should go into <code>strata</code>. Setting <code>niche</code> in the plot function draws the same plot for the slopes, which is the check to make before trusting a condition-specific call.</p>
 </section>
 <section id="test-gene-sets" class="level1">
 <h1>Test gene sets</h1>
-<p>Genes do not act alone, and a set of genes with a shared function often shows an effect that no single gene shows clearly. <code>spiGSEA()</code> tests gene sets in the way <code>testSpiDE()</code> tests genes. It takes the results and any named list of gene symbols, such as the collections of the <code>msigdb</code> package. Each patient gets a slope for the set, which averages its genes’ slopes after putting them on a common scale, and these set slopes go through the same pooled and condition-specific tests. By default (<code>type = "competitive"</code>) the average over the other tested genes is subtracted, so a set is called when it moves <em>more than the typical gene</em>. <code>spiGSEA()</code> needs the slopes engine.</p>
+<p>Genes do not act alone, and a set of genes with a shared function often shows an effect that no single gene shows clearly. <code>spiGSEA()</code> (<code>spi_gsea()</code>) tests gene sets in the way the gene test tests genes. It takes the results and any named list (a dict in Python) of gene symbols, such as the collections of the <code>msigdb</code> package. Each patient gets a slope for the set, which averages its genes’ slopes after putting them on a common scale, and these set slopes go through the same pooled and condition-specific tests. By default (<code>type = "competitive"</code>) the average over the other tested genes is subtracted, so a set is called when it moves <em>more than the typical gene</em>. It needs the slopes engine.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-13-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-13-1" role="tab" aria-controls="tabset-13-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-13-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-13-2" role="tab" aria-controls="tabset-13-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-13-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-13-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>sets <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="at">planted =</span> <span class="fu">c</span>(<span class="st">"G1"</span>, <span class="st">"G2"</span>, <span class="st">"G3"</span>), <span class="at">other =</span> <span class="fu">paste0</span>(<span class="st">"G"</span>, <span class="dv">4</span><span class="sc">:</span><span class="dv">8</span>),</span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>             <span class="at">rest =</span> <span class="fu">paste0</span>(<span class="st">"G"</span>, <span class="dv">9</span><span class="sc">:</span><span class="dv">20</span>))</span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>gs <span class="ot">&lt;-</span> <span class="fu">spiGSEA</span>(res, sets, <span class="at">min.size =</span> <span class="dv">3</span>)</span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(gs[, <span class="fu">c</span>(<span class="st">"set"</span>, <span class="st">"index"</span>, <span class="st">"niche"</span>, <span class="st">"test"</span>, <span class="st">"size"</span>, <span class="st">"estimate"</span>, <span class="st">"p"</span>, <span class="st">"q"</span>, <span class="st">"q.global"</span>)])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>sets <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="at">planted =</span> <span class="fu">c</span>(<span class="st">"G1"</span>, <span class="st">"G2"</span>, <span class="st">"G3"</span>), <span class="at">other =</span> <span class="fu">paste0</span>(<span class="st">"G"</span>, <span class="dv">4</span><span class="sc">:</span><span class="dv">8</span>),</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>             <span class="at">rest =</span> <span class="fu">paste0</span>(<span class="st">"G"</span>, <span class="dv">9</span><span class="sc">:</span><span class="dv">20</span>))</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>gs <span class="ot">&lt;-</span> <span class="fu">spiGSEA</span>(res, sets, <span class="at">min.size =</span> <span class="dv">3</span>)</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(gs[, <span class="fu">c</span>(<span class="st">"set"</span>, <span class="st">"index"</span>, <span class="st">"niche"</span>, <span class="st">"test"</span>, <span class="st">"size"</span>, <span class="st">"estimate"</span>, <span class="st">"p"</span>, <span class="st">"q"</span>, <span class="st">"q.global"</span>)])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div data-pagedtable="false">
   <script data-pagedtable-source="" type="application/json">
@@ -536,14 +792,54 @@ background: #2A0E52;
 </div>
 </div>
 </div>
-<p>There are two q-values. <code>q</code> adjusts within each (index, niche, test) column, and <code>q.global</code> over every set, index and niche of a test. When there are many sets and many columns, <code>q.global</code> is the one to read. <code>plotTripletHeatmap()</code> shows the t statistic of every set in every (index, niche) column, with a dot where <code>q.global</code> passes.</p>
+</div>
+<div id="tabset-13-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-13-2-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotTripletHeatmap</span>(gs, <span class="at">test =</span> <span class="st">"pooled"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>sets <span class="op">=</span> {</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"planted"</span>: [<span class="st">"G1"</span>, <span class="st">"G2"</span>, <span class="st">"G3"</span>],</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"other"</span>: [<span class="ss">f"G</span><span class="sc">{</span>i<span class="sc">}</span><span class="ss">"</span> <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">4</span>, <span class="dv">9</span>)],</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"rest"</span>: [<span class="ss">f"G</span><span class="sc">{</span>i<span class="sc">}</span><span class="ss">"</span> <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">9</span>, <span class="dv">21</span>)],</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>gs <span class="op">=</span> sp.spi_gsea(res, sets, min_size<span class="op">=</span><span class="dv">3</span>)</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>gs[[<span class="st">"set"</span>, <span class="st">"index"</span>, <span class="st">"niche"</span>, <span class="st">"test"</span>, <span class="st">"size"</span>, <span class="st">"estimate"</span>, <span class="st">"p"</span>, <span class="st">"q"</span>, <span class="st">"q.global"</span>]].head()</span>
+<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;        set index niche    test  size  estimate         p         q  q.global</span></span>
+<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 0  planted     A     B  pooled     3  0.578673  0.000011  0.000032  0.000191</span></span>
+<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 1  planted     C     A  pooled     3  0.237550  0.045308  0.135925  0.233513</span></span>
+<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 2    other     B     C  pooled     5 -0.215171  0.048372  0.145115  0.233513</span></span>
+<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 3  planted     B     A  pooled     3  0.270073  0.051892  0.155676  0.233513</span></span>
+<span id="cb30-13"><a href="#cb30-13" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 4     rest     A     B  pooled    12 -0.195542  0.094970  0.142454  0.341890</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
+</div>
+<p>There are two q-values. <code>q</code> adjusts within each (index, niche, test) column, and <code>q.global</code> over every set, index and niche of a test. When there are many sets and many columns, <code>q.global</code> is the one to read. The heatmap shows the t statistic of every set in every (index, niche) column, with a dot where <code>q.global</code> passes.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-14-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-14-1" role="tab" aria-controls="tabset-14-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-14-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-14-2" role="tab" aria-controls="tabset-14-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-14-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-14-1-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotTripletHeatmap</span>(gs, <span class="at">test =</span> <span class="st">"pooled"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="get-started_files/figure-html/gsea-plot-1.png" class="img-fluid figure-img" width="576"></p>
+<p><img src="get-started_files/figure-html/gsea-plot-r-1.png" class="img-fluid figure-img" width="576"></p>
 </figure>
+</div>
+</div>
+</div>
+</div>
+<div id="tabset-14-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-14-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> sp.pl.plot_triplet_heatmap(gs, test<span class="op">=</span><span class="st">"pooled"</span>)</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/gsea-plot-py-1.png" class="img-fluid figure-img" width="640"></p>
+</figure>
+</div>
+</div>
+</div>
 </div>
 </div>
 </div>
@@ -551,10 +847,14 @@ background: #2A0E52;
 </section>
 <section id="a-different-question-niche-abundance" class="level1">
 <h1>A different question: niche abundance</h1>
-<p>The tests above use only the slopes within patients. A patient whose index cells sit among many niche cells may also express a gene differently as a whole from a patient whose index cells do not. This is a real association, but it is a different claim. It says that patients with more of a niche type differ, not that a cell responds to its neighbours, and the patient intercepts absorb it so that <code>testSpiDE()</code> never sees it. <code>testNicheAbundance()</code> asks it directly. For each patient and index type it forms a pseudobulk profile and compares it with the patient’s average niche density, across patients.</p>
+<p>The tests above use only the slopes within patients. A patient whose index cells sit among many niche cells may also express a gene differently as a whole from a patient whose index cells do not. This is a real association, but it is a different claim. It says that patients with more of a niche type differ, not that a cell responds to its neighbours, and the patient intercepts absorb it so that the slope test never sees it. <code>testNicheAbundance()</code> (<code>test_niche_abundance()</code>) asks it directly. For each patient and index type it forms a pseudobulk profile and compares it with the patient’s average niche density, across patients.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-15-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-15-1" role="tab" aria-controls="tabset-15-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-15-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-15-2" role="tab" aria-controls="tabset-15-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-15-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-15-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>ab <span class="ot">&lt;-</span> <span class="fu">testNicheAbundance</span>(spe, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(ab)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>ab <span class="ot">&lt;-</span> <span class="fu">testNicheAbundance</span>(spe, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(ab)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div data-pagedtable="false">
   <script data-pagedtable-source="" type="application/json">
@@ -563,54 +863,142 @@ background: #2A0E52;
 </div>
 </div>
 </div>
-<p>With a condition, the rows with <code>term</code> <code>"niche"</code> give the association averaged over the two conditions, and the rows with <code>"condition:niche"</code> test whether it differs between them, again the second level minus the first. Each term is its own family for multiple testing, with its own <code>q.global</code>. A patient who alone carries most of a niche type’s spread is down-weighted (<code>max.leverage</code>), so that one patient cannot make a call on its own. Gene sets go through the same test with <code>testNicheAbundance(genesets = )</code>.</p>
-<p>The two kinds of result must not be mixed up. A result of <code>testSpiDE()</code> says that, within a patient, cells with more of this niche differ, and a result of <code>testNicheAbundance()</code> says that patients with more of this niche differ. <code>plotNicheResponse()</code> shows both on one gene. With <code>adjust = FALSE</code> it draws the raw data: each segment is one patient’s slope, the quantity spiDE tests, and the dashed line through the patients’ means is the between-patient association that <code>testNicheAbundance()</code> tests.</p>
+</div>
+<div id="tabset-15-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-15-2-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotNicheResponse</span>(spe, res, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>, <span class="at">adjust =</span> <span class="cn">FALSE</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>ab <span class="op">=</span> sp.test_niche_abundance(adata, condition<span class="op">=</span><span class="st">"condition"</span>, sigma<span class="op">=</span><span class="dv">30</span>, verbose<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>ab.head()</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;   gene index niche   term  ...  leverage  downweighted         q  q.global</span></span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 0   G1     A     B  niche  ...  3.140745             1  0.770461  0.945496</span></span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 1   G2     A     B  niche  ...  3.140745             1  0.770461  0.907598</span></span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 2   G3     A     B  niche  ...  3.140745             1  0.770461  0.662375</span></span>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 3   G4     A     B  niche  ...  3.140745             1  0.770461  0.907598</span></span>
+<span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; 4   G5     A     B  niche  ...  3.140745             1  0.770461  0.737781</span></span>
+<span id="cb34-9"><a href="#cb34-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb34-10"><a href="#cb34-10" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [5 rows x 12 columns]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
+</div>
+<p>With a condition, the rows with <code>term</code> <code>"niche"</code> give the association averaged over the two conditions, and the rows with <code>"condition:niche"</code> test whether it differs between them, again the second level minus the first. Each term is its own family for multiple testing, with its own <code>q.global</code>. A patient who alone carries most of a niche type’s spread is down-weighted (<code>max.leverage</code>, <code>max_leverage</code> in Python), so that one patient cannot make a call on its own. Gene sets go through the same test with the <code>genesets</code> argument.</p>
+<p>The two kinds of result must not be mixed up, and never report a result of one test as a result of the other. A slope result says that, within a patient, cells with more of this niche differ, and an abundance result says that patients with more of this niche differ. <code>plotNicheResponse()</code> (<code>pl.plot_niche_response()</code>) shows both on one gene. With <code>adjust = FALSE</code> (<code>adjust=False</code>) it draws the raw data: each segment is one patient’s slope, the quantity spiDE tests, and the dashed line through the patients’ means is the between-patient association that the abundance test tests.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-16-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-16-1" role="tab" aria-controls="tabset-16-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-16-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-16-2" role="tab" aria-controls="tabset-16-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-16-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-16-1-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb35"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotNicheResponse</span>(spe, res, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>, <span class="at">adjust =</span> <span class="cn">FALSE</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="get-started_files/figure-html/abundance-plot-1.png" class="img-fluid figure-img" width="576"></p>
+<p><img src="get-started_files/figure-html/abundance-plot-r-1.png" class="img-fluid figure-img" width="576"></p>
 </figure>
 </div>
 </div>
 </div>
+</div>
+<div id="tabset-16-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-16-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> sp.pl.plot_niche_response(adata, res, gene<span class="op">=</span><span class="st">"G1"</span>, index<span class="op">=</span><span class="st">"A"</span>, niche<span class="op">=</span><span class="st">"B"</span>, adjust<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/abundance-plot-py-1.png" class="img-fluid figure-img" width="691"></p>
+</figure>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<p>Within a patient the segments rise with the density of <code>B</code>, more steeply for some patients than for others, while the dashed line across the patients’ means is the different, between-patient question.</p>
 </section>
 <section id="plots" class="level1">
 <h1>Plots</h1>
-<p>All the plots are ggplot2 objects in one house style (<code>theme_spiDE()</code>), with one colour-blind-safe palette (<code>spiDEColours()</code>) that uses one pair of colours for slopes that rise or fall with the niche and another pair for the two levels of the condition. Each plot returns its data in <code>p$data</code>, so a plot is changed by adding layers or a theme, and any two plots can be combined with patchwork.</p>
+<p>All the plots are in one house style with one colour-blind-safe palette (<code>theme_spiDE()</code> and <code>spiDEColours()</code> in R, <code>pl.style()</code> and <code>pl.spide_colours()</code> in Python) that uses one pair of colours for slopes that rise or fall with the niche and another pair for the two levels of the condition. In R every plot is a ggplot2 object that returns its data in <code>p$data</code>, so a plot is changed by adding layers or a theme, and any two plots can be combined with patchwork. In Python every plot is a matplotlib <code>Figure</code>.</p>
 <section id="where-the-calls-are" class="level2">
 <h2 class="anchored" data-anchor-id="where-the-calls-are">Where the calls are</h2>
-<p><code>plotCallMap()</code> counts, for each (index, niche) column, how many triplets pass, separately for slopes that rise and slopes that fall with the niche’s density, and <code>plotTopTriplets()</code> shows the strongest ones. When we give it the <code>SpatialExperiment</code>, a triangle marks a gene that is several-fold higher in the niche type than in the index type, which we come back to below.</p>
+<p><code>plotCallMap()</code> (<code>pl.plot_call_map()</code>) counts, for each (index, niche) column, how many triplets pass, separately for slopes that rise and slopes that fall with the niche’s density, and <code>plotTopTriplets()</code> (<code>pl.plot_top_triplets()</code>) shows the strongest ones. When we give it the data object, a triangle marks a gene that is several-fold higher in the niche type than in the index type, which we come back to below.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-17-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-17-1" role="tab" aria-controls="tabset-17-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-17-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-17-2" role="tab" aria-controls="tabset-17-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-17-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-17-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotCallMap</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotCallMap</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="get-started_files/figure-html/plots-results-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="get-started_files/figure-html/plots-results-r-3.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotTopTriplets</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>, <span class="at">n =</span> <span class="dv">12</span>, <span class="at">spe =</span> spe)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb38"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotTopTriplets</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>, <span class="at">n =</span> <span class="dv">12</span>, <span class="at">spe =</span> spe)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="get-started_files/figure-html/plots-results-2.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="get-started_files/figure-html/plots-results-r-4.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
 </div>
+</div>
+<div id="tabset-17-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-17-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> sp.pl.plot_call_map(res, test<span class="op">=</span><span class="st">"pooled"</span>)</span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-results-py-1.png" class="img-fluid figure-img" width="499"></p>
+</figure>
+</div>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> sp.pl.plot_top_triplets(res, test<span class="op">=</span><span class="st">"pooled"</span>, n<span class="op">=</span><span class="dv">12</span>, adata<span class="op">=</span>adata)</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-results-py-2.png" class="img-fluid figure-img" width="826"></p>
+</figure>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<p>Two triplets pass, both in the column of index type <code>A</code> against niche type <code>B</code>, where the effect was planted: the planted gene <code>G1</code>, whose slope rises, and <code>G9</code>, whose slope falls. <code>G9</code> has no planted effect, so it is an unplanted call at the default threshold, which is what we should expect to see now and then among 120 triplets.</p>
 </section>
 <section id="the-cells-behind-a-slope" class="level2">
 <h2 class="anchored" data-anchor-id="the-cells-behind-a-slope">The cells behind a slope</h2>
 <p><code>plotNicheResponse()</code> shows the cells themselves. By default, each patient’s fitted intercept is divided out, so the patients share one level and the slopes that the tests compare are easy to see.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-18-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-18-1" role="tab" aria-controls="tabset-18-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-18-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-18-2" role="tab" aria-controls="tabset-18-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-18-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-18-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotNicheResponse</span>(spe, res, <span class="at">gene =</span> <span class="fu">c</span>(<span class="st">"G1"</span>, <span class="st">"G2"</span>), <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb41"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotNicheResponse</span>(spe, res, <span class="at">gene =</span> <span class="fu">c</span>(<span class="st">"G1"</span>, <span class="st">"G2"</span>), <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="get-started_files/figure-html/plots-response-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="get-started_files/figure-html/plots-response-r-5.png" class="img-fluid figure-img" width="672"></p>
 </figure>
+</div>
+</div>
+</div>
+</div>
+<div id="tabset-18-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-18-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> sp.pl.plot_niche_response(adata, res, gene<span class="op">=</span>[<span class="st">"G1"</span>, <span class="st">"G2"</span>], index<span class="op">=</span><span class="st">"A"</span>, niche<span class="op">=</span><span class="st">"B"</span>)</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-response-py-1.png" class="img-fluid figure-img" width="1008"></p>
+</figure>
+</div>
+</div>
+</div>
 </div>
 </div>
 </div>
@@ -618,43 +1006,113 @@ background: #2A0E52;
 </section>
 <section id="check-for-spillover" class="level2">
 <h2 class="anchored" data-anchor-id="check-for-spillover">Check for spillover</h2>
-<p>Cell segmentation is never perfect, and transcripts of a neighbouring niche cell can be assigned to an index cell. These transcripts rise with the niche’s density and look like a response of the index cell. <code>plotSpillover()</code> plots every triplet by its signed z statistic against how much higher the gene is in the niche type than in the index type, and marks the region of genes that are several-fold higher in the niche type. If the calls fell mostly in that region, they would be the niche type’s own markers and spillover the likely explanation.</p>
+<p>Cell segmentation is never perfect, and transcripts of a neighbouring niche cell can be assigned to an index cell. These transcripts rise with the niche’s density and look like a response of the index cell. <code>plotSpillover()</code> (<code>pl.plot_spillover()</code>) plots every triplet by its signed z statistic against how much higher the gene is in the niche type than in the index type, and marks the region of genes that are several-fold higher in the niche type. If the calls fell mostly in that region, they would be the niche type’s own markers and spillover the likely explanation.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-19-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-19-1" role="tab" aria-controls="tabset-19-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-19-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-19-2" role="tab" aria-controls="tabset-19-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-19-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-19-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotSpillover</span>(res, spe)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb43"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotSpillover</span>(res, spe)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="get-started_files/figure-html/plots-spillover-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="get-started_files/figure-html/plots-spillover-r-3.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
 </div>
-<p>In this example the plot reports that none of the two calls lies in that region, so spillover does not explain them. In real data, report the niche type’s fold change together with every call.</p>
+</div>
+<div id="tabset-19-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-19-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> sp.pl.plot_spillover(res, adata)</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-spillover-py-1.png" class="img-fluid figure-img" width="768"></p>
+</figure>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<p>In this example none of the calls lies in that region, so spillover does not explain them. In real data, report the niche type’s fold change together with every call.</p>
 </section>
 <section id="diagnostics" class="level2">
 <h2 class="anchored" data-anchor-id="diagnostics">Diagnostics</h2>
-<p><code>plotPValues()</code> shows the distribution of the p-values by expression band. It is a sanity check on the data at hand and is not a replacement for the calibration checks of <code>vignette("spiDE-calibration")</code>.</p>
+<p><code>plotPValues()</code> (<code>pl.plot_p_values()</code>) shows the distribution of the p-values by expression band. It is a sanity check on the data at hand and is not a replacement for the calibration checks of <a href="articles/spiDE-calibration.html">Validation</a>.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-20-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-20-1" role="tab" aria-controls="tabset-20-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-20-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-20-2" role="tab" aria-controls="tabset-20-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-20-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-20-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotPValues</span>(res)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb45"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plotPValues</span>(res)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="get-started_files/figure-html/plots-diagnostics-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="get-started_files/figure-html/plots-diagnostics-r-3.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
 </div>
-<p>Figures combine with patchwork, for example to put a patient-level and a cell-level view of the same triplet side by side:</p>
+</div>
+<div id="tabset-20-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-20-2-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(patchwork)</span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="fu">plotPatientSlopes</span>(res, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>) <span class="sc">+</span></span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">plotNicheResponse</span>(spe, res, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>) <span class="sc">+</span></span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">plot_annotation</span>(<span class="at">tag_levels =</span> <span class="st">"A"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> sp.pl.plot_p_values(res)</span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="get-started_files/figure-html/plots-patchwork-1.png" class="img-fluid figure-img" width="864"></p>
+<p><img src="get-started_files/figure-html/plots-diagnostics-py-1.png" class="img-fluid figure-img" width="1075"></p>
 </figure>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<p>With only 20 genes per band the histograms are coarse, and the p-values are spread across the range with no strong pile-up near zero in any band, which is what a data set with one planted effect should look like.</p>
+<p>In R, figures combine with patchwork, for example to put a patient-level and a cell-level view of the same triplet side by side. Python figures are independent matplotlib objects with no counterpart of this operator, so we show the two in turn.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-21-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-21-1" role="tab" aria-controls="tabset-21-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-21-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-21-2" role="tab" aria-controls="tabset-21-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-21-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-21-1-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb47"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(patchwork)</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a><span class="fu">plotPatientSlopes</span>(res, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>) <span class="sc">+</span></span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">plotNicheResponse</span>(spe, res, <span class="at">gene =</span> <span class="st">"G1"</span>, <span class="at">index =</span> <span class="st">"A"</span>, <span class="at">niche =</span> <span class="st">"B"</span>) <span class="sc">+</span></span>
+<span id="cb47-4"><a href="#cb47-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">plot_annotation</span>(<span class="at">tag_levels =</span> <span class="st">"A"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-patchwork-r-3.png" class="img-fluid figure-img" width="864"></p>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<div id="tabset-21-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-21-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb48"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> sp.pl.plot_patient_slopes(res, gene<span class="op">=</span><span class="st">"G1"</span>, index<span class="op">=</span><span class="st">"A"</span>, niche<span class="op">=</span><span class="st">"B"</span>)</span>
+<span id="cb48-2"><a href="#cb48-2" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-patchwork-py-1.png" class="img-fluid figure-img" width="730"></p>
+</figure>
+</div>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>fig <span class="op">=</span> sp.pl.plot_niche_response(adata, res, gene<span class="op">=</span><span class="st">"G1"</span>, index<span class="op">=</span><span class="st">"A"</span>, niche<span class="op">=</span><span class="st">"B"</span>)</span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="get-started_files/figure-html/plots-patchwork-py-2.png" class="img-fluid figure-img" width="691"></p>
+</figure>
+</div>
+</div>
+</div>
 </div>
 </div>
 </div>
@@ -663,88 +1121,184 @@ background: #2A0E52;
 <section id="practicalities" class="level1">
 <h1>Practicalities</h1>
 <p><strong>Runtime.</strong> The fit is the expensive step. Every gene is fitted separately in every index type, so the time grows with the number of index types, the number of genes and the number of cells, but it hardly depends on the number of patients, because the patient baselines are handled algebraically. The example above takes a few seconds. Testing is fast, and a permutation of the condition under the slopes engine reruns only the test.</p>
-<p><strong>Parallelism.</strong> Genes are fitted independently within an index type, so the <code>BPPARAM</code> argument spreads the genes over workers:</p>
+<p><strong>Parallelism.</strong> Genes are fitted independently within an index type, so they can be spread over workers: with the <code>BPPARAM</code> argument in R and <code>n_jobs</code> in Python. Results are identical for any <code>n_jobs</code>.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-22-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-22-1" role="tab" aria-controls="tabset-22-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-22-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-22-2" role="tab" aria-controls="tabset-22-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-22-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-22-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(BiocParallel)</span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">fitSpiDE</span>(spe, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>,</span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>                <span class="at">BPPARAM =</span> <span class="fu">MulticoreParam</span>(<span class="dv">4</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb50"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(BiocParallel)</span>
+<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a>fit <span class="ot">&lt;-</span> <span class="fu">fitSpiDE</span>(spe, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">30</span>,</span>
+<span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a>                <span class="at">BPPARAM =</span> <span class="fu">MulticoreParam</span>(<span class="dv">4</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
-<p>Forked workers run one BLAS thread each when the <code>RhpcBLASctl</code> package is installed. Otherwise, set <code>OMP_NUM_THREADS=1</code> in the job, because workers that each use many threads compete with one another and run much slower.</p>
-<p><strong>Several bandwidths.</strong> One fit uses one bandwidth. We can build the niches at several bandwidths and fit each one, but the results are a sensitivity analysis and not a search: each bandwidth is its own set of tests, and picking the best of them after looking would not be valid. Calls that hold at both bandwidths are the more convincing.</p>
-<p>Below we refit index type <code>A</code> at the smaller bandwidth and count the pooled calls at each bandwidth.</p>
+</div>
+<div id="tabset-22-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-22-2-tab">
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>fit <span class="op">=</span> sp.fit_spide(adata, condition<span class="op">=</span><span class="st">"condition"</span>, sigma<span class="op">=</span><span class="dv">30</span>, n_jobs<span class="op">=</span><span class="dv">4</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
+<p>Forked workers in R run one BLAS thread each when the <code>RhpcBLASctl</code> package is installed. Otherwise, set <code>OMP_NUM_THREADS=1</code> in the job, because workers that each use many threads compete with one another and run much slower.</p>
+<p><strong>Counts and sparsity.</strong> Counts must be integers, and a back-transformed normalised layer is refused. In Python <code>layers["counts"]</code> can be a CSR or CSC sparse matrix and gives the same results as dense.</p>
+<p><strong>Several bandwidths.</strong> One fit uses one bandwidth. We can build the niches at several bandwidths and fit each one, but the results are a sensitivity analysis and not a search: each bandwidth is its own set of tests, and picking the best of them after looking would not be valid. Calls that hold at both bandwidths are the more convincing. Below we refit index type <code>A</code> at the smaller bandwidth and count the pooled calls at each bandwidth.</p>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-23-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-23-1" role="tab" aria-controls="tabset-23-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-23-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-23-2" role="tab" aria-controls="tabset-23-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-23-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-23-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>fit10 <span class="ot">&lt;-</span> <span class="fu">fitSpiDE</span>(spe2, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">10</span>, <span class="at">index =</span> <span class="st">"A"</span>,</span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>                  <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>res10 <span class="ot">&lt;-</span> <span class="fu">testSpiDE</span>(fit10)</span>
-<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>r10 <span class="ot">&lt;-</span> <span class="fu">results</span>(res10, <span class="at">test =</span> <span class="st">"pooled"</span>)</span>
-<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>r30 <span class="ot">&lt;-</span> <span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>)</span>
-<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>r30 <span class="ot">&lt;-</span> r30[r30<span class="sc">$</span>index <span class="sc">==</span> <span class="st">"A"</span>, ]</span>
-<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">sigma10 =</span> <span class="fu">sum</span>(r10<span class="sc">$</span>q <span class="sc">&lt;</span> <span class="fl">0.05</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>), <span class="at">sigma30 =</span> <span class="fu">sum</span>(r30<span class="sc">$</span>q <span class="sc">&lt;</span> <span class="fl">0.05</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>))</span>
-<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; sigma10 sigma30 </span></span>
-<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;       3       2</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb52"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a>fit10 <span class="ot">&lt;-</span> <span class="fu">fitSpiDE</span>(spe2, <span class="at">condition =</span> <span class="st">"condition"</span>, <span class="at">sigma =</span> <span class="dv">10</span>, <span class="at">index =</span> <span class="st">"A"</span>,</span>
+<span id="cb52-2"><a href="#cb52-2" aria-hidden="true" tabindex="-1"></a>                  <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb52-3"><a href="#cb52-3" aria-hidden="true" tabindex="-1"></a>res10 <span class="ot">&lt;-</span> <span class="fu">testSpiDE</span>(fit10)</span>
+<span id="cb52-4"><a href="#cb52-4" aria-hidden="true" tabindex="-1"></a>r10 <span class="ot">&lt;-</span> <span class="fu">results</span>(res10, <span class="at">test =</span> <span class="st">"pooled"</span>)</span>
+<span id="cb52-5"><a href="#cb52-5" aria-hidden="true" tabindex="-1"></a>r30 <span class="ot">&lt;-</span> <span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>)</span>
+<span id="cb52-6"><a href="#cb52-6" aria-hidden="true" tabindex="-1"></a>r30 <span class="ot">&lt;-</span> r30[r30<span class="sc">$</span>index <span class="sc">==</span> <span class="st">"A"</span>, ]</span>
+<span id="cb52-7"><a href="#cb52-7" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">sigma10 =</span> <span class="fu">sum</span>(r10<span class="sc">$</span>q <span class="sc">&lt;</span> <span class="fl">0.05</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>), <span class="at">sigma30 =</span> <span class="fu">sum</span>(r30<span class="sc">$</span>q <span class="sc">&lt;</span> <span class="fl">0.05</span>, <span class="at">na.rm =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb52-8"><a href="#cb52-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; sigma10 sigma30 </span></span>
+<span id="cb52-9"><a href="#cb52-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;       3       2</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+<div id="tabset-23-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-23-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a>fit10 <span class="op">=</span> sp.fit_spide(adata10, condition<span class="op">=</span><span class="st">"condition"</span>, sigma<span class="op">=</span><span class="dv">10</span>, index<span class="op">=</span><span class="st">"A"</span>, verbose<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>r10 <span class="op">=</span> sp.results(sp.test_spide(fit10), test<span class="op">=</span><span class="st">"pooled"</span>)</span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a>r30 <span class="op">=</span> sp.results(res, test<span class="op">=</span><span class="st">"pooled"</span>)</span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a>r30 <span class="op">=</span> r30[r30[<span class="st">"index"</span>] <span class="op">==</span> <span class="st">"A"</span>]</span>
+<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>({<span class="st">"sigma10"</span>: <span class="bu">int</span>((r10[<span class="st">"q"</span>] <span class="op">&lt;</span> <span class="fl">0.05</span>).<span class="bu">sum</span>()), <span class="st">"sigma30"</span>: <span class="bu">int</span>((r30[<span class="st">"q"</span>] <span class="op">&lt;</span> <span class="fl">0.05</span>).<span class="bu">sum</span>())})</span>
+<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; {'sigma10': 3, 'sigma30': 2}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
 </div>
 <p>Both bandwidths call a handful of triplets in <code>A</code>, including the planted one, so the conclusion does not hinge on the choice here.</p>
 <p><strong>Objects from older versions.</strong> Objects saved by spiDE 0.99.22 and earlier came from a different model and are refused by this version, with a message that names the archive that reads them.</p>
 </section>
+<section id="do-r-and-python-agree" class="level1">
+<h1>Do R and Python agree?</h1>
+<p>spidepy is a port of the R package, and a test suite compares it with reference values computed by R, but the two are separate implementations, so we do not take agreement for granted. Here we compare the tables that the two have just produced on the same data: the pooled and condition-specific slope tests, the gene-set test and the niche-abundance test.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb54"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>as_r_table <span class="ot">&lt;-</span> <span class="cf">function</span>(code) {</span>
+<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a>  d <span class="ot">&lt;-</span> reticulate<span class="sc">::</span><span class="fu">py_to_r</span>(reticulate<span class="sc">::</span><span class="fu">py_eval</span>(code, <span class="at">convert =</span> <span class="cn">FALSE</span>))</span>
+<span id="cb54-3"><a href="#cb54-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">as.data.frame</span>(<span class="fu">lapply</span>(d, unlist), <span class="at">stringsAsFactors =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb54-4"><a href="#cb54-4" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb54-5"><a href="#cb54-5" aria-hidden="true" tabindex="-1"></a>key <span class="ot">&lt;-</span> <span class="cf">function</span>(d) <span class="fu">paste</span>(d<span class="sc">$</span>gene, d<span class="sc">$</span>index, d<span class="sc">$</span>niche, d<span class="sc">$</span>term, d<span class="sc">$</span>set, d<span class="sc">$</span>test)</span>
+<span id="cb54-6"><a href="#cb54-6" aria-hidden="true" tabindex="-1"></a>cmp <span class="ot">&lt;-</span> <span class="cf">function</span>(r, p, col) {</span>
+<span id="cb54-7"><a href="#cb54-7" aria-hidden="true" tabindex="-1"></a>  p <span class="ot">&lt;-</span> p[<span class="fu">match</span>(<span class="fu">key</span>(r), <span class="fu">key</span>(p)), ]</span>
+<span id="cb54-8"><a href="#cb54-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">c</span>(<span class="at">max_abs_diff =</span> <span class="fu">max</span>(<span class="fu">abs</span>(r[[col]] <span class="sc">-</span> p[[col]]), <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb54-9"><a href="#cb54-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">max_rel_diff =</span> <span class="fu">max</span>(<span class="fu">abs</span>(r[[col]] <span class="sc">-</span> p[[col]]) <span class="sc">/</span> <span class="fu">pmax</span>(<span class="fu">abs</span>(r[[col]]), <span class="fl">1e-8</span>), <span class="at">na.rm =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb54-10"><a href="#cb54-10" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb54-11"><a href="#cb54-11" aria-hidden="true" tabindex="-1"></a>r_pooled <span class="ot">&lt;-</span> <span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"pooled"</span>)</span>
+<span id="cb54-12"><a href="#cb54-12" aria-hidden="true" tabindex="-1"></a>r_cond <span class="ot">&lt;-</span> <span class="fu">results</span>(res, <span class="at">test =</span> <span class="st">"condition"</span>)</span>
+<span id="cb54-13"><a href="#cb54-13" aria-hidden="true" tabindex="-1"></a>py_pooled <span class="ot">&lt;-</span> <span class="fu">as_r_table</span>(<span class="st">"sp.results(res, test='pooled').to_dict('list')"</span>)</span>
+<span id="cb54-14"><a href="#cb54-14" aria-hidden="true" tabindex="-1"></a>py_cond <span class="ot">&lt;-</span> <span class="fu">as_r_table</span>(<span class="st">"sp.results(res, test='condition').to_dict('list')"</span>)</span>
+<span id="cb54-15"><a href="#cb54-15" aria-hidden="true" tabindex="-1"></a>py_gs <span class="ot">&lt;-</span> <span class="fu">as_r_table</span>(<span class="st">"gs.to_dict('list')"</span>)</span>
+<span id="cb54-16"><a href="#cb54-16" aria-hidden="true" tabindex="-1"></a>py_ab <span class="ot">&lt;-</span> <span class="fu">as_r_table</span>(<span class="st">"ab.to_dict('list')"</span>)</span>
+<span id="cb54-17"><a href="#cb54-17" aria-hidden="true" tabindex="-1"></a>out <span class="ot">&lt;-</span> <span class="fu">rbind</span>(<span class="at">pooled_estimate =</span> <span class="fu">cmp</span>(r_pooled, py_pooled, <span class="st">"estimate"</span>),</span>
+<span id="cb54-18"><a href="#cb54-18" aria-hidden="true" tabindex="-1"></a>             <span class="at">pooled_t =</span> <span class="fu">cmp</span>(r_pooled, py_pooled, <span class="st">"t"</span>),</span>
+<span id="cb54-19"><a href="#cb54-19" aria-hidden="true" tabindex="-1"></a>             <span class="at">condition_estimate =</span> <span class="fu">cmp</span>(r_cond, py_cond, <span class="st">"estimate"</span>),</span>
+<span id="cb54-20"><a href="#cb54-20" aria-hidden="true" tabindex="-1"></a>             <span class="at">gene_set_estimate =</span> <span class="fu">cmp</span>(<span class="fu">as.data.frame</span>(gs), py_gs, <span class="st">"estimate"</span>),</span>
+<span id="cb54-21"><a href="#cb54-21" aria-hidden="true" tabindex="-1"></a>             <span class="at">abundance_estimate =</span> <span class="fu">cmp</span>(<span class="fu">as.data.frame</span>(ab), py_ab, <span class="st">"estimate"</span>))</span>
+<span id="cb54-22"><a href="#cb54-22" aria-hidden="true" tabindex="-1"></a><span class="fu">signif</span>(out, <span class="dv">2</span>)</span>
+<span id="cb54-23"><a href="#cb54-23" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;                    max_abs_diff max_rel_diff</span></span>
+<span id="cb54-24"><a href="#cb54-24" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; pooled_estimate         1.2e-15      1.5e-14</span></span>
+<span id="cb54-25"><a href="#cb54-25" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; pooled_t                1.2e-14      1.5e-14</span></span>
+<span id="cb54-26"><a href="#cb54-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; condition_estimate      2.9e-15      1.7e-14</span></span>
+<span id="cb54-27"><a href="#cb54-27" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; gene_set_estimate       2.4e-15      2.1e-14</span></span>
+<span id="cb54-28"><a href="#cb54-28" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; abundance_estimate      9.7e-14      6.5e-12</span></span>
+<span id="cb54-29"><a href="#cb54-29" aria-hidden="true" tabindex="-1"></a>calls <span class="ot">&lt;-</span> <span class="cf">function</span>(d) <span class="fu">sort</span>(<span class="fu">key</span>(d)[<span class="fu">which</span>(d<span class="sc">$</span>q <span class="sc">&lt;</span> <span class="fl">0.05</span>)])</span>
+<span id="cb54-30"><a href="#cb54-30" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">pooled_calls_R =</span> <span class="fu">length</span>(<span class="fu">calls</span>(r_pooled)), <span class="at">pooled_calls_Python =</span> <span class="fu">length</span>(<span class="fu">calls</span>(py_pooled)),</span>
+<span id="cb54-31"><a href="#cb54-31" aria-hidden="true" tabindex="-1"></a>  <span class="at">same_pooled_calls =</span> <span class="fu">identical</span>(<span class="fu">calls</span>(r_pooled), <span class="fu">calls</span>(py_pooled)),</span>
+<span id="cb54-32"><a href="#cb54-32" aria-hidden="true" tabindex="-1"></a>  <span class="at">same_condition_family =</span> <span class="fu">identical</span>(r_cond<span class="sc">$</span>in_family, py_cond<span class="sc">$</span>in_family[<span class="fu">match</span>(<span class="fu">key</span>(r_cond), <span class="fu">key</span>(py_cond))]))</span>
+<span id="cb54-33"><a href="#cb54-33" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;        pooled_calls_R   pooled_calls_Python     same_pooled_calls </span></span>
+<span id="cb54-34"><a href="#cb54-34" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;                     2                     2                     1 </span></span>
+<span id="cb54-35"><a href="#cb54-35" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; same_condition_family </span></span>
+<span id="cb54-36"><a href="#cb54-36" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;                     1</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<p>Each row of the table gives the largest absolute and relative difference over all rows between the R and the Python value. On this data they are at the level of floating-point rounding, and the two languages call the same triplets. This is a statement about this example. Real data are larger, the optimisers see more difficult genes, and small differences in the dispersion estimates can reach the last reported digits, so when you compare the two on your own data, compare calls and effect sizes, not digits.</p>
+</section>
 <section id="session-information" class="level1">
 <h1>Session information</h1>
+<div class="tabset-margin-container"></div><div class="panel-tabset" data-group="language">
+<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-24-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-24-1" role="tab" aria-controls="tabset-24-1" aria-selected="true" href="">R</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-24-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-24-2" role="tab" aria-controls="tabset-24-2" aria-selected="false" href="">Python</a></li></ul>
+<div class="tab-content" data-group="language">
+<div id="tabset-24-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-24-1-tab">
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; R version 4.6.1 (2026-06-24)</span></span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Platform: x86_64-pc-linux-gnu</span></span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Running under: Ubuntu 24.04.5 LTS</span></span>
-<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
-<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Matrix products: default</span></span>
-<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; BLAS:   /usr/lib/x86_64-linux-gnu/openblas-pthread/libblas.so.3 </span></span>
-<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; LAPACK: /usr/lib/x86_64-linux-gnu/openblas-pthread/libopenblasp-r0.3.26.so;  LAPACK version 3.12.0</span></span>
-<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
-<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; locale:</span></span>
-<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [1] LC_CTYPE=C.UTF-8       LC_NUMERIC=C           LC_TIME=C.UTF-8       </span></span>
-<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [4] LC_COLLATE=C.UTF-8     LC_MONETARY=C.UTF-8    LC_MESSAGES=C.UTF-8   </span></span>
-<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [7] LC_PAPER=C.UTF-8       LC_NAME=C              LC_ADDRESS=C          </span></span>
-<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [10] LC_TELEPHONE=C         LC_MEASUREMENT=C.UTF-8 LC_IDENTIFICATION=C   </span></span>
-<span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
-<span id="cb28-16"><a href="#cb28-16" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; time zone: UTC</span></span>
-<span id="cb28-17"><a href="#cb28-17" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; tzcode source: system (glibc)</span></span>
-<span id="cb28-18"><a href="#cb28-18" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
-<span id="cb28-19"><a href="#cb28-19" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; attached base packages:</span></span>
-<span id="cb28-20"><a href="#cb28-20" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [1] stats4    stats     graphics  grDevices utils     datasets  methods  </span></span>
-<span id="cb28-21"><a href="#cb28-21" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [8] base     </span></span>
-<span id="cb28-22"><a href="#cb28-22" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
-<span id="cb28-23"><a href="#cb28-23" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; other attached packages:</span></span>
-<span id="cb28-24"><a href="#cb28-24" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [1] patchwork_1.3.2             SpatialExperiment_1.23.0   </span></span>
-<span id="cb28-25"><a href="#cb28-25" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [3] SingleCellExperiment_1.35.2 SummarizedExperiment_1.43.0</span></span>
-<span id="cb28-26"><a href="#cb28-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [5] Biobase_2.73.2              GenomicRanges_1.65.4       </span></span>
-<span id="cb28-27"><a href="#cb28-27" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [7] Seqinfo_1.3.2               IRanges_2.47.5             </span></span>
-<span id="cb28-28"><a href="#cb28-28" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [9] S4Vectors_0.51.10           BiocGenerics_0.59.12       </span></span>
-<span id="cb28-29"><a href="#cb28-29" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [11] generics_0.1.4              MatrixGenerics_1.25.0      </span></span>
-<span id="cb28-30"><a href="#cb28-30" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [13] matrixStats_1.5.0           spiDE_0.99.37              </span></span>
-<span id="cb28-31"><a href="#cb28-31" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
-<span id="cb28-32"><a href="#cb28-32" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; loaded via a namespace (and not attached):</span></span>
-<span id="cb28-33"><a href="#cb28-33" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [1] gtable_0.3.6           rjson_0.2.23           xfun_0.62             </span></span>
-<span id="cb28-34"><a href="#cb28-34" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [4] ggplot2_4.0.3          ggrepel_0.9.8          spatstat.sparse_3.2-0 </span></span>
-<span id="cb28-35"><a href="#cb28-35" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [7] lattice_0.22-9         vctrs_0.7.3            tools_4.6.1           </span></span>
-<span id="cb28-36"><a href="#cb28-36" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [10] spatstat.utils_3.2-5   goftest_1.2-3          parallel_4.6.1        </span></span>
-<span id="cb28-37"><a href="#cb28-37" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [13] tibble_3.3.1           pkgconfig_2.0.3        Matrix_1.7-5          </span></span>
-<span id="cb28-38"><a href="#cb28-38" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [16] RColorBrewer_1.1-3     S7_0.2.2               lifecycle_1.0.5       </span></span>
-<span id="cb28-39"><a href="#cb28-39" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [19] SpaNorm_1.7.16         deldir_2.0-4           compiler_4.6.1        </span></span>
-<span id="cb28-40"><a href="#cb28-40" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [22] farver_2.1.2           RhpcBLASctl_0.23-42    statmod_1.5.2         </span></span>
-<span id="cb28-41"><a href="#cb28-41" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [25] codetools_0.2-20       spatstat.explore_3.8-3 htmltools_0.5.9       </span></span>
-<span id="cb28-42"><a href="#cb28-42" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [28] yaml_2.3.12            pillar_1.11.1          BiocParallel_1.47.0   </span></span>
-<span id="cb28-43"><a href="#cb28-43" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [31] DelayedArray_0.39.8    limma_3.99.2           spatstat.univar_3.2-0 </span></span>
-<span id="cb28-44"><a href="#cb28-44" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [34] magick_2.9.1           abind_1.4-8            nlme_3.1-169          </span></span>
-<span id="cb28-45"><a href="#cb28-45" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [37] spatstat.geom_3.8-3    tidyselect_1.2.1       rsvd_1.0.6            </span></span>
-<span id="cb28-46"><a href="#cb28-46" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [40] digest_0.6.39          BiocSingular_1.29.2    dplyr_1.2.1           </span></span>
-<span id="cb28-47"><a href="#cb28-47" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [43] splines_4.6.1          labeling_0.4.3         polyclip_1.10-7       </span></span>
-<span id="cb28-48"><a href="#cb28-48" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [46] fastmap_1.2.0          grid_4.6.1             cli_3.6.6             </span></span>
-<span id="cb28-49"><a href="#cb28-49" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [49] SparseArray_1.13.4     magrittr_2.0.5         S4Arrays_1.13.2       </span></span>
-<span id="cb28-50"><a href="#cb28-50" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [52] spatstat.data_3.1-9    withr_3.0.3            tensor_1.5.1          </span></span>
-<span id="cb28-51"><a href="#cb28-51" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [55] scales_1.4.0           rmarkdown_2.32         XVector_0.53.0        </span></span>
-<span id="cb28-52"><a href="#cb28-52" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [58] otel_0.2.0             ScaledMatrix_1.21.0    beachmat_2.29.3       </span></span>
-<span id="cb28-53"><a href="#cb28-53" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [61] evaluate_1.0.5         knitr_1.52             irlba_2.4.1           </span></span>
-<span id="cb28-54"><a href="#cb28-54" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [64] mgcv_1.9-4             rlang_1.3.0            Rcpp_1.1.2            </span></span>
-<span id="cb28-55"><a href="#cb28-55" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [67] spatstat.random_3.5-2  glue_1.8.1             jsonlite_2.0.0        </span></span>
-<span id="cb28-56"><a href="#cb28-56" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [70] R6_2.6.1</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb55"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span>
+<span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; R version 4.6.1 (2026-06-24)</span></span>
+<span id="cb55-3"><a href="#cb55-3" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Platform: x86_64-pc-linux-gnu</span></span>
+<span id="cb55-4"><a href="#cb55-4" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Running under: Ubuntu 24.04.5 LTS</span></span>
+<span id="cb55-5"><a href="#cb55-5" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb55-6"><a href="#cb55-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; Matrix products: default</span></span>
+<span id="cb55-7"><a href="#cb55-7" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; BLAS:   /usr/lib/x86_64-linux-gnu/openblas-pthread/libblas.so.3 </span></span>
+<span id="cb55-8"><a href="#cb55-8" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; LAPACK: /usr/lib/x86_64-linux-gnu/openblas-pthread/libopenblasp-r0.3.26.so;  LAPACK version 3.12.0</span></span>
+<span id="cb55-9"><a href="#cb55-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb55-10"><a href="#cb55-10" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; locale:</span></span>
+<span id="cb55-11"><a href="#cb55-11" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [1] LC_CTYPE=C.UTF-8       LC_NUMERIC=C           LC_TIME=C.UTF-8       </span></span>
+<span id="cb55-12"><a href="#cb55-12" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [4] LC_COLLATE=C.UTF-8     LC_MONETARY=C.UTF-8    LC_MESSAGES=C.UTF-8   </span></span>
+<span id="cb55-13"><a href="#cb55-13" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [7] LC_PAPER=C.UTF-8       LC_NAME=C              LC_ADDRESS=C          </span></span>
+<span id="cb55-14"><a href="#cb55-14" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [10] LC_TELEPHONE=C         LC_MEASUREMENT=C.UTF-8 LC_IDENTIFICATION=C   </span></span>
+<span id="cb55-15"><a href="#cb55-15" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb55-16"><a href="#cb55-16" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; time zone: UTC</span></span>
+<span id="cb55-17"><a href="#cb55-17" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; tzcode source: system (glibc)</span></span>
+<span id="cb55-18"><a href="#cb55-18" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb55-19"><a href="#cb55-19" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; attached base packages:</span></span>
+<span id="cb55-20"><a href="#cb55-20" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [1] stats4    stats     graphics  grDevices utils     datasets  methods  </span></span>
+<span id="cb55-21"><a href="#cb55-21" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [8] base     </span></span>
+<span id="cb55-22"><a href="#cb55-22" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb55-23"><a href="#cb55-23" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; other attached packages:</span></span>
+<span id="cb55-24"><a href="#cb55-24" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [1] patchwork_1.3.2             SpatialExperiment_1.23.0   </span></span>
+<span id="cb55-25"><a href="#cb55-25" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [3] SingleCellExperiment_1.35.2 SummarizedExperiment_1.43.0</span></span>
+<span id="cb55-26"><a href="#cb55-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [5] Biobase_2.73.2              GenomicRanges_1.65.4       </span></span>
+<span id="cb55-27"><a href="#cb55-27" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [7] Seqinfo_1.3.2               IRanges_2.47.5             </span></span>
+<span id="cb55-28"><a href="#cb55-28" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [9] S4Vectors_0.51.10           BiocGenerics_0.59.12       </span></span>
+<span id="cb55-29"><a href="#cb55-29" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [11] generics_0.1.4              MatrixGenerics_1.25.0      </span></span>
+<span id="cb55-30"><a href="#cb55-30" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [13] matrixStats_1.5.0           spiDE_0.99.37              </span></span>
+<span id="cb55-31"><a href="#cb55-31" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb55-32"><a href="#cb55-32" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; loaded via a namespace (and not attached):</span></span>
+<span id="cb55-33"><a href="#cb55-33" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [1] gtable_0.3.6           rjson_0.2.23           xfun_0.62             </span></span>
+<span id="cb55-34"><a href="#cb55-34" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [4] ggplot2_4.0.3          ggrepel_0.9.8          spatstat.sparse_3.2-0 </span></span>
+<span id="cb55-35"><a href="#cb55-35" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;  [7] lattice_0.22-9         vctrs_0.7.3            tools_4.6.1           </span></span>
+<span id="cb55-36"><a href="#cb55-36" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [10] spatstat.utils_3.2-5   goftest_1.2-3          parallel_4.6.1        </span></span>
+<span id="cb55-37"><a href="#cb55-37" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [13] tibble_3.3.1           pkgconfig_2.0.3        Matrix_1.7-5          </span></span>
+<span id="cb55-38"><a href="#cb55-38" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [16] RColorBrewer_1.1-3     S7_0.2.2               lifecycle_1.0.5       </span></span>
+<span id="cb55-39"><a href="#cb55-39" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [19] SpaNorm_1.7.16         deldir_2.0-4           compiler_4.6.1        </span></span>
+<span id="cb55-40"><a href="#cb55-40" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [22] farver_2.1.2           RhpcBLASctl_0.23-42    statmod_1.5.2         </span></span>
+<span id="cb55-41"><a href="#cb55-41" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [25] codetools_0.2-20       spatstat.explore_3.8-3 htmltools_0.5.9       </span></span>
+<span id="cb55-42"><a href="#cb55-42" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [28] yaml_2.3.12            pillar_1.11.1          BiocParallel_1.47.0   </span></span>
+<span id="cb55-43"><a href="#cb55-43" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [31] DelayedArray_0.39.8    limma_3.99.2           spatstat.univar_3.2-0 </span></span>
+<span id="cb55-44"><a href="#cb55-44" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [34] magick_2.9.1           abind_1.4-8            nlme_3.1-169          </span></span>
+<span id="cb55-45"><a href="#cb55-45" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [37] spatstat.geom_3.8-3    tidyselect_1.2.1       rsvd_1.0.6            </span></span>
+<span id="cb55-46"><a href="#cb55-46" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [40] digest_0.6.39          BiocSingular_1.29.2    dplyr_1.2.1           </span></span>
+<span id="cb55-47"><a href="#cb55-47" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [43] splines_4.6.1          labeling_0.4.3         polyclip_1.10-7       </span></span>
+<span id="cb55-48"><a href="#cb55-48" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [46] fastmap_1.2.0          grid_4.6.1             cli_3.6.6             </span></span>
+<span id="cb55-49"><a href="#cb55-49" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [49] SparseArray_1.13.4     magrittr_2.0.5         S4Arrays_1.13.2       </span></span>
+<span id="cb55-50"><a href="#cb55-50" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [52] spatstat.data_3.1-9    withr_3.0.3            tensor_1.5.1          </span></span>
+<span id="cb55-51"><a href="#cb55-51" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [55] scales_1.4.0           rmarkdown_2.32         XVector_0.53.0        </span></span>
+<span id="cb55-52"><a href="#cb55-52" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [58] otel_0.2.0             reticulate_1.47.0      png_0.1-9             </span></span>
+<span id="cb55-53"><a href="#cb55-53" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [61] ScaledMatrix_1.21.0    beachmat_2.29.3        evaluate_1.0.5        </span></span>
+<span id="cb55-54"><a href="#cb55-54" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [64] knitr_1.52             irlba_2.4.1            mgcv_1.9-4            </span></span>
+<span id="cb55-55"><a href="#cb55-55" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [67] rlang_1.3.0            Rcpp_1.1.2             spatstat.random_3.5-2 </span></span>
+<span id="cb55-56"><a href="#cb55-56" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; [70] glue_1.8.1             jsonlite_2.0.0         R6_2.6.1</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+<div id="tabset-24-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-24-2-tab">
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> platform</span>
+<span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> importlib.metadata <span class="im">import</span> version</span>
+<span id="cb56-3"><a href="#cb56-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb56-4"><a href="#cb56-4" aria-hidden="true" tabindex="-1"></a>pkgs <span class="op">=</span> [<span class="st">"spidepy"</span>, <span class="st">"spanormpy"</span>, <span class="st">"anndata"</span>, <span class="st">"numpy"</span>, <span class="st">"pandas"</span>, <span class="st">"scipy"</span>, <span class="st">"matplotlib"</span>]</span>
+<span id="cb56-5"><a href="#cb56-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"python"</span>, platform.python_version())</span>
+<span id="cb56-6"><a href="#cb56-6" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; python 3.12.15</span></span>
+<span id="cb56-7"><a href="#cb56-7" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> p <span class="kw">in</span> pkgs:</span>
+<span id="cb56-8"><a href="#cb56-8" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(p, version(p))</span>
+<span id="cb56-9"><a href="#cb56-9" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; spidepy 0.1.0.dev0</span></span>
+<span id="cb56-10"><a href="#cb56-10" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; spanormpy 0.1.0</span></span>
+<span id="cb56-11"><a href="#cb56-11" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; anndata 0.13.4</span></span>
+<span id="cb56-12"><a href="#cb56-12" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; numpy 2.5.4</span></span>
+<span id="cb56-13"><a href="#cb56-13" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; pandas 3.0.6</span></span>
+<span id="cb56-14"><a href="#cb56-14" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; scipy 1.18.1</span></span>
+<span id="cb56-15"><a href="#cb56-15" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; matplotlib 3.11.2</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</div>
+</div>
 </div>
 
 

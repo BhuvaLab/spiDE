@@ -64,7 +64,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 
 
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -81,7 +81,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../../site_libs/quarto-html/quarto-syntax-highlighting-7ef3a5617493e07f253f88e7bef5c60f.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap-0e8b588de7367b1ec620c9d64b30b97a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-2ad0c9cee5de03d6504be9ac3131b32b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -126,9 +126,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 background: #2A0E52;
       }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
-
-<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 
 
 </head>
@@ -161,10 +158,6 @@ background: #2A0E52;
   <li class="nav-item">
     <a class="nav-link" href="../../get-started.html"> 
 <span class="menu-text">Get started</span></a>
-  </li>  
-  <li class="nav-item">
-    <a class="nav-link" href="../../python-tutorial.html"> 
-<span class="menu-text">Python tutorial</span></a>
   </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-articles" role="link" data-bs-toggle="dropdown" aria-expanded="false">
@@ -261,6 +254,7 @@ background: #2A0E52;
   <ul class="collapse">
   <li><a href="#parameters" id="toc-parameters" class="nav-link active" data-scroll-target="#parameters">Parameters</a></li>
   <li><a href="#returns" id="toc-returns" class="nav-link" data-scroll-target="#returns">Returns</a></li>
+  <li><a href="#see-also" id="toc-see-also" class="nav-link" data-scroll-target="#see-also">See Also</a></li>
   <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
   </ul>
 </nav>
@@ -300,10 +294,10 @@ background: #2A0E52;
 <h2 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h2>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 5%">
-<col style="width: 15%">
-<col style="width: 71%">
 <col style="width: 6%">
+<col style="width: 17%">
+<col style="width: 68%">
+<col style="width: 7%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -329,19 +323,19 @@ background: #2A0E52;
 <tr class="odd">
 <td>sigma</td>
 <td>float</td>
-<td>The niche bandwidth (one value).</td>
+<td>The niche bandwidth (one value). Required: <code>None</code> raises an error.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
 <td>index</td>
 <td>str or sequence of str</td>
-<td>Restrict the index / niche cell types. An index type is never tested against its own niche: itself, or the merged niche it is a member of (see <code>merge_niches</code>).</td>
+<td>Restrict the index cell types.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="odd">
 <td>niche</td>
 <td>str or sequence of str</td>
-<td>Restrict the index / niche cell types. An index type is never tested against its own niche: itself, or the merged niche it is a member of (see <code>merge_niches</code>).</td>
+<td>Restrict the niche cell types. An index type is never tested against its own niche: itself, or the merged niche it is a member of (see <code>merge_niches</code>).</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
@@ -353,26 +347,26 @@ background: #2A0E52;
 <tr class="odd">
 <td>assay</td>
 <td>str</td>
-<td>The counts layer, the <code>obs</code> columns of cell type and sample, the niche key prefix.</td>
-<td><code>'counts'</code></td>
+<td>The layer of raw counts.</td>
+<td><code>"counts"</code></td>
 </tr>
 <tr class="even">
 <td>cell_type</td>
 <td>str</td>
-<td>The counts layer, the <code>obs</code> columns of cell type and sample, the niche key prefix.</td>
-<td><code>'counts'</code></td>
+<td>The <code>obs</code> column of the cell type.</td>
+<td><code>"cell_type"</code></td>
 </tr>
 <tr class="odd">
 <td>sample_id</td>
 <td>str</td>
-<td>The counts layer, the <code>obs</code> columns of cell type and sample, the niche key prefix.</td>
-<td><code>'counts'</code></td>
+<td>The <code>obs</code> column of the sample.</td>
+<td><code>"sample_id"</code></td>
 </tr>
 <tr class="even">
 <td>name</td>
 <td>str</td>
-<td>The counts layer, the <code>obs</code> columns of cell type and sample, the niche key prefix.</td>
-<td><code>'counts'</code></td>
+<td>The niche key prefix.</td>
+<td><code>"Niche"</code></td>
 </tr>
 <tr class="odd">
 <td>min_cells</td>
@@ -407,14 +401,14 @@ background: #2A0E52;
 <tr class="even">
 <td>min_size</td>
 <td>int</td>
-<td>With <code>genesets</code>: size limits after intersecting with each index type’s genes.</td>
+<td>With <code>genesets</code>: smallest set size, after intersecting with each index type’s genes.</td>
 <td><code>5</code></td>
 </tr>
 <tr class="odd">
 <td>max_size</td>
 <td>int</td>
-<td>With <code>genesets</code>: size limits after intersecting with each index type’s genes.</td>
-<td><code>5</code></td>
+<td>With <code>genesets</code>: largest set size, after intersecting with each index type’s genes.</td>
+<td><code>500</code></td>
 </tr>
 <tr class="even">
 <td>verbose</td>
@@ -430,8 +424,8 @@ background: #2A0E52;
 <table class="caption-top table">
 <colgroup>
 <col style="width: 2%">
-<col style="width: 4%">
-<col style="width: 93%">
+<col style="width: 5%">
+<col style="width: 92%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -449,113 +443,26 @@ background: #2A0E52;
 </tbody>
 </table>
 </section>
-<section id="examples" class="level2">
-<h2 class="anchored" data-anchor-id="examples">Examples</h2>
-<div id="c9db5e44" class="cell" data-execution_count="2">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>na <span class="op">=</span> sp.test_niche_abundance(adata, condition<span class="op">=</span><span class="st">"condition"</span>, sigma<span class="op">=</span><span class="dv">30</span>)</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>na.sort_values(<span class="st">"p"</span>).head()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="see-also" class="level2 doc-section doc-section-see-also">
+<h2 class="doc-section doc-section-see-also anchored" data-anchor-id="see-also">See Also</h2>
+<p>build_niches : Builds the niche matrices this reads. spi_gsea : The within-patient gene-set tests.</p>
+</section>
+<section id="examples" class="level2 doc-section doc-section-examples">
+<h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
+<div id="4554d337" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> spidepy <span class="im">import</span> build_niches, test_niche_abundance</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> spidepy.datasets <span class="im">import</span> toy_spide</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>adata <span class="op">=</span> build_niches(toy_spide(), sigma<span class="op">=</span><span class="dv">30</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>ab <span class="op">=</span> test_niche_abundance(adata, condition<span class="op">=</span><span class="st">"condition"</span>, sigma<span class="op">=</span><span class="dv">30</span>, verbose<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>ab.shape</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
-<div>
-
-
-<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th">gene</th>
-<th data-quarto-table-cell-role="th">index</th>
-<th data-quarto-table-cell-role="th">niche</th>
-<th data-quarto-table-cell-role="th">term</th>
-<th data-quarto-table-cell-role="th">estimate</th>
-<th data-quarto-table-cell-role="th">t</th>
-<th data-quarto-table-cell-role="th">p</th>
-<th data-quarto-table-cell-role="th">n_patients</th>
-<th data-quarto-table-cell-role="th">leverage</th>
-<th data-quarto-table-cell-role="th">downweighted</th>
-<th data-quarto-table-cell-role="th">q</th>
-<th data-quarto-table-cell-role="th">q.global</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">206</th>
-<td>G7</td>
-<td>C</td>
-<td>B</td>
-<td>niche</td>
-<td>-8.047519</td>
-<td>-2.829034</td>
-<td>0.011299</td>
-<td>16</td>
-<td>2.424971</td>
-<td>0</td>
-<td>0.225973</td>
-<td>0.656245</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">88</th>
-<td>G9</td>
-<td>B</td>
-<td>A</td>
-<td>niche</td>
-<td>-1.407181</td>
-<td>-2.642501</td>
-<td>0.018649</td>
-<td>16</td>
-<td>2.769546</td>
-<td>0</td>
-<td>0.372990</td>
-<td>0.656245</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">173</th>
-<td>G14</td>
-<td>C</td>
-<td>A</td>
-<td>niche</td>
-<td>-4.148308</td>
-<td>-2.504418</td>
-<td>0.022182</td>
-<td>16</td>
-<td>3.253303</td>
-<td>1</td>
-<td>0.443644</td>
-<td>0.656245</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">40</th>
-<td>G1</td>
-<td>A</td>
-<td>C</td>
-<td>niche</td>
-<td>-1.450265</td>
-<td>-2.492275</td>
-<td>0.024067</td>
-<td>16</td>
-<td>1.824812</td>
-<td>0</td>
-<td>0.218748</td>
-<td>0.656245</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">57</th>
-<td>G18</td>
-<td>A</td>
-<td>C</td>
-<td>niche</td>
-<td>3.312332</td>
-<td>2.382365</td>
-<td>0.030351</td>
-<td>16</td>
-<td>1.824812</td>
-<td>0</td>
-<td>0.218748</td>
-<td>0.656245</td>
-</tr>
-</tbody>
-</table>
-
+<pre><code>(240, 12)</code></pre>
 </div>
+</div>
+<div id="aea349ab" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="bu">sorted</span>(ab[<span class="st">"term"</span>].unique())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>['condition:niche', 'niche']</code></pre>
 </div>
 </div>
 

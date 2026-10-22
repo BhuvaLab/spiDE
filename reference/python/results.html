@@ -64,7 +64,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 
 
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -81,7 +81,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../../site_libs/quarto-html/quarto-syntax-highlighting-7ef3a5617493e07f253f88e7bef5c60f.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap-0e8b588de7367b1ec620c9d64b30b97a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-2ad0c9cee5de03d6504be9ac3131b32b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -126,9 +126,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 background: #2A0E52;
       }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
-
-<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 
 
 </head>
@@ -161,10 +158,6 @@ background: #2A0E52;
   <li class="nav-item">
     <a class="nav-link" href="../../get-started.html"> 
 <span class="menu-text">Get started</span></a>
-  </li>  
-  <li class="nav-item">
-    <a class="nav-link" href="../../python-tutorial.html"> 
-<span class="menu-text">Python tutorial</span></a>
   </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-articles" role="link" data-bs-toggle="dropdown" aria-expanded="false">
@@ -259,7 +252,10 @@ background: #2A0E52;
     <h2 id="toc-title">On this page</h2>
    
   <ul class="collapse">
-  <li><a href="#examples" id="toc-examples" class="nav-link active" data-scroll-target="#examples">Examples</a></li>
+  <li><a href="#parameters" id="toc-parameters" class="nav-link active" data-scroll-target="#parameters">Parameters</a></li>
+  <li><a href="#returns" id="toc-returns" class="nav-link" data-scroll-target="#returns">Returns</a></li>
+  <li><a href="#see-also" id="toc-see-also" class="nav-link" data-scroll-target="#see-also">See Also</a></li>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
   </ul>
 </nav>
     </div>
@@ -271,119 +267,91 @@ background: #2A0E52;
 
 
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>results(res, test<span class="op">=</span><span class="va">None</span>, fdr<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Extract spiDE’s test results (R <code>results</code>); see <code>results</code>.</p>
-<section id="examples" class="level2">
-<h2 class="anchored" data-anchor-id="examples">Examples</h2>
-<div id="8bc44961" class="cell" data-execution_count="2">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>sp.results(res, test<span class="op">=</span><span class="st">"pooled"</span>).head()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="2">
-<div>
-
-
-<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<p>Extract spiDE’s test results (R <code>results</code>); see <code>SpiDEResults.results</code>.</p>
+<section id="parameters" class="level2 doc-section doc-section-parameters">
+<h2 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 5%">
+<col style="width: 27%">
+<col style="width: 56%">
+<col style="width: 10%">
+</colgroup>
 <thead>
 <tr class="header">
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th">gene</th>
-<th data-quarto-table-cell-role="th">index</th>
-<th data-quarto-table-cell-role="th">niche</th>
-<th data-quarto-table-cell-role="th">test</th>
-<th data-quarto-table-cell-role="th">estimate</th>
-<th data-quarto-table-cell-role="th">se</th>
-<th data-quarto-table-cell-role="th">t</th>
-<th data-quarto-table-cell-role="th">df</th>
-<th data-quarto-table-cell-role="th">p</th>
-<th data-quarto-table-cell-role="th">n_patients</th>
-<th data-quarto-table-cell-role="th">p.heterogeneity</th>
-<th data-quarto-table-cell-role="th">q</th>
-<th data-quarto-table-cell-role="th">in_family</th>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">0</th>
-<td>G1</td>
-<td>A</td>
-<td>B</td>
-<td>pooled</td>
-<td>0.388137</td>
-<td>0.056796</td>
-<td>6.833884</td>
-<td>238.200655</td>
-<td>6.861903e-11</td>
-<td>16.0</td>
-<td>0.554557</td>
-<td>8.234284e-09</td>
-<td>True</td>
+<td>res</td>
+<td>SpiDEResults</td>
+<td>The results of <code>test_spide</code> or <code>spide</code>.</td>
+<td><em>required</em></td>
 </tr>
 <tr class="even">
-<th data-quarto-table-cell-role="th">1</th>
-<td>G9</td>
-<td>A</td>
-<td>B</td>
-<td>pooled</td>
-<td>-0.410807</td>
-<td>0.096407</td>
-<td>-4.261157</td>
-<td>275.751771</td>
-<td>2.794132e-05</td>
-<td>16.0</td>
-<td>0.254027</td>
-<td>1.676479e-03</td>
-<td>True</td>
+<td>test</td>
+<td>('condition', 'pooled', 'both')</td>
+<td>Which test’s rows (default: the condition test if there is one, else pooled).</td>
+<td><code>"condition"</code></td>
 </tr>
 <tr class="odd">
-<th data-quarto-table-cell-role="th">2</th>
-<td>G8</td>
-<td>B</td>
-<td>C</td>
-<td>pooled</td>
-<td>-1.011057</td>
-<td>0.313747</td>
-<td>-3.222522</td>
-<td>278.860951</td>
-<td>1.421456e-03</td>
-<td>16.0</td>
-<td>0.103677</td>
-<td>5.685822e-02</td>
-<td>True</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">3</th>
-<td>G18</td>
-<td>A</td>
-<td>B</td>
-<td>pooled</td>
-<td>-0.459829</td>
-<td>0.172452</td>
-<td>-2.666419</td>
-<td>260.583332</td>
-<td>8.145921e-03</td>
-<td>16.0</td>
-<td>0.884934</td>
-<td>2.443776e-01</td>
-<td>True</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">4</th>
-<td>G2</td>
-<td>A</td>
-<td>B</td>
-<td>pooled</td>
-<td>-0.374695</td>
-<td>0.156733</td>
-<td>-2.390654</td>
-<td>273.314699</td>
-<td>1.749550e-02</td>
-<td>16.0</td>
-<td>0.259633</td>
-<td>4.198921e-01</td>
-<td>True</td>
+<td>fdr</td>
+<td>float</td>
+<td>Keep only the rows in a BH family with <code>q &lt;= fdr</code>.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
-
+</section>
+<section id="returns" class="level2 doc-section doc-section-returns">
+<h2 class="doc-section doc-section-returns anchored" data-anchor-id="returns">Returns</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 7%">
+<col style="width: 17%">
+<col style="width: 74%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>pandas.DataFrame</td>
+<td>One row per (gene, index, niche, test), ordered by p-value (missing last).</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="see-also" class="level2 doc-section doc-section-see-also">
+<h2 class="doc-section doc-section-see-also anchored" data-anchor-id="see-also">See Also</h2>
+<p>SpiDEResults.results : The method this calls. test_spide : Produces the results.</p>
+</section>
+<section id="examples" class="level2 doc-section doc-section-examples">
+<h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
+<div id="2fa88319" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> spidepy <span class="im">import</span> build_niches, fit_spide, results, test_spide</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> spidepy.datasets <span class="im">import</span> toy_spide</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>fit <span class="op">=</span> fit_spide(build_niches(toy_spide(), sigma<span class="op">=</span><span class="dv">30</span>), condition<span class="op">=</span><span class="st">"condition"</span>, verbose<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>res <span class="op">=</span> test_spide(fit)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>tb <span class="op">=</span> results(res, test<span class="op">=</span><span class="st">"pooled"</span>)</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>tb.shape</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<pre><code>(120, 13)</code></pre>
 </div>
+</div>
+<div id="e6286349" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>results(res, fdr<span class="op">=</span><span class="fl">0.05</span>)[[<span class="st">"gene"</span>, <span class="st">"index"</span>, <span class="st">"niche"</span>, <span class="st">"test"</span>]].values.tolist()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>[['G1', 'A', 'B', 'condition']]</code></pre>
 </div>
 </div>
 

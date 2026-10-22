@@ -81,7 +81,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../../site_libs/quarto-html/quarto-syntax-highlighting-7ef3a5617493e07f253f88e7bef5c60f.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap-0e8b588de7367b1ec620c9d64b30b97a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-2ad0c9cee5de03d6504be9ac3131b32b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -158,10 +158,6 @@ background: #2A0E52;
   <li class="nav-item">
     <a class="nav-link" href="../../get-started.html"> 
 <span class="menu-text">Get started</span></a>
-  </li>  
-  <li class="nav-item">
-    <a class="nav-link" href="../../python-tutorial.html"> 
-<span class="menu-text">Python tutorial</span></a>
   </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-articles" role="link" data-bs-toggle="dropdown" aria-expanded="false">
@@ -258,6 +254,7 @@ background: #2A0E52;
   <ul class="collapse">
   <li><a href="#parameters" id="toc-parameters" class="nav-link active" data-scroll-target="#parameters">Parameters</a></li>
   <li><a href="#returns" id="toc-returns" class="nav-link" data-scroll-target="#returns">Returns</a></li>
+  <li><a href="#see-also" id="toc-see-also" class="nav-link" data-scroll-target="#see-also">See Also</a></li>
   <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
   </ul>
 </nav>
@@ -277,8 +274,8 @@ background: #2A0E52;
 <table class="caption-top table">
 <colgroup>
 <col style="width: 3%">
-<col style="width: 13%">
-<col style="width: 76%">
+<col style="width: 15%">
+<col style="width: 75%">
 <col style="width: 5%">
 </colgroup>
 <thead>
@@ -298,21 +295,21 @@ background: #2A0E52;
 </tr>
 <tr class="even">
 <td>groups</td>
-<td>dict</td>
+<td>dict of str to sequence of str</td>
 <td>Merged niche name -&gt; cell-type columns to sum.</td>
 <td><em>required</em></td>
 </tr>
 <tr class="odd">
 <td>sigma</td>
 <td>float or sequence of float</td>
-<td>Bandwidths to update; <code>None</code> updates every <code>obsm</code> key starting with <code>name</code> (R greps <code>^name</code>, so this also catches keys such as <code>"NicheFoo"</code>).</td>
+<td>Bandwidths to update; <code>None</code> (the default) updates every <code>obsm</code> key starting with <code>name</code> (R greps <code>^name</code>, so this also catches keys such as <code>"NicheFoo"</code>).</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
 <td>name</td>
 <td>str</td>
 <td>Key prefix of the niche matrices.</td>
-<td><code>'Niche'</code></td>
+<td><code>"Niche"</code></td>
 </tr>
 <tr class="odd">
 <td>copy</td>
@@ -326,6 +323,11 @@ background: #2A0E52;
 <section id="returns" class="level2 doc-section doc-section-returns">
 <h2 class="doc-section doc-section-returns anchored" data-anchor-id="returns">Returns</h2>
 <table class="caption-top table">
+<colgroup>
+<col style="width: 10%">
+<col style="width: 21%">
+<col style="width: 68%">
+</colgroup>
 <thead>
 <tr class="header">
 <th>Name</th>
@@ -336,19 +338,32 @@ background: #2A0E52;
 <tbody>
 <tr class="odd">
 <td></td>
-<td>AnnData</td>
-<td></td>
+<td>anndata.AnnData</td>
+<td><code>adata</code> (or its copy) with the merged niche matrices.</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="examples" class="level2">
-<h2 class="anchored" data-anchor-id="examples">Examples</h2>
-<div id="e6aff103" class="cell" data-execution_count="2">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>a <span class="op">=</span> sp.merge_niches(adata, groups<span class="op">=</span>{<span class="st">"AC"</span>: [<span class="st">"A"</span>, <span class="st">"C"</span>]}, sigma<span class="op">=</span><span class="dv">30</span>, copy<span class="op">=</span><span class="va">True</span>)</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>a.obsm[<span class="st">"Niche30"</span>].columns.tolist()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="see-also" class="level2 doc-section doc-section-see-also">
+<h2 class="doc-section doc-section-see-also anchored" data-anchor-id="see-also">See Also</h2>
+<p>build_niches : Build the niche matrices that are merged here.</p>
+</section>
+<section id="examples" class="level2 doc-section doc-section-examples">
+<h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
+<div id="1e7f908f" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> spidepy <span class="im">import</span> build_niches, merge_niches</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> spidepy.datasets <span class="im">import</span> toy_spide</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>adata <span class="op">=</span> build_niches(toy_spide(), sigma<span class="op">=</span><span class="dv">30</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>adata <span class="op">=</span> merge_niches(adata, {<span class="st">"AB"</span>: [<span class="st">"A"</span>, <span class="st">"B"</span>]}, sigma<span class="op">=</span><span class="dv">30</span>)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>adata.obsm[<span class="st">"Niche30"</span>].columns.tolist()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
-<pre><code>['AC', 'B']</code></pre>
+<pre><code>['AB', 'C']</code></pre>
+</div>
+</div>
+<div id="72f4013e" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>adata.uns[<span class="st">"spiDE_niche_groups"</span>][<span class="st">"Niche30"</span>][<span class="st">"AB"</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>['A', 'B']</code></pre>
 </div>
 </div>
 

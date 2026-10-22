@@ -64,7 +64,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 
 
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -81,7 +81,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../../site_libs/quarto-html/quarto-syntax-highlighting-7ef3a5617493e07f253f88e7bef5c60f.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap-0e8b588de7367b1ec620c9d64b30b97a.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-2ad0c9cee5de03d6504be9ac3131b32b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -126,9 +126,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 background: #2A0E52;
       }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
-
-<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 
 
 </head>
@@ -161,10 +158,6 @@ background: #2A0E52;
   <li class="nav-item">
     <a class="nav-link" href="../../get-started.html"> 
 <span class="menu-text">Get started</span></a>
-  </li>  
-  <li class="nav-item">
-    <a class="nav-link" href="../../python-tutorial.html"> 
-<span class="menu-text">Python tutorial</span></a>
   </li>  
   <li class="nav-item dropdown ">
     <a class="nav-link dropdown-toggle" href="#" id="nav-menu-articles" role="link" data-bs-toggle="dropdown" aria-expanded="false">
@@ -261,6 +254,7 @@ background: #2A0E52;
   <ul class="collapse">
   <li><a href="#parameters" id="toc-parameters" class="nav-link active" data-scroll-target="#parameters">Parameters</a></li>
   <li><a href="#returns" id="toc-returns" class="nav-link" data-scroll-target="#returns">Returns</a></li>
+  <li><a href="#see-also" id="toc-see-also" class="nav-link" data-scroll-target="#see-also">See Also</a></li>
   <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
   </ul>
 </nav>
@@ -289,10 +283,10 @@ background: #2A0E52;
 <h2 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h2>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 6%">
-<col style="width: 27%">
-<col style="width: 54%">
-<col style="width: 11%">
+<col style="width: 5%">
+<col style="width: 22%">
+<col style="width: 61%">
+<col style="width: 9%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -324,20 +318,20 @@ background: #2A0E52;
 <tr class="even">
 <td>type</td>
 <td>('competitive', 'self-contained')</td>
-<td></td>
+<td>Whether the set’s slope is compared with the other genes’ (competitive) or taken alone (self-contained).</td>
 <td><code>"competitive"</code></td>
 </tr>
 <tr class="odd">
 <td>min_size</td>
 <td>int</td>
-<td>Set size limits after intersecting with the genes tested in each index type.</td>
+<td>Smallest set size, after intersecting with the genes tested in each index type.</td>
 <td><code>5</code></td>
 </tr>
 <tr class="even">
 <td>max_size</td>
 <td>int</td>
-<td>Set size limits after intersecting with the genes tested in each index type.</td>
-<td><code>5</code></td>
+<td>Largest set size, after intersecting with the genes tested in each index type.</td>
+<td><code>500</code></td>
 </tr>
 <tr class="odd">
 <td>n_jobs</td>
@@ -372,448 +366,28 @@ background: #2A0E52;
 </tbody>
 </table>
 </section>
-<section id="examples" class="level2">
-<h2 class="anchored" data-anchor-id="examples">Examples</h2>
-<div id="b1a583df" class="cell" data-execution_count="2">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>sets <span class="op">=</span> {<span class="st">"first"</span>: [<span class="ss">f"G</span><span class="sc">{</span>i<span class="sc">}</span><span class="ss">"</span> <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1</span>, <span class="dv">6</span>)], <span class="st">"second"</span>: [<span class="ss">f"G</span><span class="sc">{</span>i<span class="sc">}</span><span class="ss">"</span> <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">6</span>, <span class="dv">13</span>)]}</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>sp.spi_gsea(res, sets, min_size<span class="op">=</span><span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="see-also" class="level2 doc-section doc-section-see-also">
+<h2 class="doc-section doc-section-see-also anchored" data-anchor-id="see-also">See Also</h2>
+<p>test_spide : The gene-level tests. test_niche_abundance : The between-patient test, which also takes gene sets.</p>
+</section>
+<section id="examples" class="level2 doc-section doc-section-examples">
+<h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
+<div id="6b4cb34f" class="cell" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> spidepy <span class="im">import</span> build_niches, fit_spide, spi_gsea, test_spide</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> spidepy.datasets <span class="im">import</span> toy_spide</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>fit <span class="op">=</span> fit_spide(build_niches(toy_spide(), sigma<span class="op">=</span><span class="dv">30</span>), condition<span class="op">=</span><span class="st">"condition"</span>, verbose<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>res <span class="op">=</span> test_spide(fit)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>sets <span class="op">=</span> {<span class="st">"first"</span>: [<span class="st">"G1"</span>, <span class="st">"G2"</span>, <span class="st">"G3"</span>, <span class="st">"G4"</span>, <span class="st">"G5"</span>], <span class="st">"second"</span>: [<span class="st">"G6"</span>, <span class="st">"G7"</span>, <span class="st">"G8"</span>, <span class="st">"G9"</span>, <span class="st">"G10"</span>]}</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>gs <span class="op">=</span> spi_gsea(res, sets)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>gs.shape</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
-<div>
-
-
-<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
-<thead>
-<tr class="header">
-<th data-quarto-table-cell-role="th"></th>
-<th data-quarto-table-cell-role="th">set</th>
-<th data-quarto-table-cell-role="th">index</th>
-<th data-quarto-table-cell-role="th">niche</th>
-<th data-quarto-table-cell-role="th">test</th>
-<th data-quarto-table-cell-role="th">size</th>
-<th data-quarto-table-cell-role="th">estimate</th>
-<th data-quarto-table-cell-role="th">se</th>
-<th data-quarto-table-cell-role="th">t</th>
-<th data-quarto-table-cell-role="th">df</th>
-<th data-quarto-table-cell-role="th">p</th>
-<th data-quarto-table-cell-role="th">q</th>
-<th data-quarto-table-cell-role="th">q.global</th>
-<th data-quarto-table-cell-role="th">n_patients</th>
-<th data-quarto-table-cell-role="th">direction</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">0</th>
-<td>first</td>
-<td>A</td>
-<td>B</td>
-<td>pooled</td>
-<td>5</td>
-<td>0.387690</td>
-<td>0.137226</td>
-<td>2.825190</td>
-<td>13.946923</td>
-<td>0.013535</td>
-<td>0.021844</td>
-<td>0.131063</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">1</th>
-<td>second</td>
-<td>A</td>
-<td>B</td>
-<td>pooled</td>
-<td>7</td>
-<td>-0.295429</td>
-<td>0.114029</td>
-<td>-2.590824</td>
-<td>13.508474</td>
-<td>0.021844</td>
-<td>0.021844</td>
-<td>0.131063</td>
-<td>16.0</td>
-<td>down</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">2</th>
-<td>first</td>
-<td>B</td>
-<td>A</td>
-<td>pooled</td>
-<td>5</td>
-<td>0.238894</td>
-<td>0.143863</td>
-<td>1.660569</td>
-<td>14.244453</td>
-<td>0.118645</td>
-<td>0.237289</td>
-<td>0.474578</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">3</th>
-<td>second</td>
-<td>C</td>
-<td>A</td>
-<td>pooled</td>
-<td>7</td>
-<td>0.110618</td>
-<td>0.090379</td>
-<td>1.223939</td>
-<td>13.603582</td>
-<td>0.241751</td>
-<td>0.483502</td>
-<td>0.644833</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">4</th>
-<td>second</td>
-<td>A</td>
-<td>C</td>
-<td>pooled</td>
-<td>7</td>
-<td>-0.147731</td>
-<td>0.128413</td>
-<td>-1.150435</td>
-<td>14.424169</td>
-<td>0.268681</td>
-<td>0.377785</td>
-<td>0.644833</td>
-<td>16.0</td>
-<td>down</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">5</th>
-<td>first</td>
-<td>A</td>
-<td>C</td>
-<td>pooled</td>
-<td>5</td>
-<td>0.118254</td>
-<td>0.129947</td>
-<td>0.910022</td>
-<td>14.406813</td>
-<td>0.377785</td>
-<td>0.377785</td>
-<td>0.717894</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">6</th>
-<td>second</td>
-<td>C</td>
-<td>B</td>
-<td>pooled</td>
-<td>7</td>
-<td>0.092914</td>
-<td>0.115336</td>
-<td>0.805592</td>
-<td>13.786407</td>
-<td>0.434154</td>
-<td>0.827222</td>
-<td>0.717894</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">7</th>
-<td>second</td>
-<td>B</td>
-<td>A</td>
-<td>pooled</td>
-<td>7</td>
-<td>-0.078552</td>
-<td>0.116932</td>
-<td>-0.671775</td>
-<td>13.689459</td>
-<td>0.512905</td>
-<td>0.512905</td>
-<td>0.717894</td>
-<td>16.0</td>
-<td>down</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">8</th>
-<td>second</td>
-<td>B</td>
-<td>C</td>
-<td>pooled</td>
-<td>7</td>
-<td>0.053334</td>
-<td>0.084426</td>
-<td>0.631727</td>
-<td>13.116717</td>
-<td>0.538420</td>
-<td>0.987220</td>
-<td>0.717894</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">9</th>
-<td>first</td>
-<td>C</td>
-<td>A</td>
-<td>pooled</td>
-<td>5</td>
-<td>0.047826</td>
-<td>0.128075</td>
-<td>0.373421</td>
-<td>13.678474</td>
-<td>0.714559</td>
-<td>0.714559</td>
-<td>0.857470</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">10</th>
-<td>first</td>
-<td>C</td>
-<td>B</td>
-<td>pooled</td>
-<td>5</td>
-<td>-0.027615</td>
-<td>0.124111</td>
-<td>-0.222499</td>
-<td>13.640642</td>
-<td>0.827222</td>
-<td>0.827222</td>
-<td>0.902424</td>
-<td>16.0</td>
-<td>down</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">11</th>
-<td>first</td>
-<td>B</td>
-<td>C</td>
-<td>pooled</td>
-<td>5</td>
-<td>0.001823</td>
-<td>0.111617</td>
-<td>0.016330</td>
-<td>12.932918</td>
-<td>0.987220</td>
-<td>0.987220</td>
-<td>0.987220</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">12</th>
-<td>first</td>
-<td>A</td>
-<td>B</td>
-<td>condition</td>
-<td>5</td>
-<td>0.829524</td>
-<td>0.171527</td>
-<td>4.836116</td>
-<td>12.942053</td>
-<td>0.000329</td>
-<td>0.000658</td>
-<td>0.003951</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">13</th>
-<td>second</td>
-<td>A</td>
-<td>B</td>
-<td>condition</td>
-<td>7</td>
-<td>-0.329195</td>
-<td>0.230945</td>
-<td>-1.425422</td>
-<td>12.629116</td>
-<td>0.178280</td>
-<td>0.178280</td>
-<td>0.864757</td>
-<td>16.0</td>
-<td>down</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">14</th>
-<td>first</td>
-<td>C</td>
-<td>B</td>
-<td>condition</td>
-<td>5</td>
-<td>-0.301859</td>
-<td>0.231836</td>
-<td>-1.302035</td>
-<td>12.608296</td>
-<td>0.216189</td>
-<td>0.432379</td>
-<td>0.864757</td>
-<td>16.0</td>
-<td>down</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">15</th>
-<td>first</td>
-<td>C</td>
-<td>A</td>
-<td>condition</td>
-<td>5</td>
-<td>-0.242113</td>
-<td>0.236819</td>
-<td>-1.022358</td>
-<td>12.654835</td>
-<td>0.325759</td>
-<td>0.651518</td>
-<td>0.948369</td>
-<td>16.0</td>
-<td>down</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">16</th>
-<td>first</td>
-<td>B</td>
-<td>C</td>
-<td>condition</td>
-<td>5</td>
-<td>0.130549</td>
-<td>0.237407</td>
-<td>0.549895</td>
-<td>12.006905</td>
-<td>0.592473</td>
-<td>0.792606</td>
-<td>0.948369</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">17</th>
-<td>second</td>
-<td>C</td>
-<td>A</td>
-<td>condition</td>
-<td>7</td>
-<td>0.087660</td>
-<td>0.197070</td>
-<td>0.444816</td>
-<td>12.551793</td>
-<td>0.664026</td>
-<td>0.664026</td>
-<td>0.948369</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">18</th>
-<td>first</td>
-<td>B</td>
-<td>A</td>
-<td>condition</td>
-<td>5</td>
-<td>0.101213</td>
-<td>0.311787</td>
-<td>0.324623</td>
-<td>13.234033</td>
-<td>0.750540</td>
-<td>0.948369</td>
-<td>0.948369</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">19</th>
-<td>first</td>
-<td>A</td>
-<td>C</td>
-<td>condition</td>
-<td>5</td>
-<td>-0.077023</td>
-<td>0.273331</td>
-<td>-0.281795</td>
-<td>13.377556</td>
-<td>0.782413</td>
-<td>0.889943</td>
-<td>0.948369</td>
-<td>16.0</td>
-<td>down</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">20</th>
-<td>second</td>
-<td>B</td>
-<td>C</td>
-<td>condition</td>
-<td>7</td>
-<td>-0.047285</td>
-<td>0.175917</td>
-<td>-0.268790</td>
-<td>12.135842</td>
-<td>0.792606</td>
-<td>0.792606</td>
-<td>0.948369</td>
-<td>16.0</td>
-<td>down</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">21</th>
-<td>second</td>
-<td>A</td>
-<td>C</td>
-<td>condition</td>
-<td>7</td>
-<td>-0.036593</td>
-<td>0.259461</td>
-<td>-0.141034</td>
-<td>13.389215</td>
-<td>0.889943</td>
-<td>0.889943</td>
-<td>0.948369</td>
-<td>16.0</td>
-<td>down</td>
-</tr>
-<tr class="odd">
-<th data-quarto-table-cell-role="th">22</th>
-<td>second</td>
-<td>C</td>
-<td>B</td>
-<td>condition</td>
-<td>7</td>
-<td>0.019118</td>
-<td>0.243227</td>
-<td>0.078600</td>
-<td>12.776771</td>
-<td>0.938568</td>
-<td>0.938568</td>
-<td>0.948369</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-<tr class="even">
-<th data-quarto-table-cell-role="th">23</th>
-<td>second</td>
-<td>B</td>
-<td>A</td>
-<td>condition</td>
-<td>7</td>
-<td>0.017950</td>
-<td>0.271764</td>
-<td>0.066049</td>
-<td>12.676617</td>
-<td>0.948369</td>
-<td>0.948369</td>
-<td>0.948369</td>
-<td>16.0</td>
-<td>up</td>
-</tr>
-</tbody>
-</table>
-
+<pre><code>(24, 14)</code></pre>
 </div>
+</div>
+<div id="41231a52" class="cell" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>gs.columns.tolist()[:<span class="dv">5</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>['set', 'index', 'niche', 'test', 'size']</code></pre>
 </div>
 </div>
 
