@@ -4,7 +4,6 @@
 ^research$
 ^specs$
 ^analysis$
-^_pkgdown\.yml$
 ^docs$
 ^\.github$
 ^\.devcontainer$

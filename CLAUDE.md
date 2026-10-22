@@ -68,11 +68,13 @@ testthat::test_file("tests/testthat/test-engine.R")
 devtools::check(); BiocCheck::BiocCheck()
 ```
 
-Build the site with `Rscript -e 'pkgdown::build_site()'`. It carries only the three vignettes; the
-validation reports are published by the research repo (`research/reports/benchmarks/build_site.R`
-into `research/docs/`), which also holds the archive of the mixed model's reports. **The package
-site never links an archived report** (user rule); a current report goes into the Validation menu
-of `_pkgdown.yml` as an absolute research-site URL.
+The package site is Quarto, in `site/`, built and deployed to `gh-pages` by `.github/workflows/quarto-site.yaml`
+alone (R and Python references, `site/scripts/build_reference.sh`); it is not part of the package
+(`^site$` in `.Rbuildignore`). It carries the four vignettes; the validation reports are published
+by the research repo (`research/reports/benchmarks/build_site.R` into `research/docs/`), which also
+holds the archive of the mixed model's reports. **The package site never links an archived report**
+(user rule); a current report goes into the Validation menu of `site/_quarto.yml` as an absolute
+research-site URL.
 
 Regenerate `data/toySpiDE.rda` with `source("data-raw/make_toySpiDE.R")` (16 patients x 150 cells,
 seed 7). `longtests/` holds slow checks, not run by `devtools::test()` or CI.
