@@ -24,3 +24,5 @@ docs
 spiDE.BiocCheck/
 spiDE_*.tar.gz
 /figures/
+/research/
+/design/

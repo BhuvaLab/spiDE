@@ -6,7 +6,7 @@ template:
 
 navbar:
   structure:
-    left:  [articles, validation, reference, news]
+    left:  [articles, reference, news]
     right: [search, github, lightswitch]
   components:
     articles:
@@ -18,29 +18,7 @@ navbar:
         href: articles/spiDE-model.html
       - text: Calibration — what the tests were measured against
         href: articles/spiDE-calibration.html
-    validation:
-      text: Validation
-      menu:
-      - text: Simplifying spiDE — the study behind the engines (research site)
-        href: https://bhuvalab.github.io/spiDE-research/simplify-top5.html
-      - text: How sequencing depth should enter spiDE — the depth benchmark (research site)
-        href: https://bhuvalab.github.io/spiDE-research/bench2-depth.html
-      - text: How much data does spiDE need? — the power benchmark (research site)
-        href: https://bhuvalab.github.io/spiDE-research/power-results.html
-      - text: Simulating realistic spatial data — the power benchmark's design (research site)
-        href: https://bhuvalab.github.io/spiDE-research/power-design.html
 
-# The package site carries only the package's own vignettes. The validation
-# reports are rendered and published by the research repository (submodule
-# `research/`, research/reports/benchmarks/build_site.R) to its own GitHub
-# Pages site, which also holds the archive of the mixed-model reports of
-# spiDE <= 0.99.22. By decision of 2026-09-29, this site links only to the
-# CURRENT validation reports, never to the archive. A new current report is a
-# new entry in the Validation menu above, pointing at its research-site page.
-# The research pages copy this site's look: build_site.R gives them this navbar
-# (change it there when the navbar here changes) and the same light switch,
-# which reads and writes pkgdown's localStorage key "theme", so a reader's
-# light or dark choice holds on both sites.
 articles:
 - title: Articles
   navbar: ~
