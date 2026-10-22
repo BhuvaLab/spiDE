@@ -80,7 +80,8 @@ fixed number of cells, dividing them among more patients did better in all but 5
 of 528 comparisons (spiDE 0.99.33), none of them beyond noise. At 3,200 cells
 per type on GSE289194, 8 patients found 2% of effects of 0.4, 16 patients 50%
 and 32 patients 84%. With 3 patients per condition, the condition-specific test
-cannot run.
+passes its guard (a Kish effective number of at least 3 patients per condition)
+only for genes whose patient weights are equal, so in practice it does not run.
 
 Cells help once the patients are adequate. At 32 patients, recall of effects of
 0.2 on GSE289194 rose from 0.64 at 200 cells to 0.85 at 1,000. Recall also rises
@@ -212,8 +213,9 @@ We can draw some advice from these numbers.
 - **Plan more for the condition-specific test.** It needs 2.0 to 2.3 times the
   pooled test's effect, so a study sized for the pooled test is underpowered for
   a difference between conditions.
-- **With 3 patients per condition, expect no condition-specific test.** It
-  cannot run at that size.
+- **With 3 patients per condition, expect no condition-specific test.** Each
+  condition needs a Kish effective number of at least 3 patients, which 3
+  patients reach only with equal weights.
 - **Keep the default family for small studies.** For 5 to 7 patients per
   condition the default, `procedure = "pooled_or_heterogeneity"`, found the most
   and, unlike the pooled filter alone, finds reversing effects.
