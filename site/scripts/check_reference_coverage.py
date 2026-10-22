@@ -1,5 +1,5 @@
 """Check that every R export (NAMESPACE) and every spidepy.__all__ name has a generated
-reference page. Run after the reference pages are built (build_reference.sh calls it).
+reference page, and every Python page an executed Examples section. Run after the reference pages are built (build_reference.sh calls it).
 
 Usage: python scripts/check_reference_coverage.py     (any working directory)
 Exits 1 and lists the missing pages if any.
@@ -38,8 +38,12 @@ def need(prefix, names):
             page = f"{prefix + '.' if prefix else ''}{name}.qmd"
             # toy_spide is re-exported at the top level; its page lives under datasets.
             alt = f"datasets.{name}.qmd" if not prefix and name == "toy_spide" else page
-            if not (site / "reference" / "python" / page).exists() and not (site / "reference" / "python" / alt).exists():
+            found = [q for q in (site / "reference" / "python" / page, site / "reference" / "python" / alt) if q.exists()]
+            if not found:
                 missing.append(f"Python {prefix + '.' if prefix else ''}{name}: no page reference/python/{page}")
+            elif "```{python}" not in found[0].read_text(encoding="utf-8").split("## Examples", 1)[-1] \
+                    or "## Examples" not in found[0].read_text(encoding="utf-8"):
+                missing.append(f"Python {prefix + '.' if prefix else ''}{name}: page {found[0].name} has no executed Examples section")
 
 
 need("", pkg.__all__)
