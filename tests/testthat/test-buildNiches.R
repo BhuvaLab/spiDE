@@ -39,7 +39,7 @@ test_that("rows align with cells regardless of sample interleaving", {
   sid <- spe$sample_id[1]
   sub <- spe[, spe$sample_id == sid]
   ref <- .effectiveNiche(SpatialExperiment::spatialCoords(sub), sub$cell_type, sigma = 15)
-  ref <- .fillMissingDims(ref, colnames(n), "column")
+  ref <- .fillMissingDims(ref, colnames(n))
   ref[is.na(ref)] <- 0
   got <- n[spe$sample_id == sid, colnames(ref), drop = FALSE]
   expect_equal(unname(got), unname(ref), tolerance = 1e-8)

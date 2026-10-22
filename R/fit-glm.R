@@ -89,7 +89,7 @@
 # residuals r of the NB score, w = mu / (1 + psi mu), r = (y - mu) / (1 + psi mu).
 .workingWR <- function(y, W, alpha, psi, offset = 0) {
   mu <- exp(.linPred(W, alpha) + offset)
-  list(w = mu / (1 + psi * mu), r = (y - mu) / (1 + psi * mu), mu = mu)
+  list(w = mu / (1 + psi * mu), r = (y - mu) / (1 + psi * mu))
 }
 
 # Split genes into chunks and run FUN over them with BiocParallel, one BLAS

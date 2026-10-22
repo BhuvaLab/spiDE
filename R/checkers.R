@@ -104,10 +104,7 @@ checkCovariates <- function(spe, covariates, finite.only = FALSE) {
 checkSample <- function(spe, condition = NULL, sample_id = "sample_id",
                         covariates = character()) {
   cd <- SummarizedExperiment::colData(spe)
-  if (!sample_id %in% colnames(cd)) {
-    stop(sprintf("sample id column '%s' not found in colData(spe)", sample_id))
-  }
-  smp <- as.character(cd[[sample_id]])
+  smp <- as.character(cd[[sample_id]])   # checkSPE() has already found the column
   # A condition-free (niche-only) design has no condition to be patient-level,
   # so this check applies only when one was supplied.
   if (!is.null(condition)) {

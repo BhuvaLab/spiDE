@@ -38,41 +38,26 @@
   return(res)
 }
 
-#' Pad a matrix so its columns (or rows) match a reference set
+#' Pad a matrix so its columns match a reference set
 #'
-#' Absent columns/rows are added (filled with \code{NA}) and the result is
-#' reordered to the reference. Used to reconcile per-sample niche matrices that
-#' may be missing cell types absent from that sample.
+#' Absent columns are added (filled with \code{NA}) and the result is reordered
+#' to the reference. Used to reconcile per-sample niche matrices that may be
+#' missing cell types absent from that sample.
 #'
 #' @param mat a matrix.
-#' @param ref_names a character vector of reference names.
-#' @param dim one of "column" or "row".
-#' @return a matrix with dimnames matching \code{ref_names} along \code{dim}.
+#' @param ref_names a character vector of reference column names.
+#' @return a matrix with \code{colnames} matching \code{ref_names}.
 #' @noRd
-.fillMissingDims <- function(mat, ref_names, dim = c("column", "row")) {
-  dim <- match.arg(dim)
-  if (dim == "column") {
-    missing_names <- setdiff(ref_names, colnames(mat))
-    if (length(missing_names) > 0) {
-      pad <- matrix(
-        NA_real_, nrow = nrow(mat), ncol = length(missing_names),
-        dimnames = list(rownames(mat), missing_names)
-      )
-      mat <- cbind(mat, pad)
-    }
-    mat <- mat[, ref_names, drop = FALSE]
-  } else {
-    missing_names <- setdiff(ref_names, rownames(mat))
-    if (length(missing_names) > 0) {
-      pad <- matrix(
-        NA_real_, nrow = length(missing_names), ncol = ncol(mat),
-        dimnames = list(missing_names, colnames(mat))
-      )
-      mat <- rbind(mat, pad)
-    }
-    mat <- mat[ref_names, , drop = FALSE]
+.fillMissingDims <- function(mat, ref_names) {
+  missing_names <- setdiff(ref_names, colnames(mat))
+  if (length(missing_names) > 0) {
+    pad <- matrix(
+      NA_real_, nrow = nrow(mat), ncol = length(missing_names),
+      dimnames = list(rownames(mat), missing_names)
+    )
+    mat <- cbind(mat, pad)
   }
-  return(mat)
+  mat[, ref_names, drop = FALSE]
 }
 
 #' Build niche covariate matrices
@@ -128,7 +113,7 @@ setMethod(
       function(i, coords, cts, sigma, edge, diggle, all_cell_types) {
         lapply(sigma, function(sg) {
           m <- .effectiveNiche(coords[i, , drop = FALSE], cts[i], sigma = sg, edge = edge, diggle = diggle)
-          m <- .fillMissingDims(m, all_cell_types, "column")
+          m <- .fillMissingDims(m, all_cell_types)
           m[is.na(m)] <- 0
           m
         })
