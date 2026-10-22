@@ -50,7 +50,7 @@ for (f in rd_files) {
   x <- readLines(qmd)
   run <- nm %in% run_pages
   x <- gsub("eval\\s*=\\s*(TRUE|FALSE)", if (run) "eval=TRUE" else "eval=FALSE", x)
-  if (run) x <- gsub("(```\\{r, warning=FALSE, message=FALSE, eval=TRUE)\\}", "\\1, fig-width=7, fig-height=4.5}", x)
+  if (run) x <- gsub("(```\\{r, warning=FALSE, message=FALSE, eval=TRUE)\\}", "\\1, fig.width=7, fig.height=4.5}", x)
   writeLines(c("---", sprintf("title: \"%s\"", nm), "toc: false",
                "execute:", sprintf("  eval: %s", tolower(run)), "---", "", x), qmd)
 }

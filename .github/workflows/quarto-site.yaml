@@ -11,8 +11,9 @@ name: quarto-site
 on:
   push:
     branches: [main]
+    paths: ['site/**', 'vignettes/**', 'man/**', 'R/**', 'NEWS.md', 'DESCRIPTION', '.github/workflows/quarto-site.yaml']
   pull_request:
-    paths: ['site/**', 'vignettes/**', 'man/**', 'NEWS.md', '.github/workflows/quarto-site.yaml']
+    paths: ['site/**', 'vignettes/**', 'man/**', 'R/**', 'NEWS.md', 'DESCRIPTION', '.github/workflows/quarto-site.yaml']
   workflow_dispatch:
 
 permissions:
