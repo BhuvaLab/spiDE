@@ -187,6 +187,17 @@
              n_patients = rowSums(is.finite(b)), stringsAsFactors = FALSE)
 }
 
+# The condition test's inputs for one index type's patients: the 0/1 condition
+# coding and, only when a condition is tested, the strata (a patient-level
+# column; strata enter the condition test alone).
+.conditionInputs <- function(pt, patients, trt_of, strata) {
+  trt <- if (!is.null(trt_of)) unname(trt_of[patients]) else NULL
+  st <- if (!is.null(trt) && !is.null(strata)) {
+    stats::setNames(as.character(pt[[strata]]), pt$patient)[patients]
+  } else NULL
+  list(trt = trt, st = st)
+}
+
 # The slopes engine's tests for one index type's stored slopes. Every row
 # carries its triplet's label-free heterogeneity p (the heterogeneity filter).
 .slopesTests <- function(x, trt = NULL, strata = NULL, BPPARAM = BiocParallel::SerialParam()) {

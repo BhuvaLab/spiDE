@@ -92,11 +92,8 @@ setMethod(
     for (k in names(object@index)) {
       x <- object@index[[k]]
       if (object@engine == "slopes") {
-        trt <- if (!is.null(trt_of)) unname(trt_of[x$patients]) else NULL
-        st <- if (!is.null(trt) && !is.null(strata)) {
-          stats::setNames(as.character(pt[[strata]]), pt$patient)[x$patients]
-        } else NULL
-        tk <- .slopesTests(x, trt = trt, strata = st, BPPARAM = BPPARAM)
+        ci <- .conditionInputs(pt, x$patients, trt_of, strata)
+        tk <- .slopesTests(x, trt = ci$trt, strata = ci$st, BPPARAM = BPPARAM)
       } else {
         tk <- x$coef
         if (is.null(condition)) tk <- tk[tk$test == "pooled", , drop = FALSE]

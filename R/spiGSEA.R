@@ -74,10 +74,7 @@ setMethod("spiGSEA", "SpiDEResults", function(object, genesets, test = NULL,
   out <- list()
   for (k in names(fit@index)) {
     x <- fit@index[[k]]
-    trt <- if (!is.null(trt_of)) unname(trt_of[x$patients]) else NULL
-    st <- if (!is.null(trt) && !is.null(strata)) {
-      stats::setNames(as.character(pt[[strata]]), pt$patient)[x$patients]
-    } else NULL
+    ci <- .conditionInputs(pt, x$patients, trt_of, strata)
     member <- lapply(genesets, function(g) which(x$genes %in% g))
     m <- lengths(member)
     member <- member[m >= min.size & m <= max.size & m < length(x$genes)]
@@ -95,7 +92,7 @@ setMethod("spiGSEA", "SpiDEResults", function(object, genesets, test = NULL,
                                               stringsAsFactors = FALSE)
       }
       if ("condition" %in% test) {
-        r <- .robustConditionTest(b, v, tau, trt = trt, strata = st, BPPARAM = BPPARAM)
+        r <- .robustConditionTest(b, v, tau, trt = ci$trt, strata = ci$st, BPPARAM = BPPARAM)
         out[[length(out) + 1L]] <- data.frame(set = names(member), index = k, niche = x$niches[j],
                                               test = "condition", size = lengths(member), r,
                                               stringsAsFactors = FALSE)
