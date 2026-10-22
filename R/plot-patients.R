@@ -85,11 +85,13 @@ plotPatientSlopes <- function(x, gene, index, niche, ci = 0.95) {
     scale_fill_manual(values = .spideCols[["faint"]], name = NULL) +
     scale_size_area(max_size = 2.8, name = "weight", labels = scales::label_percent()) +
     facet_grid(condition ~ gene_lab, scales = "free", space = "free_y",
-               labeller = labeller(gene_lab = label_parsed)) +
+               labeller = labeller(gene_lab = label_parsed, condition = label_wrap_gen(14))) +
     labs(x = sprintf("slope on %s density (log1p)", niche), y = NULL) +
     guides(colour = "none", size = guide_legend(order = 1, override.aes = list(colour = .spideCols[["grey"]])),
            fill = guide_legend(order = 2)) +
-    theme_spiDE() + theme(axis.text.y = element_text(size = rel(0.65)))
+    theme_spiDE() + theme(axis.text.y = element_text(size = rel(0.65)),
+                          strip.text.y = element_text(angle = 0, size = rel(0.95)),
+                          strip.text.x = element_text(size = rel(0.85)), plot.caption.position = "plot")
   if (length(x@condition)) p <- p + labs(caption = bquote(Delta * ": slope difference, " * .(x@contrast)))
   p
 }
@@ -179,7 +181,7 @@ plotPatientEffects <- function(x, index, niche = NULL, covariates = NULL, type =
     sc <- if (length(condition) && identical(colour.by, condition)) {
       .scaleCondition(attr(.conditionCoding(fit@patients, condition), "levels"))
     } else if (is.numeric(v)) {
-      scale_colour_gradientn(colours = .magnitudeRamp(256L, skip = 0.1))
+      scale_colour_gradientn(colours = .magnitudeRamp(256L))
     } else {
       scale_colour_manual(values = spiDEColours("nuisance", nlevels(factor(v))))
     }

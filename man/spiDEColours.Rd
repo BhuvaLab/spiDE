@@ -8,8 +8,10 @@ spiDEColours(role = NULL, n = 9L)
 }
 \arguments{
 \item{role}{\code{NULL} (the named fixed colours) or one of
-\code{"direction"}, \code{"condition"}, \code{"magnitude"},
-\code{"diverging"} and \code{"nuisance"}.}
+\code{"direction"}, \code{"condition"}, \code{"magnitude"} (the
+light-panel ramp, light to dark), \code{"spatial"} (the dark-panel ramp
+of tissue plots, dark to bright), \code{"diverging"} and
+\code{"nuisance"}.}
 
 \item{n}{the number of colours of a ramp, or of nuisance levels.}
 }
@@ -17,17 +19,21 @@ spiDEColours(role = NULL, n = 9L)
 a character vector of colours.
 }
 \description{
-spiDE gives each role one colour and uses it in every plot: amber and violet
+spiDE gives each role one colour and uses it in every plot: gold and violet
 for a slope that rises or falls with niche density (and for the diverging
-t scale), teal and rufous for the first and second level of the condition,
-the scico "lapaz" ramp for magnitudes, and the Okabe-Ito colours for a
-nuisance factor such as slide. All pairs stay distinct under the common
-forms of colour blindness. Use them to make your own figures match, or pass
+t scale), dark violet and pink for the first and second level of the
+condition, the viridis "magma" ramp for magnitudes (light to dark on the
+page), a brighter part of the same ramp (dark to bright) for plots in
+tissue coordinates, drawn on a dark panel, and the Okabe-Ito colours for a
+nuisance factor such as slide. The colours were checked under simulated
+deuteranopia, protanopia and tritanopia. Use them to make your own figures
+match, or pass
 others to a ggplot2 scale to override a spiDE plot's.
 }
 \examples{
 spiDEColours("condition")
 spiDEColours("magnitude", 5)
+spiDEColours("spatial", 5)
 }
 \seealso{
 \code{\link[=theme_spiDE]{theme_spiDE()}}

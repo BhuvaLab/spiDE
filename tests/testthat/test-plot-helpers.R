@@ -14,13 +14,18 @@ test_that("theme_spiDE() is bhuvad_theme with ticks, and refuses a bad rl", {
 })
 
 test_that("spiDEColours() gives each role its colours; the magnitude ramp darkens", {
-  expect_equal(unname(spiDEColours("direction")), c("#B8791A", "#5B4B9A"))
-  expect_equal(unname(spiDEColours("condition")), c("#0A9396", "#AE2012"))
+  expect_equal(unname(spiDEColours("direction")), c("#C99A16", "#5B2C9E"))
+  expect_equal(unname(spiDEColours("condition")), c("#3E1A78", "#E05A9E"))
   expect_length(spiDEColours("magnitude", 9), 9)
   lum <- function(h) colSums(grDevices::col2rgb(h) * c(0.2126, 0.7152, 0.0722))
   expect_true(all(diff(lum(spiDEColours("magnitude", 9))) < 0))
+  # the spatial ramp runs dark to bright and starts above the dark panel
+  expect_length(spiDEColours("spatial", 9), 9)
+  expect_true(all(diff(lum(spiDEColours("spatial", 9))) > 0))
+  expect_equal(spiDEColours("magnitude", 11), .magma)
+  expect_equal(spiDEColours("spatial", 11), .magmaSpatial)
   expect_length(spiDEColours("nuisance", 10), 10)
-  expect_named(spiDEColours(), c("up", "down", "first", "second", "mid", "faint", "light", "grey"))
+  expect_named(spiDEColours(), c("up", "down", "first", "second", "mid", "faint", "light", "grey", "ink", "dim"))
 })
 
 test_that("plotmath labels survive quotes and backslashes in names", {

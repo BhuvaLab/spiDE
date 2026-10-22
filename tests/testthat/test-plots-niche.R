@@ -20,6 +20,8 @@ test_that("plotNicheMap() colours one sample's cells by a niche's density", {
   p <- plotNicheMap(spe, niche = "B", sample = "S1", index = "A", unit = "µm")
   builds(p)
   expect_equal(sum(p$data$focal), sum(spe$sample_id == "S1" & spe$cell_type == "A"))
+  # the panel is dark; the page's legend and axis styling are kept
+  expect_equal(p$theme$panel.background$fill, "#140B2E")
   # the scale bar's label sits below the bar: the panel must leave room for it
   b <- ggplot2::ggplot_build(p)
   yr <- range(p$data$y)

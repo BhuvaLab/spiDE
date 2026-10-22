@@ -1,20 +1,27 @@
-# The spiDE plotting theme and colours (0.99.34; design/specs/2026-10-01-plots.md).
-# One colour per role, the same in every plot, validated for colour blindness
-# across roles (all pairs, the dataviz validator):
-#   direction (up / down, and the diverging t scale): amber / violet
-#   the two conditions (first level / second): teal / rufous, from the coolors
-#     palette 001219-005f73-0a9396-94d2bd-e9d8a6-ee9b00-ca6702-bb3e03-ae2012-9b2226
-#   magnitude (density, R^2, counts): scico "lapaz" (Crameri 2018), light to dark
+# The spiDE plotting theme and colours (0.99.34; palette "V", option chosen by the PI).
+# One colour per role, the same in every plot, checked under simulated
+# deuteranopia, protanopia and tritanopia:
+#   direction (up / down, and the diverging t scale): gold / violet
+#   the two conditions (first level / second): dark violet / pink
+#   magnitude (density, R^2, counts): viridis "magma", light to dark, on the
+#     light page: rev(viridisLite::magma(11, begin = 0.08, end = 0.98))
+#   spatial (tissue coordinates): magma(begin = 0.25, end = 0.98), dark to
+#     bright, for the dark panel of plotNicheMap()
 #   a nuisance factor (slide, batch): Okabe-Ito
 # The theme is vissE::bhuvad_theme() -- black panel border, no grid, boxed
-# strips, italic legend titles -- with black axis ticks.
+# strips, italic legend titles -- with black axis ticks. A spatial plot darkens
+# only its panel (the sticker's ink); legends, titles and axes keep the page's.
 
-.spideCols <- c(up = "#B8791A", down = "#5B4B9A", first = "#0A9396", second = "#AE2012",
-                mid = "#F7F7F7", faint = "grey92", light = "grey80", grey = "grey45")
-# scico::scico(11, palette = "lapaz"), reversed to run light to dark; written
-# out so that scico is not a dependency
-.lapaz <- c("#FEF2F2", "#F1D5C4", "#CAB79D", "#A0A695", "#7B9A9E", "#5B8BA2", "#4177A1",
-            "#315E98", "#27468B", "#212A78", "#190C64")
+.spideCols <- c(up = "#C99A16", down = "#5B2C9E", first = "#3E1A78", second = "#E05A9E",
+                mid = "#F7F7F7", faint = "grey92", light = "grey80", grey = "grey45",
+                ink = "#140B2E", dim = "#3B3158")
+# viridisLite::magma(11, begin = 0.08, end = 0.98), reversed to run light to
+# dark; written out so that viridisLite is not a dependency
+.magma <- c("#FCF4B6", "#FECA8D", "#FE9F6D", "#F8745C", "#E44F64", "#C23B75", "#9C2E7F",
+            "#782281", "#55137D", "#2E1162", "#0F0B2C")
+# viridisLite::magma(11, begin = 0.25, end = 0.98), dark to bright
+.magmaSpatial <- c("#51127C", "#6D1D81", "#8B2981", "#A9337D", "#C73D73", "#E34E65", "#F46A5C",
+                   "#FC8C63", "#FEAF78", "#FED294", "#FCF4B6")
 .okabeIto <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#999999")
 
 #' The spiDE plot theme
@@ -51,27 +58,33 @@ theme_spiDE <- function(rl = 1.1) {
 
 #' The spiDE colours
 #'
-#' spiDE gives each role one colour and uses it in every plot: amber and violet
+#' spiDE gives each role one colour and uses it in every plot: gold and violet
 #' for a slope that rises or falls with niche density (and for the diverging
-#' t scale), teal and rufous for the first and second level of the condition,
-#' the scico "lapaz" ramp for magnitudes, and the Okabe-Ito colours for a
-#' nuisance factor such as slide. All pairs stay distinct under the common
-#' forms of colour blindness. Use them to make your own figures match, or pass
+#' t scale), dark violet and pink for the first and second level of the
+#' condition, the viridis "magma" ramp for magnitudes (light to dark on the
+#' page), a brighter part of the same ramp (dark to bright) for plots in
+#' tissue coordinates, drawn on a dark panel, and the Okabe-Ito colours for a
+#' nuisance factor such as slide. The colours were checked under simulated
+#' deuteranopia, protanopia and tritanopia. Use them to make your own figures
+#' match, or pass
 #' others to a ggplot2 scale to override a spiDE plot's.
 #'
 #' @param role \code{NULL} (the named fixed colours) or one of
-#'   \code{"direction"}, \code{"condition"}, \code{"magnitude"},
-#'   \code{"diverging"} and \code{"nuisance"}.
+#'   \code{"direction"}, \code{"condition"}, \code{"magnitude"} (the
+#'   light-panel ramp, light to dark), \code{"spatial"} (the dark-panel ramp
+#'   of tissue plots, dark to bright), \code{"diverging"} and
+#'   \code{"nuisance"}.
 #' @param n the number of colours of a ramp, or of nuisance levels.
 #' @return a character vector of colours.
 #' @examples
 #' spiDEColours("condition")
 #' spiDEColours("magnitude", 5)
+#' spiDEColours("spatial", 5)
 #' @seealso [theme_spiDE()]
 #' @export
 spiDEColours <- function(role = NULL, n = 9L) {
   if (is.null(role)) return(.spideCols)
-  role <- match.arg(role, c("direction", "condition", "magnitude", "diverging", "nuisance"))
+  role <- match.arg(role, c("direction", "condition", "magnitude", "spatial", "diverging", "nuisance"))
   if (!is.numeric(n) || length(n) != 1L || !is.finite(n) || n < 1) {
     stop("'n' must be a positive integer", call. = FALSE)
   }
@@ -80,14 +93,18 @@ spiDEColours <- function(role = NULL, n = 9L) {
          direction = .spideCols[c("up", "down")],
          condition = .spideCols[c("first", "second")],
          magnitude = .magnitudeRamp(n),
+         spatial = .magnitudeRamp(n, spatial = TRUE),
          diverging = grDevices::colorRampPalette(.spideCols[c("down", "mid", "up")], space = "Lab")(n),
          nuisance = if (n <= length(.okabeIto)) .okabeIto[seq_len(n)] else scales::hue_pal()(n))
 }
 
-# The magnitude ramp, light to dark. skip drops that fraction of its light end:
-# on a white panel the lowest values must stay visible (the tissue map).
-.magnitudeRamp <- function(n = 256L, skip = 0) {
-  r <- grDevices::colorRampPalette(.lapaz, space = "Lab")(1000L)
+# The magnitude ramp, light to dark (magma). spatial = TRUE gives the
+# dark-panel ramp of tissue plots, dark to bright. skip drops that fraction of
+# the first end of the ramp.
+.magnitudeRamp <- function(n = 256L, skip = 0, spatial = FALSE) {
+  base <- if (spatial) .magmaSpatial else .magma
+  if (skip == 0 && n == length(base)) return(base)
+  r <- grDevices::colorRampPalette(base, space = "Lab")(1000L)
   r <- r[seq(floor(skip * 999) + 1, 1000)]
   r[round(seq(1, length(r), length.out = n))]
 }
