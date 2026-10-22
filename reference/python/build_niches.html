@@ -384,7 +384,7 @@ background: #2A0E52;
 </section>
 <section id="examples" class="level2 doc-section doc-section-examples">
 <h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
-<div id="68233c15" class="cell" data-execution_count="2">
+<div id="f94c89ce" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> spidepy <span class="im">import</span> build_niches</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> spidepy.datasets <span class="im">import</span> toy_spide</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>adata <span class="op">=</span> build_niches(toy_spide(), sigma<span class="op">=</span>[<span class="dv">10</span>, <span class="dv">30</span>])</span>
@@ -393,13 +393,13 @@ background: #2A0E52;
 <pre><code>['Niche10', 'Niche30']</code></pre>
 </div>
 </div>
-<div id="c4c68fc9" class="cell" data-execution_count="3">
+<div id="24ac3021" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>adata.obsm[<span class="st">"Niche30"</span>].shape</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
 <pre><code>(2400, 3)</code></pre>
 </div>
 </div>
-<div id="6154e611" class="cell" data-execution_count="4">
+<div id="c7fb82a4" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>adata.obsm[<span class="st">"Niche30"</span>].columns.tolist()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
 <pre><code>['A', 'B', 'C']</code></pre>

@@ -1198,11 +1198,11 @@ more (scripts/copy-assets.sh).
 <span id="cb54-21"><a href="#cb54-21" aria-hidden="true" tabindex="-1"></a>             <span class="at">abundance_estimate =</span> <span class="fu">cmp</span>(<span class="fu">as.data.frame</span>(ab), py_ab, <span class="st">"estimate"</span>))</span>
 <span id="cb54-22"><a href="#cb54-22" aria-hidden="true" tabindex="-1"></a><span class="fu">signif</span>(out, <span class="dv">2</span>)</span>
 <span id="cb54-23"><a href="#cb54-23" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt;                    max_abs_diff max_rel_diff</span></span>
-<span id="cb54-24"><a href="#cb54-24" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; pooled_estimate         1.2e-15      1.5e-14</span></span>
-<span id="cb54-25"><a href="#cb54-25" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; pooled_t                1.2e-14      1.5e-14</span></span>
-<span id="cb54-26"><a href="#cb54-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; condition_estimate      2.9e-15      1.7e-14</span></span>
-<span id="cb54-27"><a href="#cb54-27" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; gene_set_estimate       2.4e-15      2.1e-14</span></span>
-<span id="cb54-28"><a href="#cb54-28" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; abundance_estimate      9.7e-14      6.5e-12</span></span>
+<span id="cb54-24"><a href="#cb54-24" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; pooled_estimate         1.5e-15      2.4e-14</span></span>
+<span id="cb54-25"><a href="#cb54-25" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; pooled_t                1.4e-14      2.4e-14</span></span>
+<span id="cb54-26"><a href="#cb54-26" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; condition_estimate      2.9e-15      2.3e-14</span></span>
+<span id="cb54-27"><a href="#cb54-27" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; gene_set_estimate       2.2e-15      3.3e-14</span></span>
+<span id="cb54-28"><a href="#cb54-28" aria-hidden="true" tabindex="-1"></a><span class="co">#&gt; abundance_estimate      8.1e-14      1.2e-11</span></span>
 <span id="cb54-29"><a href="#cb54-29" aria-hidden="true" tabindex="-1"></a>calls <span class="ot">&lt;-</span> <span class="cf">function</span>(d) <span class="fu">sort</span>(<span class="fu">key</span>(d)[<span class="fu">which</span>(d<span class="sc">$</span>q <span class="sc">&lt;</span> <span class="fl">0.05</span>)])</span>
 <span id="cb54-30"><a href="#cb54-30" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">pooled_calls_R =</span> <span class="fu">length</span>(<span class="fu">calls</span>(r_pooled)), <span class="at">pooled_calls_Python =</span> <span class="fu">length</span>(<span class="fu">calls</span>(py_pooled)),</span>
 <span id="cb54-31"><a href="#cb54-31" aria-hidden="true" tabindex="-1"></a>  <span class="at">same_pooled_calls =</span> <span class="fu">identical</span>(<span class="fu">calls</span>(r_pooled), <span class="fu">calls</span>(py_pooled)),</span>

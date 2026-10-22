@@ -483,7 +483,7 @@ background: #2A0E52;
 </section>
 <section id="examples" class="level2 doc-section doc-section-examples">
 <h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
-<div id="5be02bb4" class="cell" data-execution_count="2">
+<div id="71f1a739" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> spidepy <span class="im">import</span> build_niches, fit_spide</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> spidepy.datasets <span class="im">import</span> toy_spide</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>adata <span class="op">=</span> build_niches(toy_spide(), sigma<span class="op">=</span><span class="dv">30</span>)</span>
@@ -493,13 +493,13 @@ background: #2A0E52;
 <pre><code>('slopes', 30.0)</code></pre>
 </div>
 </div>
-<div id="7f181e49" class="cell" data-execution_count="3">
+<div id="2de55d39" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="bu">list</span>(fit.index)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
 <pre><code>['A', 'B', 'C']</code></pre>
 </div>
 </div>
-<div id="7143585a" class="cell" data-execution_count="4">
+<div id="bade40db" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>fit.index[<span class="st">"A"</span>][<span class="st">"niches"</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
 <pre><code>['B', 'C']</code></pre>

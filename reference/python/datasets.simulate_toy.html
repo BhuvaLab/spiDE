@@ -385,7 +385,7 @@ background: #2A0E52;
 </section>
 <section id="examples" class="level2 doc-section doc-section-examples">
 <h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
-<div id="89b13ee5" class="cell" data-execution_count="2">
+<div id="b7d3b0fd" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> spidepy.datasets <span class="im">import</span> simulate_toy</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>adata <span class="op">=</span> simulate_toy(n_samples<span class="op">=</span><span class="dv">4</span>, n_per<span class="op">=</span><span class="dv">50</span>, seed<span class="op">=</span><span class="dv">1</span>)</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>adata.shape</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -393,13 +393,13 @@ background: #2A0E52;
 <pre><code>(200, 20)</code></pre>
 </div>
 </div>
-<div id="8132229f" class="cell" data-execution_count="3">
+<div id="b543bded" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>adata.obs[<span class="st">"condition"</span>].unique().tolist()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
 <pre><code>['Responder', 'Non-responder']</code></pre>
 </div>
 </div>
-<div id="3b5a3822" class="cell" data-execution_count="4">
+<div id="f51e5285" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="bu">bool</span>((adata.X <span class="op">&gt;=</span> <span class="dv">0</span>).<span class="bu">all</span>())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
 <pre><code>True</code></pre>

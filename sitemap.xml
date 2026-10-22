@@ -2,250 +2,250 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://bhuvalab.github.io/spiDE/news.html</loc>
-    <lastmod>2026-10-22T05:09:19.583Z</lastmod>
+    <lastmod>2026-10-22T08:20:10.876Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/index.html</loc>
-    <lastmod>2026-10-22T05:09:19.583Z</lastmod>
+    <lastmod>2026-10-22T08:20:10.876Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/articles/index.html</loc>
-    <lastmod>2026-10-22T05:09:19.583Z</lastmod>
+    <lastmod>2026-10-22T08:20:10.876Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/articles/spiDE-design.html</loc>
-    <lastmod>2026-10-22T05:13:42.232Z</lastmod>
+    <lastmod>2026-10-22T08:22:57.858Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/plotTopTriplets.html</loc>
-    <lastmod>2026-10-22T05:13:32.945Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.028Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/spiDEColours.html</loc>
-    <lastmod>2026-10-22T05:13:32.946Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.028Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/plotPValues.html</loc>
-    <lastmod>2026-10-22T05:13:32.944Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.027Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/testNicheAbundance.html</loc>
-    <lastmod>2026-10-22T05:13:32.948Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.029Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/plotCallMap.html</loc>
-    <lastmod>2026-10-22T05:13:32.942Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.026Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/buildNiches.html</loc>
-    <lastmod>2026-10-22T05:13:32.941Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.025Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/plotTripletHeatmap.html</loc>
-    <lastmod>2026-10-22T05:13:32.945Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.028Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/plotPatientEffects.html</loc>
-    <lastmod>2026-10-22T05:13:32.943Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.027Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/plotSpillover.html</loc>
-    <lastmod>2026-10-22T05:13:32.944Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.027Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/results.html</loc>
-    <lastmod>2026-10-22T05:13:32.945Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.028Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/mergeNiches.html</loc>
-    <lastmod>2026-10-22T05:13:32.941Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.026Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/spiDE.html</loc>
-    <lastmod>2026-10-22T05:13:32.946Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.028Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/plotPatientSlopes.html</loc>
-    <lastmod>2026-10-22T05:13:32.944Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.027Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/spi_gsea.html</loc>
-    <lastmod>2026-10-22T05:13:35.383Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.499Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/merge_niches.html</loc>
-    <lastmod>2026-10-22T05:13:35.381Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/index.html</loc>
-    <lastmod>2026-10-22T05:13:35.244Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.426Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/pl.plot_spillover.html</loc>
-    <lastmod>2026-10-22T05:13:35.383Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/pl.plot_patient_effects.html</loc>
-    <lastmod>2026-10-22T05:13:35.382Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/patient_intercepts.html</loc>
-    <lastmod>2026-10-22T05:13:35.382Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/test_niche_abundance.html</loc>
-    <lastmod>2026-10-22T05:13:35.383Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.499Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/patient_slopes.html</loc>
-    <lastmod>2026-10-22T05:13:35.382Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/fit_spide.html</loc>
-    <lastmod>2026-10-22T05:13:35.381Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/datasets.toy_spide.html</loc>
-    <lastmod>2026-10-22T05:13:35.381Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/test_spide.html</loc>
-    <lastmod>2026-10-22T05:13:35.384Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.499Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/SpiDEFit.html</loc>
-    <lastmod>2026-10-22T05:13:35.380Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/pl.plot_patient_slopes.html</loc>
-    <lastmod>2026-10-22T05:13:35.382Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/datasets.simulate_toy.html</loc>
-    <lastmod>2026-10-22T05:13:35.381Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/get-started.html</loc>
-    <lastmod>2026-10-22T05:09:19.583Z</lastmod>
+    <lastmod>2026-10-22T08:20:10.876Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/datasets.simulate_clustered.html</loc>
-    <lastmod>2026-10-22T05:13:35.381Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/results.html</loc>
-    <lastmod>2026-10-22T05:13:35.383Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.499Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/pl.plot_niche_response.html</loc>
-    <lastmod>2026-10-22T05:13:35.382Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/SpiDEResults.html</loc>
-    <lastmod>2026-10-22T05:13:35.380Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/build_niches.html</loc>
-    <lastmod>2026-10-22T05:13:35.381Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/pl.plot_triplet_heatmap.html</loc>
-    <lastmod>2026-10-22T05:13:35.383Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.499Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/pl.plot_p_values.html</loc>
-    <lastmod>2026-10-22T05:13:35.382Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/pl.plot_call_map.html</loc>
-    <lastmod>2026-10-22T05:13:35.382Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/pl.style.html</loc>
-    <lastmod>2026-10-22T05:13:35.383Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.499Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/spide.html</loc>
-    <lastmod>2026-10-22T05:13:35.383Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.499Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/pl.spide_colours.html</loc>
-    <lastmod>2026-10-22T05:13:35.383Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.499Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/datasets.simulate_niche.html</loc>
-    <lastmod>2026-10-22T05:13:35.381Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/pl.plot_top_triplets.html</loc>
-    <lastmod>2026-10-22T05:13:35.383Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/python/pl.plot_niche_map.html</loc>
-    <lastmod>2026-10-22T05:13:35.382Z</lastmod>
+    <lastmod>2026-10-22T08:22:52.498Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/fitSpiDE.html</loc>
-    <lastmod>2026-10-22T05:13:32.941Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.026Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/SpiDEResults-class.html</loc>
-    <lastmod>2026-10-22T05:13:32.947Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.029Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/plotNicheResponse.html</loc>
-    <lastmod>2026-10-22T05:13:32.943Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.027Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/patientIntercepts.html</loc>
-    <lastmod>2026-10-22T05:13:32.942Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.026Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/spiGSEA.html</loc>
-    <lastmod>2026-10-22T05:13:32.947Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.029Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/toySpiDE.html</loc>
-    <lastmod>2026-10-22T05:13:32.948Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.029Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/spiDE-package.html</loc>
-    <lastmod>2026-10-22T05:13:32.946Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.028Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/testSpiDE.html</loc>
-    <lastmod>2026-10-22T05:13:32.948Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.029Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/patientSlopes.html</loc>
-    <lastmod>2026-10-22T05:13:32.942Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.026Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/theme_spiDE.html</loc>
-    <lastmod>2026-10-22T05:13:32.948Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.029Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/SpiDEFit-class.html</loc>
-    <lastmod>2026-10-22T05:13:32.947Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.028Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/plotNicheMap.html</loc>
-    <lastmod>2026-10-22T05:13:32.943Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.027Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/reference/r/index.html</loc>
-    <lastmod>2026-10-22T05:13:32.998Z</lastmod>
+    <lastmod>2026-10-22T08:22:51.057Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/articles/spiDE-model.html</loc>
-    <lastmod>2026-10-22T05:13:42.230Z</lastmod>
+    <lastmod>2026-10-22T08:22:57.857Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/articles/spiDE-calibration.html</loc>
-    <lastmod>2026-10-22T05:13:42.234Z</lastmod>
+    <lastmod>2026-10-22T08:22:57.859Z</lastmod>
   </url>
   <url>
     <loc>https://bhuvalab.github.io/spiDE/r-vs-python.html</loc>
-    <lastmod>2026-10-22T05:09:19.583Z</lastmod>
+    <lastmod>2026-10-22T08:20:10.876Z</lastmod>
   </url>
 </urlset>
