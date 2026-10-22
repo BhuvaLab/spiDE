@@ -1,0 +1,25 @@
+---
+title: "R vs Python"
+subtitle: "How spiDE (R) and spidepy (Python) correspond, and where they intentionally differ"
+---
+
+We begin with what stays the same. spidepy is a port of spiDE 0.99.37: it runs the same method, the slopes engine and the sandwich engine, the same pooled and condition-specific tests and the same gene-set and abundance tests. A test suite compares spidepy with reference values computed by the R package, and the numbers agree to numerical closeness. The method is defined by the R package, so that is the one to cite.
+
+What changes is the way you call it. Names are `snake_case` in Python with R's defaults (`min.cells` is `min_cells`), and R's `BPPARAM` is `n_jobs`. Inputs and outputs follow Python conventions:
+
+| | R (spiDE) | Python (spidepy) |
+|---|---|---|
+| Container | `SpatialExperiment` | `AnnData` |
+| Counts | assay `counts` | `layers["counts"]` |
+| Coordinates | `spatialCoords()` | `obsm["spatial"]` |
+| Niche matrices | `reducedDim(spe, "Niche30")` | `obsm["Niche30"]` |
+| Updates the object | returns a modified copy | in place (`copy=True` to return a copy) |
+| Plots | `ggplot2` objects | `matplotlib` figures |
+| Parallelism | `BPPARAM` (`BiocParallel`) | `n_jobs` |
+| Result tables | `data.frame` | `pandas.DataFrame`, with R's column names |
+
+The two pages below are the package's own documentation of the correspondence. The first lists every exported R function with its Python counterpart; the second lists the places where the two behave differently, with the reason for each.
+
+{{< include _includes/r-to-python.md >}}
+
+{{< include _includes/r-discrepancies.md >}}
