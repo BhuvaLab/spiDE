@@ -1,0 +1,226 @@
+---
+title: "Designing a study with spiDE"
+author: "Dharmesh D. Bhuva"
+package: spiDE
+output:
+  BiocStyle::html_document:
+    toc_float: true
+vignette: >
+  %\VignetteIndexEntry{Designing a study with spiDE}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+# How much data does a study need?
+
+Before we collect or buy spatial data, we want to know how many patients to
+include, how many cells to measure in each, and what size of effect we can hope
+to find. This article answers these questions with a benchmark on simulated
+tissues, in which we plant effects of known size and count how many spiDE
+finds, and with checks on real cohorts at small sample sizes. We also explain
+the defaults that spiDE uses for small studies of 5 to 7 patients per
+condition, and which false discoveries to expect.
+
+Together with `vignette("spiDE-calibration")`, this is one of the two places in
+the package that quote benchmark numbers. That article shows that the tests are
+calibrated and accurate, and this one shows what they can find. The workflow is
+in `vignette("spiDE")` and the statistics are in `vignette("spiDE-model")`.
+
+# The benchmark
+
+The benchmark measured how recall and false discoveries change with the design.
+It used four simulated tissues, built from the real cell positions, cell types,
+patients and niche maps of four cohorts, and 960 simulated datasets. Each was
+tested with the slopes engine of spiDE 0.99.37 at its defaults. We varied three
+things:
+
+- the number of patients, 6 to 32, half per condition;
+- the number of cells per patient and index type, 25 to 1,000;
+- the gene panel.
+
+Every dataset carried planted niche effects of six sizes on known genes, so we
+could count how many of them were found. To say how big an effect is, we use a
+*standardised slope*, which is a log fold change per within-patient standard
+deviation of the log1p niche density. A standardised slope of 0.2 is about a
+1.6-fold change between index cells at the niche's 10th and 90th percentiles,
+and 0.4 is about 2.7-fold. For comparison, on the three public cohorts the
+median pooled call is 0.07 to 0.14.
+
+# Reading the minimum detectable effect
+
+The most useful summary for planning is the smallest effect that the pooled test
+finds with 80% recall at BH 0.05. The table gives it for each simulated tissue,
+at 200 cells per patient and index type, with spiDE 0.99.36's in brackets where
+it differs:
+
+| patients | GSE289194 | GSE282639 | GSE250346 | YTMA |
+|---|---|---|---|---|
+| 6 | > 0.8 | 0.78 (> 0.8) | > 0.8 | > 0.8 |
+| 8 | > 0.8 | 0.61 (> 0.8) | 0.71 (> 0.8) | > 0.8 |
+| 12 | 0.71 (> 0.8) | 0.45 (0.65) | 0.59 (0.77) | > 0.8 |
+| 16 | 0.54 (0.65) | 0.36 (0.45) | 0.47 (0.58) | 0.69 (> 0.8) |
+| 24 | 0.36 (0.41) | 0.31 (0.32) | 0.33 (0.35) | 0.53 (0.63) |
+| 32 | 0.30 (0.32) | 0.25 (0.26) | 0.31 | 0.38 (0.43) |
+| 32, with 1,000 cells | 0.18 (0.19) | 0.18 | 0.17 | 0.37 (0.44) |
+
+To read the table for a planned study, we find the row with the number of
+patients and the column of the tissue that looks most like ours. Effects smaller
+than the entry are found less than 80% of the time, and larger effects are found
+more often. An entry of "> 0.8" means that none of the sizes tested, up to 0.8,
+reached 80% recall. We then compare the entry with the effect we expect. The
+median pooled call on the three public cohorts is a standardised slope of 0.07
+to 0.14, and that is below every entry of the table at 12 or fewer patients. The
+tissues also differ widely within a row, so the table is best used as a range
+and not as a promise for a tissue that was not simulated.
+
+# Patients and cells per patient
+
+The most important lesson of the benchmark is that patients set the power. For a
+fixed number of cells, dividing them among more patients did better in all but 5
+of 528 comparisons (spiDE 0.99.33), none of them beyond noise. At 3,200 cells
+per type on GSE289194, 8 patients found 2% of effects of 0.4, 16 patients 50%
+and 32 patients 84%. With 3 patients per condition, the condition-specific test
+cannot run.
+
+Cells help once the patients are adequate. At 32 patients, recall of effects of
+0.2 on GSE289194 rose from 0.64 at 200 cells to 0.85 at 1,000. Recall also rises
+steadily with the gene's expression in the index type, so dim genes are found
+last.
+
+The pooled test's degrees of freedom matter most with few patients. spiDE 0.99.37
+refers the pooled test to limma's degrees of freedom scaled by the effective
+share of the patients (`pooled.df = "proportional"`). The previous rule capped
+them at the effective number of patients less one, which made the test
+conservative: its null spread was 0.83 to 0.88 at 6 patients and 0.91 to 0.97 at
+12. It is now 0.94 to 1.05 at every size.
+
+# The condition-specific test
+
+The condition-specific test needs more data than the pooled test, because it
+compares two groups of patients and has fewer patients in each. Where the
+condition test and the pooled test both reach 80% recall, the condition test
+needs 2.0 to 2.3 times the pooled test's effect, for a slope present in one
+condition only (median by tissue).
+
+The next table gives the recall at 200 cells, averaged over effect sizes and the
+four tissues, for a slope present in one condition only ("one condition") and
+one that reverses between them ("reversing"). All three families use the pooled
+test of 0.99.37:
+
+| patients | default family: one condition / reversing | pooled filter only (`"filtered"`): one condition / reversing | all triplets: one condition / reversing |
+|---|---|---|---|
+| 12 | 0.26 / 0.25 | 0.03 / 0.00 | 0.15 / 0.17 |
+| 16 | 0.32 / 0.29 | 0.08 / 0.00 | 0.22 / 0.25 |
+| 24 | 0.39 / 0.34 | 0.24 / 0.01 | 0.33 / 0.33 |
+| 32 | 0.42 / 0.37 | 0.33 / 0.00 | 0.39 / 0.39 |
+
+The default family, `procedure = "pooled_or_heterogeneity"`, adds the triplets
+whose slopes vary between patients beyond their sampling noise to those that
+pass the pooled test. It finds reversing effects, which the pooled filter alone
+cannot. With few patients it also finds more than testing every triplet does,
+because its smaller family carries a lighter multiple-testing correction.
+
+# Small designs: 5 to 7 patients per condition
+
+Many studies have only 5 to 7 patients per condition. Two choices of spiDE 0.99.37
+were made for them. One is the pooled test's degrees of freedom
+(`pooled.df = "proportional"`), and the other is the condition test's family
+(`procedure = "pooled_or_heterogeneity"`). Each was confirmed on null data that
+no earlier step had used, against criteria written before those data were
+scored.
+
+Neither choice was straightforward, so we say how each came about. The degrees
+of freedom were not the first choice of their study. The study's pre-set rule
+rejected them because the pooled false discovery proportion rose on the
+simulated benchmark (see "False discoveries to expect"). They were adopted after
+a follow-up, whose criteria they passed. The condition family is the second
+version. The heterogeneity filter alone was confirmed first. The pooled filter
+was added to it after the heterogeneity filter alone missed a modest difference
+on a strong pooled slope in the toy data, and the combination was then confirmed
+on fresh nulls.
+
+We checked both on the real cohorts in two ways. The first was to use fewer
+patients. Patients were drawn at random from each cohort, 6 to 16 at a time with
+half per condition, on block-null maps the studies had not used. The pooled
+test's null spread was 0.88 to 0.98 with the new degrees of freedom, against 0.76
+to 0.95 with the old cap, and its block tail was at most 0.015. On the same
+subsampled real data, the new degrees of freedom raised the pooled test's recall
+of effects of one between-patient standard deviation: at 16 patients, from 0.07
+to 0.37 on GSE282639 and from 0.07 to 0.35 on GSE289194. Its false discovery
+proportion stayed below 0.035.
+
+The second was to add known effects to real slopes. Condition effects of known
+size were added to the real patients' slopes after their condition labels were
+shuffled, so everything else (the patients, their noise and their imbalance) is
+real. The effects were either present in one condition only or reversing between
+the conditions, at four sizes. The table gives the recall at 12 / 16 patients,
+the mean over both kinds and the four sizes, for 0.99.37's default family with
+its pooled test:
+
+| cohort | default family | pooled filter of 0.99.36 |
+|---|---|---|
+| GSE250346 | 0.36 / 0.56 | 0.00 / 0.00 |
+| GSE282639 | 0.59 / 0.69 | 0.00 / 0.00 |
+| GSE289194 | 0.22 / 0.42 | 0.00 / 0.00 |
+
+The false discovery proportion was 0.004 to 0.028. With every patient, the
+default family found 0.49 of the effects on GSE282639 and 0.55 on GSE289194,
+against 0.05 and 0.13 with the pooled filter of 0.99.36. On GSE250346 with every
+patient (35, 9 of them controls) the result was mixed. The default family found
+fewer of the effects present in one condition only, 0.23 against 0.55, and more
+of the reversing ones, 0.24 against 0.01. On that cohort the pooled filter
+already passes almost half of the triplets, so the larger family likely costs
+more in the multiple-testing correction than it adds.
+
+# False discoveries to expect
+
+Power is only useful if the calls can be trusted, so the benchmark also counted
+false discoveries. For the condition-specific test the news is good. No all-null
+dataset made a condition-specific call in the default family at BH 0.05.
+Averaged over the tissues, 2.8% to 4.1% of the condition permutations made one
+at each size, against a limit of 7%, and single tissues reached 6%. The
+condition test's false discovery proportion averaged at most 0.06 at any size on
+GSE289194, GSE282639 and YTMA. On GSE250346 it reached 0.14 at 32 patients,
+above nominal.
+
+For the pooled test the false discovery proportion ran above nominal in the most
+precise designs. On GSE289194, GSE282639 and YTMA it averaged 0.04 up to 16
+patients, 0.06 at 24 and 0.08 at 32 (0.99.36: up to 0.04), with single designs
+up to 0.20. On the 343-gene panel of GSE250346 it averaged 0.09 to 0.19 (0.99.36:
+up to 0.15).
+
+The measurements point to a compositional cause. Strong niche effects in bright
+genes move the library size with the niche, and relative to the library every
+other gene in that (index, niche) column then moves the other way. Those changes
+are real changes in a gene's share of the counts, but they are not niche effects
+on the gene itself. The rise with 0.99.37 is attributed to these changes, which
+the larger degrees of freedom detect along with real effects. This has not been
+isolated. The pooled test's spread on all-null datasets is 0.94 to 1.05, and the
+real-data checks above show no rise.
+
+# Practical recommendations
+
+We can draw some advice from these numbers.
+
+- **Spend on patients first.** For a fixed number of cells, more patients did
+  better, and cells helped only once the patients were adequate. Where the
+  budget allows a choice, add patients before adding cells.
+- **Plan the effect size.** Compare the effect that matters with the minimum
+  detectable effect of the table above. At 12 or fewer patients, effects as
+  small as the median pooled call of the public cohorts (0.07 to 0.14) are
+  below every entry.
+- **Plan more for the condition-specific test.** It needs 2.0 to 2.3 times the
+  pooled test's effect, so a study sized for the pooled test is underpowered for
+  a difference between conditions.
+- **With 3 patients per condition, expect no condition-specific test.** It
+  cannot run at that size.
+- **Keep the default family for small studies.** For 5 to 7 patients per
+  condition the default, `procedure = "pooled_or_heterogeneity"`, found the most
+  and, unlike the pooled filter alone, finds reversing effects.
+- **Check columns with many weak calls.** If many weak pooled calls share one
+  (index, niche) column and one sign, check that column's median slope and the
+  library size against the niche. That is the signature of the compositional
+  effect described above.
+
+The full results of spiDE 0.99.33 and the design of the simulations are
+described in (Bhuva et al., in preparation).

@@ -1,3 +1,11 @@
+# spiDE (development)
+
+* **The vignettes are restructured into four articles with no overlap**: "Getting started with spiDE"
+  (`spiDE`, the whole pipeline on the toy data), "The spiDE model" (`spiDE-model`, all the statistics, including
+  the gene-set and niche-abundance models), "Designing a study with spiDE" (`spiDE-design`, new: patients and
+  cells needed, minimum detectable effects, the small-design defaults) and "Validation: calibration and
+  accuracy" (`spiDE-calibration`). They no longer link to the research site.
+
 # spiDE 0.99.37
 
 * **New plot colours ("option V").** Slope direction is gold (up) and violet
