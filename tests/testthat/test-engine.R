@@ -128,17 +128,13 @@ test_that("the pooled test equals a direct limma fit with the effective df", {
   f <- limma::eBayes(f, robust = TRUE, trend = TRUE)
   neff <- rowSums(w, na.rm = TRUE)^2 / rowSums(w^2, na.rm = TRUE)
   m <- rowSums(is.finite(w))
-  # the default (0.99.37): limma's df scaled by the Kish effective share; to 0.99.36: capped
-  for (rule in c("proportional", "capped")) {
-    got <- spiDE:::.pooledColumnTest(b, v, tau, x$mean_expr, df.rule = rule)
-    df <- if (rule == "capped") pmin(f$df.total, pmax(neff - 1, 1)) else f$df.total * neff / m
-    expect_equal(got$estimate, unname(f$coefficients[, 1]), tolerance = 1e-10)
-    expect_equal(got$df, unname(df), tolerance = 1e-10)
-    ok <- is.finite(got$t)
-    expect_equal(got$p[ok], unname(2 * pt(-abs(f$t[ok, 1]), df[ok])), tolerance = 1e-10)
-  }
-  expect_identical(spiDE:::.pooledColumnTest(b, v, tau, x$mean_expr),
-                   spiDE:::.pooledColumnTest(b, v, tau, x$mean_expr, df.rule = "proportional"))
+  # limma's df scaled by the Kish effective share of the patients
+  got <- spiDE:::.pooledColumnTest(b, v, tau, x$mean_expr)
+  df <- f$df.total * neff / m
+  expect_equal(got$estimate, unname(f$coefficients[, 1]), tolerance = 1e-10)
+  expect_equal(got$df, unname(df), tolerance = 1e-10)
+  ok <- is.finite(got$t)
+  expect_equal(got$p[ok], unname(2 * pt(-abs(f$t[ok, 1]), df[ok])), tolerance = 1e-10)
 })
 
 test_that("the condition test is weighted least squares with an HC2 SE and Bell-McCaffrey df", {

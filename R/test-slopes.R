@@ -26,7 +26,7 @@
 #     behind the weights and m the patients with a usable slope: when tau2_g
 #     truncates to 0 the weights can rest on a few cell-rich patients, and
 #     limma's ~S df then overstate the evidence. To 0.99.36 the df were
-#     min(df.total, n_eff - 1) (pooled.df = "capped"), which dropped the prior's
+#     min(df.total, n_eff - 1) (the "capped" rule), which dropped the prior's
 #     df whenever the cap bound -- always, since n_eff <= m -- and left the test
 #     conservative at 6-16 patients (research/smalldf/README.md).
 # Both are computed over the whole gene family of a column (the eBayes prior
@@ -82,22 +82,11 @@
   p
 }
 
-# The Kish effective number of patients behind each gene's weights, less the
-# design's columns, floored at 1.
-.kishDf <- function(wts, b, k) {
-  ww <- wts
-  ww[!is.finite(ww) | !is.finite(b)] <- NA
-  pmax(.kishN(ww) - k, 1)
-}
-
 # The pooled test of one (index, niche) column: G x S slopes b and variances v,
 # with tau2 (G): moderated limma on an intercept, the trended prior over the
 # column's gene family (trend = FALSE: a flat prior, for spiGSEA's few sets),
-# the df limma's df.total scaled by the Kish effective share of the patients
-# ("proportional") or capped by the Kish effective patients ("capped").
-.pooledColumnTest <- function(b, v, tau2, mean_expr, min.pooled = 6L, trend = TRUE,
-                              df.rule = c("proportional", "capped")) {
-  df.rule <- match.arg(df.rule)
+# the df limma's df.total scaled by the Kish effective share of the patients.
+.pooledColumnTest <- function(b, v, tau2, mean_expr, min.pooled = 6L, trend = TRUE) {
   G <- nrow(b)
   wts <- 1 / (v + tau2)
   wts[!is.finite(wts) | wts <= 0 | !is.finite(b)] <- NA
@@ -120,11 +109,9 @@
       est[fitted] <- fit$coefficients[, 1]
       tt[fitted] <- fit$t[, 1]
       bf <- b[fitted, , drop = FALSE]
-      df[fitted] <- if (df.rule == "capped") pmin(fit$df.total, .kishDf(w, bf, 1L)) else {
-        ww <- w
-        ww[!is.finite(ww) | !is.finite(bf)] <- NA
-        fit$df.total * .kishN(ww) / rowSums(is.finite(ww))
-      }
+      ww <- w
+      ww[!is.finite(ww) | !is.finite(bf)] <- NA
+      df[fitted] <- fit$df.total * .kishN(ww) / rowSums(is.finite(ww))
     }
   }
   tt[n_ok < min.pooled | !is.finite(tt)] <- NA
@@ -202,8 +189,7 @@
 
 # The slopes engine's tests for one index type's stored slopes. Every row
 # carries its triplet's label-free heterogeneity p (the heterogeneity filter).
-.slopesTests <- function(x, trt = NULL, strata = NULL, BPPARAM = BiocParallel::SerialParam(),
-                         pooled.df = "proportional") {
+.slopesTests <- function(x, trt = NULL, strata = NULL, BPPARAM = BiocParallel::SerialParam()) {
   out <- list()
   vpool <- sweep(x$v_model, c(2, 3), x$factor, "*")
   tau_pool <- .dlTau2(x$beta, vpool)
@@ -211,7 +197,7 @@
   for (j in seq_along(x$niches)) {
     b <- matrix(x$beta[, , j], nrow = length(x$genes))
     vj <- matrix(vpool[, , j], nrow = length(x$genes))
-    p <- .pooledColumnTest(b, vj, tau_pool[, j], x$mean_expr, df.rule = pooled.df)
+    p <- .pooledColumnTest(b, vj, tau_pool[, j], x$mean_expr)
     out[[length(out) + 1L]] <- data.frame(gene = x$genes, niche = x$niches[j], test = "pooled", p,
                                           p.heterogeneity = het[, j], stringsAsFactors = FALSE)
     if (!is.null(trt)) {

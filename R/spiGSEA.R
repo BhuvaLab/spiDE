@@ -31,8 +31,6 @@
 #' @param type \code{"competitive"} (default) or \code{"self-contained"}.
 #' @param min.size,max.size set size limits after intersecting with the genes
 #'   tested in each index type.
-#' @param pooled.df \code{NULL} (the degrees of freedom \code{object}'s pooled
-#'   test used), \code{"proportional"} or \code{"capped"}; see [testSpiDE()].
 #' @param BPPARAM a BiocParallelParam; the condition-specific test is run in
 #'   parallel over sets.
 #' @param ... unused.
@@ -54,11 +52,10 @@
 #' @export
 setMethod("spiGSEA", "SpiDEResults", function(object, genesets, test = NULL,
                                              type = c("competitive", "self-contained"),
-                                             min.size = 5L, max.size = 500L, pooled.df = NULL,
+                                             min.size = 5L, max.size = 500L,
                                              BPPARAM = BiocParallel::SerialParam(), ...) {
   .assertCurrent(object)
   type <- match.arg(type)
-  pooled.df <- if (is.null(pooled.df)) .pooledDfOf(object) else match.arg(pooled.df, c("proportional", "capped"))
   checkGenesets(genesets)
   fit <- object@fit
   if (fit@engine != "slopes") {
@@ -92,7 +89,7 @@ setMethod("spiGSEA", "SpiDEResults", function(object, genesets, test = NULL,
       tau <- .dlTau2(b, v)[, 1]
       b <- matrix(b, nrow = length(member)); v <- matrix(v, nrow = length(member))
       if ("pooled" %in% test) {
-        r <- .pooledColumnTest(b, v, tau, ss$mean_expr, trend = length(member) >= 20L, df.rule = pooled.df)
+        r <- .pooledColumnTest(b, v, tau, ss$mean_expr, trend = length(member) >= 20L)
         out[[length(out) + 1L]] <- data.frame(set = names(member), index = k, niche = x$niches[j],
                                               test = "pooled", size = lengths(member), r,
                                               stringsAsFactors = FALSE)

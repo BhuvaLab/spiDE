@@ -33,12 +33,11 @@
 #' engine's only. The calibration vignette has the measurements behind the
 #' default.
 #'
-#' The slopes engine's pooled test refers its moderated t statistic to
-#' \code{pooled.df}: \code{"proportional"} (the default) scales limma's
-#' degrees of freedom by the Kish effective share of the patients, so a
-#' column whose weights rest on a few patients is not credited with the
-#' others; \code{"capped"} (to spiDE 0.99.36) takes the smaller of limma's df
-#' and the Kish effective number of patients less one, which is conservative
+#' The slopes engine's pooled test refers its moderated t statistic to limma's
+#' degrees of freedom scaled by the Kish effective share of the patients (the
+#' proportional rule), so a column whose weights rest on a few patients is not
+#' credited with the others. To spiDE 0.99.36 the df were the smaller of limma's
+#' df and the Kish effective number of patients less one, which is conservative
 #' with few patients.
 #'
 #' @param object a [SpiDEFit-class] from [fitSpiDE()].
@@ -52,9 +51,6 @@
 #'   The default is \code{"pooled_or_heterogeneity"} for the slopes engine and
 #'   \code{"filtered"} for the sandwich engine.
 #' @param fdr the FDR level of the filter.
-#' @param pooled.df \code{"proportional"} or \code{"capped"}: the degrees of
-#'   freedom of the slopes engine's pooled test, see Details. The sandwich
-#'   engine's tests have Bell-McCaffrey degrees of freedom and ignore it.
 #' @param strata \code{NULL} (the fit's) or a patient-level column adjusted for
 #'   in the slopes engine's condition test (e.g. slide, where the condition is
 #'   confounded with it).
@@ -75,13 +71,12 @@ setMethod(
   "testSpiDE", "SpiDEFit",
   function(object, condition = NULL, procedure = c("pooled_or_heterogeneity", "heterogeneity", "filtered", "all"),
            fdr = 0.05,
-           strata = NULL, pooled.df = c("proportional", "capped"), BPPARAM = BiocParallel::SerialParam(), ...) {
+           strata = NULL, BPPARAM = BiocParallel::SerialParam(), ...) {
     .assertCurrent(object)
     procedure <- if (missing(procedure) || is.null(procedure)) {
       if (object@engine == "slopes") "pooled_or_heterogeneity" else "filtered"
     } else match.arg(procedure)
     checkProcedure(procedure, object@engine)
-    pooled.df <- match.arg(pooled.df)
     checkFdr(fdr)
     if (is.null(condition) && length(object@condition)) condition <- object@condition
     if (object@engine == "sandwich" && !is.null(condition) &&
@@ -101,7 +96,7 @@ setMethod(
         st <- if (!is.null(trt) && !is.null(strata)) {
           stats::setNames(as.character(pt[[strata]]), pt$patient)[x$patients]
         } else NULL
-        tk <- .slopesTests(x, trt = trt, strata = st, BPPARAM = BPPARAM, pooled.df = pooled.df)
+        tk <- .slopesTests(x, trt = trt, strata = st, BPPARAM = BPPARAM)
       } else {
         tk <- x$coef
         if (is.null(condition)) tk <- tk[tk$test == "pooled", , drop = FALSE]
@@ -117,7 +112,6 @@ setMethod(
     tab <- .bhFamilies(tab, procedure = procedure, fdr = fdr)
     methods::new("SpiDEResults", table = tab,
                  condition = if (is.null(condition)) character() else condition,
-                 contrast = contrast, procedure = procedure, fdr = fdr,
-                 pooled.df = if (object@engine == "slopes") pooled.df else character(), fit = object)
+                 contrast = contrast, procedure = procedure, fdr = fdr, fit = object)
   }
 )

@@ -13,7 +13,6 @@ testSpiDE(object, condition = NULL, ...)
   procedure = c("pooled_or_heterogeneity", "heterogeneity", "filtered", "all"),
   fdr = 0.05,
   strata = NULL,
-  pooled.df = c("proportional", "capped"),
   BPPARAM = BiocParallel::SerialParam(),
   ...
 )
@@ -39,10 +38,6 @@ The default is \code{"pooled_or_heterogeneity"} for the slopes engine and
 \item{strata}{\code{NULL} (the fit's) or a patient-level column adjusted for
 in the slopes engine's condition test (e.g. slide, where the condition is
 confounded with it).}
-
-\item{pooled.df}{\code{"proportional"} or \code{"capped"}: the degrees of
-freedom of the slopes engine's pooled test, see Details. The sandwich
-engine's tests have Bell-McCaffrey degrees of freedom and ignore it.}
 
 \item{BPPARAM}{a BiocParallelParam; the slopes engine's condition-specific
 test is run in parallel over genes.}
@@ -85,12 +80,11 @@ The heterogeneity filter needs each patient's slopes, so it is the slopes
 engine's only. The calibration vignette has the measurements behind the
 default.
 
-The slopes engine's pooled test refers its moderated t statistic to
-\code{pooled.df}: \code{"proportional"} (the default) scales limma's
-degrees of freedom by the Kish effective share of the patients, so a
-column whose weights rest on a few patients is not credited with the
-others; \code{"capped"} (to spiDE 0.99.36) takes the smaller of limma's df
-and the Kish effective number of patients less one, which is conservative
+The slopes engine's pooled test refers its moderated t statistic to limma's
+degrees of freedom scaled by the Kish effective share of the patients (the
+proportional rule), so a column whose weights rest on a few patients is not
+credited with the others. To spiDE 0.99.36 the df were the smaller of limma's
+df and the Kish effective number of patients less one, which is conservative
 with few patients.
 }
 \examples{

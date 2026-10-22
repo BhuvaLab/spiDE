@@ -135,7 +135,7 @@ scenarios, as a description only.
 
 These simulations were run with the defaults of spiDE 0.99.32: the condition
 test within the pooled filter (`procedure = "filtered"`) and the pooled test's
-capped degrees of freedom. The defaults of 0.99.37 were measured on the power
+capped degrees of freedom, the rule used before spiDE 0.99.37. The defaults of 0.99.37 were measured on the power
 benchmark and the real-data checks in `vignette("spiDE-design")`.
 
 For the condition-specific test (filtered procedure), averaged over data sets:
@@ -205,9 +205,9 @@ The spread is read per fifth of sets by size, and a tail counts a call at
 `q.global` < 0.05. No null made more than an occasional call. On GSE250346 and
 GSE282639 the pooled set test misses the lower bound of the spread criterion.
 Its largest fifth of sets reaches 0.89 to 0.90, so the test is slightly
-conservative there. With the capped degrees of freedom of 0.99.36 it reached
-0.88 to 0.89 on the same two cohorts. The pooled set test takes its degrees of
-freedom from the results it is given.
+conservative there. With the capped degrees of freedom used before spiDE 0.99.37 it
+reached 0.88 to 0.89 on the same two cohorts. The pooled set test uses the
+proportional rule.
 
 # The between-patient test
 
