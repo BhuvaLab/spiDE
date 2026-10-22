@@ -123,8 +123,9 @@ bandwidth per fit. `testNicheAbundance()` and `spiGSEA()` sit beside it.
 3. **Test** (`R/testSpiDE.R`, `R/test-slopes.R`): slopes engine: per (index, niche) column, the
    patients' slopes weighted by `1 / (v_model * factor + tau2_DL)` in both tests. Pooled test:
    limma, `eBayes(trend = TRUE, robust = TRUE)` on log mean expression, df = `df.total * n_eff / m`
-   (Kish n_eff over the m usable patients; `pooled.df = "proportional"`, 0.99.37; to 0.99.36
-   `min(df.total, n_eff - 1)`, `"capped"`, which always bound and dropped the prior df)
+   (Kish n_eff over the m usable patients; the proportional rule since 0.99.37. To 0.99.36 the df
+   was `min(df.total, n_eff - 1)`, the "capped" rule, which always bound and dropped the prior df;
+   the option was removed in the audit of 2026-10-22, see `data-raw/notes/simplify-2026-10-22.md`)
    (`.pooledColumnTest()`). Condition test (0.99.32): the same weighted least squares
    on `[1, condition, strata]` with an HC2 SE across patients and Bell-McCaffrey df
    (`.robustConditionTest()`; to 0.99.31 limma weighted by the gene's own `v_tile`, which
@@ -134,9 +135,9 @@ bandwidth per fit. `testNicheAbundance()` and `spiGSEA()` sit beside it.
    `p.heterogeneity` < `fdr`), `"heterogeneity"`, `"filtered"` (pooled q < `fdr`; the default to
    0.99.36 and the sandwich engine's) or `"all"`. `p.heterogeneity` (`.heterogeneityP()`) is
    Cochran's Q behind tau2_DL on chi-square m - 1, label-free; `checkProcedure()` refuses the
-   heterogeneity families for the sandwich engine. `SpiDEResults@pooled.df` records the df rule
-   (absent in saved older objects: `.pooledDfOf()` reads them as `"capped"`); `spiGSEA()` follows
-   it. `results(test = )` reads one table; `patientSlopes()` the per-patient slopes.
+   heterogeneity families for the sandwich engine. The pooled df rule has no argument or slot any more
+   (objects saved by <= 0.99.37 still load; `spiGSEA()` uses the proportional rule).
+   `results(test = )` reads one table; `patientSlopes()` the per-patient slopes.
 
 **Classes** (`R/AllClasses.R`): `SpiDEFit` (engine, sigma, condition, patients, index, params) and
 `SpiDEResults` (table, condition, contrast, procedure, fdr, fit). Generics in `R/AllGenerics.R`,
