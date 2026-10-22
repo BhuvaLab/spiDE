@@ -1,0 +1,102 @@
+# Builds and deploys the spiDE documentation website to GitHub Pages.
+# The site exists ONLY through this workflow: nothing generated is committed (reference pages,
+# rendered output and caches are git-ignored). The vignettes execute here, so a full run takes
+# a few minutes. Pull requests touching the site, the vignettes or the Rd files render only
+# (no deploy).
+#
+# Quarto: the runner's preinstalled copy is used when present (the setup action is skipped,
+# since apt refuses to downgrade); a later step fails if it is older than 1.8.
+name: quarto-site
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'vignettes/**', 'man/**', 'R/**', 'NEWS.md', 'DESCRIPTION', '.github/workflows/quarto-site.yaml']
+  pull_request:
+    paths: ['site/**', 'vignettes/**', 'man/**', 'R/**', 'NEWS.md', 'DESCRIPTION', '.github/workflows/quarto-site.yaml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: quarto-site
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_BIOC_VERSION: '3.24'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      # spiDE is a Bioconductor package whose development version needs SpaNorm >= 1.7.15, which
+      # belongs to Bioconductor devel (3.24, on R 4.6; Bioc 3.23 release ships SpaNorm 1.6.0).
+      # The site therefore builds on the latest R release with pak resolving Bioc packages from
+      # R_BIOC_VERSION above. Bump it to the next devel (or drop it once SpaNorm >= 1.7.15 is in
+      # a release) when Bioconductor moves.
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      # spiDE's hard dependencies plus what the vignettes load: patchwork (quick start),
+      # knitr/rmarkdown/BiocStyle (rendering). local::. installs spiDE from this checkout.
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"all"'
+          extra-packages: |
+            any::knitr
+            any::rmarkdown
+            any::patchwork
+            any::remotes
+            bioc::BiocStyle
+            local::.
+
+      # The runner image may already ship Quarto (newer than any pin; apt refuses to downgrade),
+      # so install only when it is absent, then require >= 1.8.
+      - name: Check for Quarto
+        id: quarto-check
+        run: |
+          if command -v quarto >/dev/null; then echo "have=true" >> "$GITHUB_OUTPUT"; quarto --version; else echo "have=false" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: quarto-dev/quarto-actions/setup@v2
+        if: steps.quarto-check.outputs.have != 'true'
+
+      - name: Require Quarto >= 1.8
+        run: |
+          v=$(quarto --version)
+          echo "quarto $v"
+          IFS=. read -r maj min _ <<< "$v"
+          if [ "$maj" -lt 1 ] || { [ "$maj" -eq 1 ] && [ "$min" -lt 8 ]; }; then echo "Quarto $v is older than 1.8"; exit 1; fi
+
+      # altdoc is installed at a fixed version into site/_rlib by build_reference.sh
+      - name: Cache altdoc
+        uses: actions/cache@v4
+        with:
+          path: site/_rlib
+          key: altdoc-0.7.3-${{ runner.os }}-${{ hashFiles('site/scripts/build_reference.sh') }}
+
+      - name: Build reference pages
+        run: bash site/scripts/build_reference.sh
+
+      - name: Render site
+        run: quarto render site
+
+      - name: Check links
+        run: python3 site/scripts/check_links.py
+
+      - name: Deploy to GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: quarto-dev/quarto-actions/publish@v2
+        with:
+          target: gh-pages
+          path: site
+          render: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

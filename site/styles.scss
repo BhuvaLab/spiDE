@@ -1,0 +1,144 @@
+/*-- scss:defaults --*/
+// Palette taken from the spiDE hex sticker (data-raw/sticker/sticker-helper.R, `neon`).
+// Light page; the deep violet carries the navbar, banner and footer. Text accents are
+// darkened for WCAG AA on the page background (contrast ratios are listed in the site build notes).
+$violet:   #2A0E52;   // sticker violet: navbar, footer, title banner
+$violet-2: #4A1786;   // sticker violet2: gradients, borders on dark
+$cyan:     #2FD2FF;   // sticker cyan: only on dark violet
+$magenta:  #FF1F9E;   // sticker magenta: only on dark violet or as decoration
+$plum:     #5B1FA8;   // links and buttons on light (9.2:1 on the page)
+$berry:    #B0136E;   // hover and emphasis on light (6.4:1 on the page)
+$mist:     #FBFAFD;   // sticker paper: page background
+$tint:     #F1ECF9;   // card and code tint
+$line:     #DDD3EE;   // hairlines
+$ink:      #140A2E;   // sticker ink: body text
+$muted:    #4B4560;   // secondary text (8.7:1)
+
+$primary:   $plum;
+$secondary: $muted;
+$link-color: $plum;
+$link-hover-color: $berry;
+$body-bg: $mist;
+$body-color: $ink;
+$font-family-sans-serif: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+$font-family-monospace: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+$font-size-root: 16px;
+$headings-color: $violet;
+$headings-font-weight: 650;
+$navbar-bg: $violet;
+$navbar-fg: #ffffff;
+$navbar-hl: $cyan;
+$code-color: #6B1070;
+$table-striped-bg: rgba(91, 31, 168, 0.06);
+$border-color: $line;
+$border-radius: 0.5rem;
+$footer-bg: $violet;
+$footer-fg: #E4DAF6;
+
+/*-- scss:rules --*/
+body { background: $mist; }
+main.content { font-size: 1.02rem; line-height: 1.65; }
+h1, h2, h3, h4 { letter-spacing: -0.01em; }
+h2 { margin-top: 2.2rem; padding-bottom: 0.3rem; border-bottom: 2px solid $line; }
+.quarto-title-block h1, h1.title { border: 0; }
+
+/* navbar */
+.navbar { background: $violet !important; border-bottom: 3px solid $violet-2; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.navbar .navbar-brand img, .navbar-logo { max-height: 34px; }
+.navbar .nav-link { color: #fff !important; font-weight: 500; border-bottom: 3px solid transparent; padding-bottom: 0.4rem; }
+.navbar .nav-link:hover, .navbar .nav-link:focus { color: $cyan !important; }
+.navbar .nav-link.active, .navbar .show > .nav-link { color: $cyan !important; border-bottom-color: $magenta; }
+.navbar .navbar-toggler { border-color: rgba(255,255,255,.5); }
+.navbar .dropdown-menu { background: $violet; border: 1px solid $violet-2; }
+.navbar .dropdown-item { color: #fff; }
+.navbar .dropdown-item:hover, .navbar .dropdown-item:focus { background: $violet-2; color: $cyan; }
+
+/* title banner on content pages */
+#title-block-header.quarto-title-block.default .quarto-title-banner,
+.quarto-title-banner { background: linear-gradient(135deg, $violet 0%, $violet-2 100%) !important; padding: 1.6rem 0; border-bottom: 4px solid $magenta; }
+.quarto-title-banner .title { color: #fff !important; font-weight: 700; }
+.quarto-title-banner .subtitle { color: #E4DAF6 !important; opacity: 1; }
+
+/* code */
+div.sourceCode, pre.sourceCode, pre { border: 1px solid $line; border-radius: 0.5rem; background: #fdfcff; }
+div.sourceCode { font-size: 0.9em; }
+.cell-output pre { font-size: 0.85em; }
+:not(pre) > code { background: $tint; border-radius: 0.3rem; padding: 0.1em 0.35em; }
+
+/* tables */
+table { border-collapse: separate; border-spacing: 0; border: 1px solid $line; border-radius: 0.5rem; overflow: hidden; background: #fff; }
+.table > :not(caption) > * > * { background-color: transparent; }
+thead tr, thead th { background: $violet !important; color: #fff !important; border-bottom: 0 !important; }
+tbody tr:nth-child(even) { background: rgba(91,31,168,.06); }
+td, th { padding: 0.5rem 0.75rem !important; }
+
+/* tabsets as underlined tabs */
+.panel-tabset .nav-tabs { border-bottom: 2px solid $line; gap: 0.25rem; }
+.panel-tabset .nav-tabs .nav-link { font-weight: 600; color: $secondary; border: 0; border-bottom: 3px solid transparent; margin-bottom: -2px; background: transparent; border-radius: 0.4rem 0.4rem 0 0; }
+.panel-tabset .nav-tabs .nav-link:hover { color: $plum; background: rgba(91,31,168,.07); }
+.panel-tabset .nav-tabs .nav-link.active { color: $plum; border-bottom-color: $plum; background: transparent; }
+.panel-tabset .tab-content { padding-top: 0.8rem; }
+
+/* callouts and figures */
+.callout { border-radius: 0.5rem; }
+figcaption, .figure-caption { color: $secondary; font-size: 0.9rem; }
+main img { max-width: 100%; }
+
+/* footer */
+.nav-footer { background: $violet; color: #E4DAF6; border-top: 4px solid $magenta !important; padding: 1.2rem 0; font-size: 0.9rem; }
+.nav-footer a { color: $cyan; }
+.nav-footer a:hover { color: #fff; }
+.nav-footer .nav-footer-center { text-align: center; }
+
+/* ---------- landing page ---------- */
+.hero { background: radial-gradient(circle at 80% 20%, rgba(255,31,158,.28) 0%, transparent 45%), linear-gradient(135deg, $violet 0%, $violet-2 100%); color: #fff; padding: 3.2rem 1rem 3.4rem; border-bottom: 4px solid $magenta; margin-top: 0; }
+.hero-inner { max-width: 980px; margin: 0 auto; display: flex; align-items: center; gap: 2.5rem; }
+.hero-inner > div { flex: 1 1 auto; }
+.hero img.hero-logo { width: 190px; height: auto; flex: 0 0 auto; filter: drop-shadow(0 6px 14px rgba(0,0,0,.35)); }
+.hero h1 { color: #fff; font-size: 3rem; font-weight: 750; margin: 0 0 0.4rem; border: 0; }
+.hero p.tagline { font-size: 1.25rem; color: #E4DAF6; margin: 0 0 1.4rem; line-height: 1.45; }
+.hero .cta { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.hero .cta p { display: contents; margin: 0; }
+.hero .cta a, a.btn-sn { display: inline-block; padding: 0.55rem 1.15rem; border-radius: 0.5rem; font-weight: 600; text-decoration: none !important; border: 2px solid $cyan; color: $cyan; background: transparent; }
+.hero .cta a:hover { background: rgba(47,210,255,.15); color: #fff; }
+.hero .cta a.primary { background: $cyan; color: $violet; }
+.hero .cta a.primary:hover { background: #7BE4FF; color: $violet; }
+
+.intro { max-width: 760px; margin: 2rem auto 0; font-size: 1.08rem; }
+.feature-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.1rem; margin: 2rem 0; }
+.card-sn { background: #fff; border: 1px solid $line; border-radius: 0.75rem; padding: 1.2rem 1.3rem; box-shadow: 0 1px 3px rgba(42,14,82,.06); }
+.card-sn h3 { margin: 0 0 0.4rem; font-size: 1.1rem; border: 0; color: $violet; }
+.card-sn h3::before { content: ""; display: block; width: 34px; height: 4px; border-radius: 2px; background: $magenta; margin-bottom: 0.7rem; }
+.card-sn h3 a { color: $violet; text-decoration: none; }
+.card-sn h3 a:hover { color: $berry; text-decoration: underline; }
+.card-sn p, .card-sn ul { font-size: 0.95rem; margin-bottom: 0.4rem; }
+.card-sn ul { padding-left: 1.1rem; }
+.section-title { margin-top: 2.6rem; }
+.figure-card { background: #fff; border: 1px solid $line; border-radius: 0.75rem; padding: 1.2rem; text-align: center; box-shadow: 0 1px 3px rgba(42,14,82,.06); margin: 1rem 0; }
+.figure-card img { max-width: 100%; }
+.figure-card figcaption { text-align: left; margin-top: 0.8rem; }
+.cite-card { border-left: 5px solid $magenta; }
+.cite-card blockquote, .cite-card p.ref { font-size: 0.98rem; margin: 0 0 0.5rem; }
+.project-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.1rem; margin: 1rem 0 2rem; }
+.project-grid h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: $secondary; }
+.project-grid h4 { font-size: 0.95rem; margin: 0.6rem 0 0.2rem; }
+.project-grid ul { list-style: none; padding: 0; margin: 0 0 0.4rem; }
+.project-grid li { padding: 0.12rem 0; }
+.project-grid img.orcid { height: 15px; width: 15px; vertical-align: -2px; margin-left: 4px; }
+.install-card .panel-tabset { margin-top: 0.2rem; }
+#refs, .references { font-size: 0.85rem; color: $secondary; }
+
+@media (max-width: 991px) {
+  .feature-row { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 767px) {
+  .hero-inner { flex-direction: column; text-align: center; gap: 1rem; }
+  .hero img.hero-logo { width: 130px; }
+  .hero h1 { font-size: 2.3rem; }
+  .hero p.tagline { font-size: 1.08rem; }
+  .hero .cta { justify-content: center; }
+  .feature-row, .project-grid { grid-template-columns: 1fr; }
+}
+.intro { margin-left: 0; margin-right: 0; max-width: none; }
+.install-card .panel-tabset > .tab-content { border: 0; }
+.panel-tabset .tab-content { border: 0 !important; }

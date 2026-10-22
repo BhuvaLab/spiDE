@@ -1,0 +1,9 @@
+---
+title: "News"
+toc: true
+toc-depth: 2
+---
+
+The changelog of the R package spiDE, from `NEWS.md`.
+
+{{< include _includes/NEWS.md >}}
