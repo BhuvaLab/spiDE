@@ -12,11 +12,13 @@ navbar:
     articles:
       text: Articles
       menu:
-      - text: Neighbourhood-dependent DE with spiDE
+      - text: Getting started with spiDE
         href: articles/spiDE.html
       - text: The spiDE model
         href: articles/spiDE-model.html
-      - text: Calibration — what the tests were measured against
+      - text: Designing a study with spiDE
+        href: articles/spiDE-design.html
+      - text: "Validation: calibration and accuracy"
         href: articles/spiDE-calibration.html
 
 articles:
@@ -25,6 +27,7 @@ articles:
   contents:
   - spiDE
   - spiDE-model
+  - spiDE-design
   - spiDE-calibration
 
 reference:

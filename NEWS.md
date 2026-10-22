@@ -1,4 +1,26 @@
+# spiDE (development)
+
+* **The vignettes are restructured into four articles with no overlap**: "Getting started with spiDE"
+  (`spiDE`, the whole pipeline on the toy data), "The spiDE model" (`spiDE-model`, all the statistics, including
+  the gene-set and niche-abundance models), "Designing a study with spiDE" (`spiDE-design`, new: patients and
+  cells needed, minimum detectable effects, the small-design defaults) and "Validation: calibration and
+  accuracy" (`spiDE-calibration`). They no longer link to the research site.
+
 # spiDE 0.99.37
+
+* **New plot colours ("option V").** Slope direction is gold (up) and violet
+  (down), also the diverging t scale; the two conditions are dark violet and
+  pink; magnitudes use viridis "magma" (light to dark on the page, written out
+  as hex, no new dependency); the nuisance colours stay Okabe-Ito. The palette
+  was checked under simulated deuteranopia, protanopia and tritanopia.
+  - `plotNicheMap()` draws its panel in the sticker's ink (`#140B2E`) with
+    dim non-focal cells (`#3B3158`), a white scale bar, and a brighter
+    dark-to-bright magma ramp so the lowest densities stay visible; legend,
+    title and axes keep the light page's style.
+  - `spiDEColours()` has a new `"spatial"` role for that ramp; the other
+    role names are unchanged, but their colours are new.
+  - `plotPatientSlopes()`: the condition strip is horizontal and wraps, so a
+    long label such as "Non-responder" is no longer clipped.
 
 * `spiGSEA()` orders its rows by p, breaking ties (to 12 digits) by index, niche and set name. Complementary gene
   sets have exactly opposite statistics and a tied p, and their order had depended on floating-point noise, so it

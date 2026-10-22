@@ -6,7 +6,9 @@
 #' One sample's cells, coloured by the log1p density of a niche type: the
 #' covariate spiDE regresses on. With \code{index}, only the index type's
 #' cells are coloured -- the covariate as the index type's model reads it --
-#' and the others are light grey.
+#' and the others are dim. The panel is dark (the sticker's ink) so that the
+#' lowest densities stay visible; the legend, titles and axes keep the page's
+#' style.
 #'
 #' Read it to judge the bandwidth: a speckled field that follows single cells
 #' is too small; a field nearly flat within a section is too large (the
@@ -67,13 +69,15 @@ plotNicheMap <- function(spe, niche, sample, index = NULL, sigma = NULL, cell_ty
   if (is.null(point.size)) point.size <- min(1.5, max(0.05, 50 / sqrt(nrow(d))))
   p <- ggplot(d, aes(.data$x, .data$y))
   if (!is.null(index)) {
-    p <- p + geom_point(data = function(d) d[!d$focal, ], colour = .spideCols[["faint"]],
+    p <- p + geom_point(data = function(d) d[!d$focal, ], colour = .spideCols[["dim"]],
                         size = point.size * 0.7, shape = 16)
   }
   p <- p + geom_point(data = function(d) d[d$focal, ], aes(colour = .data$density), size = point.size, shape = 16) +
-    scale_colour_gradientn(colours = .magnitudeRamp(256L, skip = 0.1), name = sprintf("%s density\n(log1p)", niche)) +
+    scale_colour_gradientn(colours = .magnitudeRamp(256L, spatial = TRUE), name = sprintf("%s density\n(log1p)", niche)) +
     coord_equal() + theme_spiDE() +
-    theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank())
+    theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(),
+          panel.background = element_rect(fill = .spideCols[["ink"]], colour = NA),
+          panel.border = element_rect(colour = .spideCols[["ink"]], fill = NA))
   if (length(unique(d$section)) > 1L) p <- p + facet_wrap(~ section)
   if (isTRUE(scale.bar)) p <- p + .scaleBar(d, unit)
   p
@@ -88,9 +92,9 @@ plotNicheMap <- function(spe, niche, sample, index = NULL, sigma = NULL, cell_ty
   bar <- data.frame(x = xr[2] - len, xend = xr[2], y = yr[1] - 0.04 * diff(yr),
                     label = if (is.null(unit)) format(len) else paste(format(len), unit))
   list(geom_segment(data = bar, aes(x = .data$x, xend = .data$xend, y = .data$y, yend = .data$y),
-                    linewidth = 0.8, inherit.aes = FALSE),
+                    linewidth = 0.8, colour = "white", inherit.aes = FALSE),
        geom_text(data = bar, aes(x = (.data$x + .data$xend) / 2, y = .data$y, label = .data$label),
-                 vjust = 1.6, size = 3.2, inherit.aes = FALSE),
+                 vjust = 1.6, size = 3.2, colour = "white", inherit.aes = FALSE),
        scale_y_continuous(expand = expansion(mult = c(0.16, 0.04))))
 }
 

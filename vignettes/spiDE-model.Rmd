@@ -15,11 +15,14 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 ```
 
-This vignette explains what spiDE computes and why, one step at a time. Each
-step starts in plain language and then gives the formula, so the text can be
-read with or without the maths. The quick start (`vignette("spiDE")`) shows how
-to run the functions; the calibration vignette (`vignette("spiDE-calibration")`)
-shows how well the tests hold up on real data.
+In this article we explain what spiDE computes and why, one step at a time. We
+start each step in plain language and then give the formula, followed by what
+the formula says in words, so the text can be read with or without the maths.
+It holds all the statistics of the package, from the model of a single gene to
+the tests of gene sets and of niche abundance. How to run the functions is in
+`vignette("spiDE")`, how well the tests hold up on real and simulated data is in
+`vignette("spiDE-calibration")`, and how many patients and cells a study needs
+is in `vignette("spiDE-design")`.
 
 # The question
 
@@ -170,7 +173,8 @@ unlikely to reach the condition-specific test.
 A within-patient slope is not always a response of the index cells.
 Transcripts of neighbouring niche cells can be assigned to index cells when
 cells are segmented, and they too rise with the niche's density.
-`plotSpillover()` shows whether the calls are the niche type's own markers.
+`plotSpillover()` (see `vignette("spiDE")`) shows whether the calls are the
+niche type's own markers.
 
 ## Between patients: what `testNicheAbundance()` tests
 
@@ -315,8 +319,7 @@ $$
 
 The fit uses `SpaNorm::polishNB()`, which fits each gene on its own. The patient
 intercepts are handled algebraically, so a fit with many patients costs about
-the same as one with few. Genes are independent, so `BPPARAM` fits them in
-parallel.
+the same as one with few. Genes are independent given an index type, so they can be fitted in parallel.
 
 **Depth options.** `depth = "loglib"` (the default) uses one slope on the log
 library size. `"nonlinear"` lets the effect of depth bend (a spline with three
@@ -497,9 +500,9 @@ lets patients differ without modelling how. It needs the condition at fit
 time. It is simpler but less powerful when effects vary between patients, and
 `spiGSEA()` needs the slopes engine.
 
-# Gene sets: `spiGSEA()`
+# The gene-set test
 
-A gene set is tested exactly like a gene. In each patient, the set's slope is
+A gene set is tested exactly like a gene, with `spiGSEA()`. In each patient, the set's slope is
 the average of its genes' slopes, each gene first divided by its typical
 spread between patients, $\sqrt{\tau^2_g + \mathrm{median}_s v_{gs}}$, so
 that a highly expressed gene does not dominate.
@@ -518,14 +521,14 @@ from patient to patient, and needs no separate estimate. $q$-values are given
 within each (index, niche, test) column and over every set tested
 (`q.global`).
 
-# A different question: niche abundance
+# The niche-abundance test
 
 The patient intercepts of Step 2 absorb one association on purpose. Patients
 whose index cells sit, on average, among more niche cells may express a gene
 differently *as a whole*. That is a comparison between patients, with as many
 data points as patients. It can reflect biology, differences in tissue
 composition, or signal spilling between neighbouring cells.
-`testNicheAbundance()` asks it directly:
+`testNicheAbundance()` asks it directly, in two steps:
 
 - per patient and index type, it averages expression into a pseudobulk
   profile (log counts per million) and computes the patients' mean niche
@@ -551,19 +554,6 @@ patients were down-weighted.
 A result from this test says "patients with more of this niche differ". A
 result from `testSpiDE()` says "within a patient, cells with more of this niche
 differ". Report each as what it is.
-
-`plotNicheResponse(adjust = FALSE)` draws both on the example data. Each
-segment is one patient's slope, the within-patient association spiDE tests; the
-dashed line through the patients' means (open circles) is the between-patient
-association the intercepts absorb:
-
-```{r abundance-figure, fig.width = 6, fig.height = 3.5, message = FALSE}
-library(spiDE)
-data(toySpiDE)
-spe <- buildNiches(toySpiDE, sigma = 30)
-res <- spiDE(spe, condition = "condition", sigma = 30, index = "A", verbose = FALSE)
-plotNicheResponse(spe, res, gene = "G1", index = "A", niche = "B", adjust = FALSE)
-```
 
 With `genesets`, `testNicheAbundance()` tests gene sets the same way. Each
 gene is standardised across patients, and a set's score in a patient is the

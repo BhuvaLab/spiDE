@@ -29,7 +29,7 @@ genes differently.
 
 ## Installation
 
-spiDE needs SpaNorm (>= 1.7.14).
+spiDE needs SpaNorm (>= 1.7.15).
 
 ```r
 # install.packages("BiocManager")
@@ -48,7 +48,8 @@ results(res, test = "condition")   # its difference between the conditions
 ```
 
 The vignettes cover the walk-through (`vignette("spiDE")`), the model
-(`vignette("spiDE-model")`) and what its calibration rests on
+(`vignette("spiDE-model")`), how to design a study
+(`vignette("spiDE-design")`) and how the tests were validated
 (`vignette("spiDE-calibration")`).
 
 ## Earlier versions

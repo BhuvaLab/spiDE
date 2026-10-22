@@ -54,7 +54,9 @@ a ggplot; \code{p$data} has one row per cell of the sample:
 One sample's cells, coloured by the log1p density of a niche type: the
 covariate spiDE regresses on. With \code{index}, only the index type's
 cells are coloured -- the covariate as the index type's model reads it --
-and the others are light grey.
+and the others are dim. The panel is dark (the sticker's ink) so that the
+lowest densities stay visible; the legend, titles and axes keep the page's
+style.
 }
 \details{
 Read it to judge the bandwidth: a speckled field that follows single cells
