@@ -58,7 +58,7 @@ Every exported function and class, with arguments, values and examples.
 if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
-# development version from GitHub (needs SpaNorm >= 1.7.14)
+# development version from GitHub (needs SpaNorm >= 1.7.15)
 BiocManager::install("BhuvaLab/spiDE")
 ```
 
