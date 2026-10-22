@@ -73,3 +73,20 @@ test_that("strata enter the sandwich engine's condition model only, never the po
   cn <- without[without$test == "condition", ]
   expect_false(isTRUE(all.equal(cw$estimate, cn$estimate)))
 })
+
+test_that("the sandwich engine's fit is the same serially and in parallel", {
+  skip_on_os("windows")
+  spe <- buildNiches(.toySPE(n_samples = 8, n_per = 100, n_genes = 12, seed = 4), sigma = 30,
+                     verbose = FALSE)
+  args <- list(spe, condition = "condition", index = "A", sigma = 30, engine = "sandwich",
+               min.patients = 6, verbose = FALSE)
+  s1 <- do.call(fitSpiDE, c(args, BPPARAM = BiocParallel::SerialParam()))@index$A
+  s2 <- do.call(fitSpiDE, c(args, BPPARAM = BiocParallel::MulticoreParam(2)))@index$A
+  expect_identical(s1$genes, s2$genes)
+  # the rownames carry the gene chunk numbers, which depend on the number of workers
+  rownames(s1$coef) <- rownames(s2$coef) <- NULL
+  expect_identical(s1$coef$test, s2$coef$test)
+  num <- vapply(s1$coef, is.numeric, logical(1))
+  expect_gt(sum(num), 3L)
+  expect_equal(s1$coef[num], s2$coef[num], tolerance = 1e-8)
+})
