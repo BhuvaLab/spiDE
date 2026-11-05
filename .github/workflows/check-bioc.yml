@@ -19,10 +19,12 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - {os: ubuntu-latest,  r: devel,   bioc: devel}
-          - {os: ubuntu-latest,  r: release, bioc: release}
-          - {os: macOS-latest,   r: release, bioc: release}
-          - {os: windows-latest, r: release, bioc: release}
+          # Devel only until the first Bioconductor release: spiDE needs SpaNorm >= 1.7.15, which is
+          # not in Bioc release (3.23 ships 1.6.0) and Remotes: is not allowed. Restore the
+          # `release` rows once SpaNorm >= 1.7.15 ships in a release.
+          - {os: ubuntu-latest,  r: devel, bioc: devel}
+          - {os: macOS-latest,   r: devel, bioc: devel}
+          - {os: windows-latest, r: devel, bioc: devel}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}

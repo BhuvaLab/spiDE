@@ -59,8 +59,6 @@ Suggests:
     patchwork,
     RhpcBLASctl,
     clubSandwich
-Remotes:
-    bhuvad/SpaNorm
 URL: https://bhuvalab.github.io/spiDE, https://github.com/BhuvaLab/spiDE
 BugReports: https://github.com/BhuvaLab/spiDE/issues
 VignetteBuilder: knitr
