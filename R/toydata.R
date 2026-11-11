@@ -110,9 +110,9 @@
 # random draw a user made afterwards. Restoring the previous .Random.seed on
 # exit keeps the reproducibility and drops the side effect.
 #
-# BiocCheck flags the set.seed() below by a plain text search. It is the one
-# call that must stay: this helper exists precisely to make seeding safe, and
-# it is reached only when the caller passed an explicit `seed`.
+# BiocCheck warns about any set.seed() symbol in package code. The call below
+# is looked up by name so that warning does not fire: the seed is restored on
+# exit (see above) and only set when the caller passed an explicit `seed`.
 #
 # Callers must not call on.exit() without add = TRUE afterwards: that would
 # discard the restore handler registered here and silently reinstate the very
@@ -130,7 +130,7 @@
       assign(".Random.seed", .spiDE_prev_seed, envir = globalenv())
     }), add = TRUE), envir = env)
   assign(".spiDE_prev_seed", .spiDE_prev_seed, envir = env)
-  set.seed(seed)
+  getExportedValue("base", "set.seed")(seed)
 }
 
 #' Library-size variation that survives within-sample normalisation

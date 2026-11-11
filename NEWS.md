@@ -1,3 +1,3 @@
-# spiDE 0.99.37
+# spiDE 1.0.0
 
 * Bioconductor release.
